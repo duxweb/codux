@@ -16,7 +16,10 @@ pub use codex::{
     AgentModel, AgentPermissionProfile, AgentSkill, CodexAgentDriver, CodexSession, FileHit,
     ThreadInfo, UserInputPart,
 };
-pub use event::{AgentEvent, ApprovalDecision, ApprovalRequest, TokenUsage};
+pub use event::{
+    AgentEvent, ApprovalDecision, ApprovalRequest, PermissionRequest, PlanStep, TokenUsage,
+    UserInputOption, UserInputQuestion, UserInputRequest,
+};
 pub use session::{
     AgentKind, AgentSession, AgentSink, SessionCapabilities, resume_session, start_session,
 };

@@ -14,12 +14,13 @@ use std::sync::Arc;
 use chrono::Local;
 use codux_agent_driver::{
     AgentEvent, AgentKind, AgentModel, AgentPermissionProfile, AgentSession, AgentSkill,
-    ApprovalDecision, ApprovalRequest, FileHit, ItemStatus, SessionConfig, ThreadInfo, TimelineItem,
-    TimelineKind, TokenUsage, UserInputPart, resume_session, start_session,
+    ApprovalDecision, ApprovalRequest, FileHit, ItemStatus, PermissionRequest, PlanStep,
+    SessionConfig, ThreadInfo, TimelineItem, TimelineKind, TokenUsage, UserInputPart,
+    UserInputRequest, resume_session, start_session,
 };
 use flume::Sender;
 use gpui::{
-    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, FollowMode,
+    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, FollowMode,
     InteractiveElement, IntoElement, ListAlignment, ListState, ParentElement, PathPromptOptions,
     Render, SharedString, StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
     list, prelude::FluentBuilder as _, px,
@@ -172,7 +173,35 @@ impl crate::app::CoduxApp {
             .to_string();
         let app = cx.entity().downgrade();
         let view = cx.new(|cx| ChatView::new(app, cwd, codex_program, window, cx));
+        // Pane title follows the CLI's own thread name (thread/name/updated).
+        let title_chat_id = chat_id.to_string();
+        cx.subscribe(&view, move |app, _view, event, cx| {
+            let ChatViewEvent::TitleChanged(title) = event;
+            app.set_chat_pane_title(&title_chat_id, title.clone(), cx);
+        })
+        .detach();
         self.chat_views.insert(chat_id.to_string(), view);
+    }
+
+    /// Rename the split pane that hosts `chat_id` (driven by thread/name/updated).
+    fn set_chat_pane_title(&mut self, chat_id: &str, title: String, cx: &mut Context<Self>) {
+        let title = title.trim().to_string();
+        if title.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        for tab in &mut self.terminals {
+            for slot in &mut tab.panes {
+                if slot.terminal_id.as_deref() == Some(chat_id) && slot.title != title {
+                    slot.title = title.clone();
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            self.sync_terminal_state_after_layout_change(cx);
+            self.invalidate_terminal_workspace(cx);
+        }
     }
 
     /// Close a chat pane: remove it from the split tree and drop its session.
@@ -452,6 +481,13 @@ fn spawn_session(
     });
 }
 
+/// Events the app subscribes to (pane title follows the thread name).
+pub(in crate::app) enum ChatViewEvent {
+    TitleChanged(String),
+}
+
+impl EventEmitter<ChatViewEvent> for ChatView {}
+
 pub(in crate::app) struct ChatView {
     /// Weak app handle for live settings reads (weak: the app owns chat views).
     app: WeakEntity<crate::app::CoduxApp>,
@@ -472,6 +508,16 @@ pub(in crate::app) struct ChatView {
     pending_send: Vec<Vec<UserInputPart>>,
     items: Vec<TimelineItem>,
     pending_approvals: Vec<ApprovalRequest>,
+    /// Mid-turn questions from the agent (item/tool/requestUserInput).
+    pending_user_inputs: Vec<UserInputRequest>,
+    /// Selected option per (request token, question id).
+    user_input_choice: HashMap<(String, String), String>,
+    /// Permission escalations (item/permissions/requestApproval).
+    pending_permissions: Vec<PermissionRequest>,
+    /// Current turn's todo plan; replaced wholesale, cleared on turn start.
+    plan: Option<(Option<String>, Vec<PlanStep>)>,
+    /// Last turn error, pinned until the next turn starts.
+    last_error: Option<String>,
     item_times: HashMap<String, SharedString>,
     status: SharedString,
     input: Entity<InputState>,
@@ -598,6 +644,11 @@ impl ChatView {
             pending_send: Vec::new(),
             items: Vec::new(),
             pending_approvals: Vec::new(),
+            pending_user_inputs: Vec::new(),
+            user_input_choice: HashMap::new(),
+            pending_permissions: Vec::new(),
+            plan: None,
+            last_error: None,
             item_times: HashMap::new(),
             status: SharedString::from("空闲"),
             input,
@@ -632,7 +683,7 @@ impl ChatView {
     fn handle_batch(&mut self, batch: Vec<ChatMsg>, cx: &mut Context<Self>) {
         let mut refresh = false;
         for msg in batch {
-            refresh |= self.apply_msg(msg);
+            refresh |= self.apply_msg(msg, cx);
         }
         if refresh {
             if let Some(session) = &self.session {
@@ -652,7 +703,7 @@ impl ChatView {
 
     /// Apply one message to state (no snapshot / notify). Returns true if the
     /// timeline may have changed (so the batch refreshes items once at the end).
-    fn apply_msg(&mut self, msg: ChatMsg) -> bool {
+    fn apply_msg(&mut self, msg: ChatMsg, cx: &mut Context<Self>) -> bool {
         match msg {
             ChatMsg::Note(note) => {
                 self.status = SharedString::from(note);
@@ -705,6 +756,22 @@ impl ChatView {
             ChatMsg::Event(ev) => {
                 match ev {
                     AgentEvent::ApprovalRequest(req) => self.pending_approvals.push(req),
+                    AgentEvent::UserInputRequest(req) => self.pending_user_inputs.push(req),
+                    AgentEvent::PermissionRequest(req) => self.pending_permissions.push(req),
+                    AgentEvent::TurnPlan { explanation, steps } => {
+                        self.plan = Some((explanation, steps));
+                    }
+                    AgentEvent::ThreadNameUpdated(name) => {
+                        cx.emit(ChatViewEvent::TitleChanged(name));
+                    }
+                    AgentEvent::Notice { kind, message } => {
+                        self.status = SharedString::from(notice_text(&kind, &message));
+                    }
+                    AgentEvent::TurnStarted => {
+                        self.plan = None;
+                        self.last_error = None;
+                        self.status = SharedString::from("生成中…");
+                    }
                     AgentEvent::TurnCompleted => {
                         // Freeze a "完成" summary for the turn that just ended.
                         let secs = self.turn_started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
@@ -725,7 +792,8 @@ impl ChatView {
                     AgentEvent::Error(err) => {
                         self.busy = false;
                         self.turn_started = None;
-                        self.status = SharedString::from(format!("错误: {err}"));
+                        self.status = SharedString::from("就绪");
+                        self.last_error = Some(err);
                         self.pump_queue();
                         self.update_queue_status();
                     }
@@ -830,6 +898,11 @@ impl ChatView {
         self.item_times.clear();
         self.item_versions.clear();
         self.pending_approvals.clear();
+        self.pending_user_inputs.clear();
+        self.user_input_choice.clear();
+        self.pending_permissions.clear();
+        self.plan = None;
+        self.last_error = None;
         self.sync_blocks();
         self.last_completed = None;
         self.busy = false;
@@ -856,6 +929,11 @@ impl ChatView {
         self.item_times.clear();
         self.item_versions.clear();
         self.pending_approvals.clear();
+        self.pending_user_inputs.clear();
+        self.user_input_choice.clear();
+        self.pending_permissions.clear();
+        self.plan = None;
+        self.last_error = None;
         self.sync_blocks();
         self.last_completed = None;
         self.busy = false;
@@ -1202,6 +1280,95 @@ impl ChatView {
         cx.notify();
     }
 
+    /// Approve a command and persist its proposed execpolicy amendment.
+    fn respond_amendment(&mut self, token: String, amendment: Vec<String>, cx: &mut Context<Self>) {
+        if let Some(session) = &self.session {
+            let _ = session.respond_approval_amendment(&token, amendment);
+        }
+        self.pending_approvals.retain(|req| req.token != token);
+        cx.notify();
+    }
+
+    /// Answer a permission escalation: grant `granted` for `scope` (`{}` = deny).
+    fn respond_permission(
+        &mut self,
+        token: String,
+        granted: serde_json::Value,
+        scope: &'static str,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(session) = &self.session {
+            let _ = session.respond_permissions(&token, granted, scope);
+        }
+        self.pending_permissions.retain(|req| req.token != token);
+        cx.notify();
+    }
+
+    fn choose_user_input(
+        &mut self,
+        token: String,
+        qid: String,
+        value: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.user_input_choice.insert((token, qid), value);
+        cx.notify();
+    }
+
+    /// Submit a question card once every question has an answer. `others` maps
+    /// question id → free-text input (the "other"/secret answers).
+    fn submit_user_input(
+        &mut self,
+        token: String,
+        others: Vec<(String, Entity<InputState>)>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pos) = self
+            .pending_user_inputs
+            .iter()
+            .position(|req| req.token == token)
+        else {
+            return;
+        };
+        let req = &self.pending_user_inputs[pos];
+        let mut answers: Vec<(String, Vec<String>)> = Vec::new();
+        for q in &req.questions {
+            let choice = self
+                .user_input_choice
+                .get(&(token.clone(), q.id.clone()))
+                .cloned();
+            let other_text = others
+                .iter()
+                .find(|(qid, _)| qid == &q.id)
+                .map(|(_, input)| input.read(cx).value().trim().to_string())
+                .unwrap_or_default();
+            let answer = match choice {
+                Some(c) if !c.is_empty() => c,
+                _ => other_text,
+            };
+            if answer.is_empty() && !q.options.is_empty() {
+                self.status = SharedString::from("请先回答所有问题");
+                cx.notify();
+                return;
+            }
+            answers.push((q.id.clone(), vec![answer]));
+        }
+        if let Some(session) = &self.session {
+            let _ = session.respond_user_input(&token, answers);
+        }
+        self.pending_user_inputs.remove(pos);
+        self.user_input_choice.retain(|(t, _), _| t != &token);
+        cx.notify();
+    }
+
+    fn remove_queued(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx < self.pending_send.len() {
+            self.pending_send.remove(idx);
+            self.update_queue_status();
+            cx.notify();
+        }
+    }
+
     fn set_access(&mut self, access: Access, cx: &mut Context<Self>) {
         self.access = access;
         if self.session.is_some() {
@@ -1270,9 +1437,10 @@ impl ChatView {
             if it.kind == TimelineKind::Reasoning && it.text.is_empty() {
                 continue; // placeholders are filtered at render too
             }
+            // 文件改动独立成卡（codex app 风格），不并入活动组。
             let is_msg = matches!(
                 it.kind,
-                TimelineKind::UserPrompt | TimelineKind::AssistantMessage
+                TimelineKind::UserPrompt | TimelineKind::AssistantMessage | TimelineKind::FileChange
             );
             if is_msg {
                 if let Some(start) = group_start.take() {
@@ -1342,7 +1510,7 @@ struct Pal {
 }
 
 impl Render for ChatView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let pal = Pal {
             fg: theme.foreground,
@@ -1358,13 +1526,47 @@ impl Render for ChatView {
         let input_value = self.input.read(cx).value().to_string();
         let compact = self.container_width.is_some_and(|w| w < px(460.0));
 
+        let mono = theme.mono_font_family.clone();
         let approvals: Vec<Div> = self
             .pending_approvals
             .iter()
-            .map(|req| self.render_approval(req, pal, cx))
+            .map(|req| self.render_approval(req, pal, mono.clone(), cx))
+            .collect();
+        let user_inputs: Vec<Div> = self
+            .pending_user_inputs
+            .iter()
+            .map(|req| self.render_user_input(req, pal, window, cx))
+            .collect();
+        let permissions: Vec<Div> = self
+            .pending_permissions
+            .iter()
+            .map(|req| self.render_permission(req, pal, cx))
+            .collect();
+        let plan_card = self
+            .plan
+            .as_ref()
+            .filter(|(_, steps)| !steps.is_empty())
+            .map(|(explanation, steps)| render_plan(explanation.as_deref(), steps, pal));
+        let error_card = self
+            .last_error
+            .clone()
+            .map(|message| self.render_error(message, pal, cx));
+        let queued: Vec<Div> = self
+            .pending_send
+            .iter()
+            .enumerate()
+            .map(|(idx, parts)| self.render_queued(idx, parts, pal, cx))
             .collect();
         let has_rows = !self.blocks.is_empty();
         let show_done = !self.busy && self.last_completed.is_some();
+        let has_pinned = !approvals.is_empty()
+            || !user_inputs.is_empty()
+            || !permissions.is_empty()
+            || plan_card.is_some()
+            || error_card.is_some()
+            || !queued.is_empty()
+            || self.show_working()
+            || show_done;
 
         div()
             .flex()
@@ -1407,9 +1609,9 @@ impl Render for ChatView {
                         )
                     }),
             )
-            // Pinned strip: pending approvals and the working/done footer stay
-            // visible above the composer instead of scrolling with history.
-            .when(!approvals.is_empty() || self.show_working() || show_done, |this| {
+            // Pinned strip: plan / approvals / questions / queue / errors and the
+            // working/done footer stay visible above the composer.
+            .when(has_pinned, |this| {
                 this.child(
                     div()
                         .flex_none()
@@ -1418,7 +1620,12 @@ impl Render for ChatView {
                         .gap_2()
                         .px(px(12.0))
                         .pt(px(8.0))
+                        .when_some(plan_card, |this, card| this.child(card))
                         .children(approvals)
+                        .children(user_inputs)
+                        .children(permissions)
+                        .when_some(error_card, |this, card| this.child(card))
+                        .children(queued)
                         .when(self.show_working(), |this| {
                             let secs = self
                                 .turn_started
@@ -1679,9 +1886,58 @@ impl ChatView {
             )
     }
 
-    fn render_approval(&self, req: &ApprovalRequest, pal: Pal, cx: &mut Context<Self>) -> Div {
-        let token_accept = req.token.clone();
-        let token_decline = req.token.clone();
+    /// Approval card with the full decision set (codex app style): 允许 / 本会话
+    /// 总是允许 / 允许此类命令 (execpolicy amendment) / 拒绝 / 拒绝并中断.
+    fn render_approval(
+        &self,
+        req: &ApprovalRequest,
+        pal: Pal,
+        mono: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let is_cmd = req.method.contains("commandExecution") || req.method == "execCommandApproval";
+        let is_elicit = req.method.contains("elicitation");
+        let title = if is_cmd {
+            "需要批准 · 执行命令"
+        } else if req.method.contains("fileChange") || req.method == "applyPatchApproval" {
+            "需要批准 · 应用文件改动"
+        } else if is_elicit {
+            "需要批准 · MCP 请求"
+        } else {
+            "需要批准"
+        };
+        let cwd = req
+            .raw
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let amendment: Option<Vec<String>> = req
+            .raw
+            .get("proposedExecpolicyAmendment")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(String::from))
+                    .collect::<Vec<_>>()
+            })
+            .filter(|v| !v.is_empty());
+        let decision_button = |label: &'static str,
+                               decision: ApprovalDecision,
+                               danger: bool,
+                               cx: &mut Context<Self>| {
+            let token = req.token.clone();
+            let button = Button::new(SharedString::from(format!(
+                "appr-{label}-{}",
+                req.token
+            )))
+            .ghost()
+            .with_size(Size::Small)
+            .child(label)
+            .on_click(cx.listener(move |view, _e, _w, cx| {
+                view.respond_approval(token.clone(), decision, cx)
+            }));
+            if danger { button.text_color(pal.danger) } else { button }
+        };
         div()
             .flex()
             .flex_col()
@@ -1695,33 +1951,361 @@ impl ChatView {
                 div()
                     .text_size(text_sm())
                     .text_color(pal.primary)
-                    .child(format!("需要批准 · {}", req.method)),
+                    .child(title),
             )
-            .child(div().text_size(text_md()).text_color(pal.fg).child(req.summary.clone()))
+            .child(
+                div()
+                    .text_size(if is_cmd { text_sm() } else { text_md() })
+                    .text_color(pal.fg)
+                    .when(is_cmd, |s| s.font_family(mono))
+                    .child(req.summary.clone()),
+            )
+            .when_some(cwd, |this, cwd| {
+                this.child(div().text_size(text_xs()).text_color(pal.muted).child(cwd))
+            })
             .child(
                 div()
                     .flex()
+                    .flex_wrap()
                     .gap_2()
-                    .child(
-                        Button::new(SharedString::from(format!("approve-{}", req.token)))
+                    .child({
+                        let token = req.token.clone();
+                        Button::new(SharedString::from(format!("appr-ok-{}", req.token)))
                             .primary()
                             .with_size(Size::Small)
-                            .child("批准")
+                            .child("允许")
                             .on_click(cx.listener(move |view, _e, _w, cx| {
-                                view.respond_approval(token_accept.clone(), ApprovalDecision::Accept, cx)
+                                view.respond_approval(
+                                    token.clone(),
+                                    ApprovalDecision::Accept,
+                                    cx,
+                                )
+                            }))
+                    })
+                    .when(!is_elicit, |this| {
+                        this.child(decision_button(
+                            "本会话总是允许",
+                            ApprovalDecision::AcceptForSession,
+                            false,
+                            cx,
+                        ))
+                    })
+                    .when_some(amendment, |this, amendment| {
+                        let token = req.token.clone();
+                        this.child(
+                            Button::new(SharedString::from(format!("appr-amend-{}", req.token)))
+                                .ghost()
+                                .with_size(Size::Small)
+                                .child("总是允许此类命令")
+                                .on_click(cx.listener(move |view, _e, _w, cx| {
+                                    view.respond_amendment(token.clone(), amendment.clone(), cx)
+                                })),
+                        )
+                    })
+                    .child(decision_button("拒绝", ApprovalDecision::Decline, true, cx))
+                    .child(decision_button(
+                        "拒绝并中断",
+                        ApprovalDecision::Cancel,
+                        true,
+                        cx,
+                    )),
+            )
+    }
+
+    /// Mid-turn question card (item/tool/requestUserInput): options are radio
+    /// rows, `isOther`/optionless questions get a free-text (masked if secret)
+    /// input, one submit per request.
+    fn render_user_input(
+        &self,
+        req: &UserInputRequest,
+        pal: Pal,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let token = req.token.clone();
+        let mut others: Vec<(String, Entity<InputState>)> = Vec::new();
+        let mut card = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .rounded(px(10.0))
+            .p(px(10.0))
+            .border_1()
+            .border_color(pal.primary.opacity(0.4))
+            .bg(pal.primary.opacity(0.06))
+            .child(
+                div()
+                    .text_size(text_sm())
+                    .text_color(pal.primary)
+                    .child("需要你的回答"),
+            );
+        for q in &req.questions {
+            if !q.header.is_empty() {
+                card = card.child(
+                    div()
+                        .text_size(text_xs())
+                        .text_color(pal.muted)
+                        .child(q.header.clone()),
+                );
+            }
+            card = card.child(
+                div()
+                    .text_size(text_md())
+                    .text_color(pal.fg)
+                    .child(q.question.clone()),
+            );
+            let selected = self
+                .user_input_choice
+                .get(&(token.clone(), q.id.clone()))
+                .cloned();
+            for opt in &q.options {
+                let is_selected = selected.as_deref() == Some(opt.label.as_str());
+                let token2 = token.clone();
+                let qid = q.id.clone();
+                let value = opt.label.clone();
+                card = card.child(
+                    div()
+                        .id(SharedString::from(format!(
+                            "uiq-{}-{}-{}",
+                            req.token, q.id, opt.label
+                        )))
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .rounded(px(6.0))
+                        .px(px(8.0))
+                        .py(px(5.0))
+                        .cursor_pointer()
+                        .when(is_selected, |s| s.bg(pal.primary.opacity(0.12)))
+                        .hover(|s| s.bg(pal.bubble))
+                        .on_click(cx.listener(move |view, _e, _w, cx| {
+                            view.choose_user_input(
+                                token2.clone(),
+                                qid.clone(),
+                                value.clone(),
+                                cx,
+                            )
+                        }))
+                        .child(
+                            Icon::new(if is_selected {
+                                HeroIconName::CheckCircle
+                            } else {
+                                HeroIconName::MinusCircle
+                            })
+                            .size_3()
+                            .text_color(if is_selected { pal.primary } else { pal.muted }),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_size(text_md())
+                                .text_color(pal.fg)
+                                .child(opt.label.clone()),
+                        )
+                        .when(!opt.description.is_empty(), |s| {
+                            s.child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(text_sm())
+                                    .text_color(pal.muted)
+                                    .child(opt.description.clone()),
+                            )
+                        }),
+                );
+            }
+            if q.is_other || q.options.is_empty() {
+                let is_secret = q.is_secret;
+                let input = window.use_keyed_state(
+                    SharedString::from(format!("chat-uinput-{}-{}", req.token, q.id)),
+                    cx,
+                    move |window, cx| {
+                        InputState::new(window, cx)
+                            .placeholder("输入回答…")
+                            .masked(is_secret)
+                    },
+                );
+                others.push((q.id.clone(), input.clone()));
+                card = card.child(
+                    div()
+                        .rounded(px(8.0))
+                        .border_1()
+                        .border_color(pal.border)
+                        .p(px(4.0))
+                        .child(Input::new(&input).appearance(false)),
+                );
+            }
+        }
+        let submit_token = token.clone();
+        card.child(
+            div().flex().justify_end().child(
+                Button::new(SharedString::from(format!("uiq-submit-{}", req.token)))
+                    .primary()
+                    .with_size(Size::Small)
+                    .child("提交回答")
+                    .on_click(cx.listener(move |view, _e, _w, cx| {
+                        view.submit_user_input(submit_token.clone(), others.clone(), cx)
+                    })),
+            ),
+        )
+    }
+
+    /// Permission-escalation card: grant the requested profile for this turn or
+    /// the whole session, or deny (grant nothing).
+    fn render_permission(&self, req: &PermissionRequest, pal: Pal, cx: &mut Context<Self>) -> Div {
+        let summary = permission_summary(&req.requested);
+        let grant_turn = (req.token.clone(), req.requested.clone());
+        let grant_session = (req.token.clone(), req.requested.clone());
+        let deny_token = req.token.clone();
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .rounded(px(10.0))
+            .p(px(10.0))
+            .border_1()
+            .border_color(pal.primary.opacity(0.4))
+            .bg(pal.primary.opacity(0.06))
+            .child(
+                div()
+                    .text_size(text_sm())
+                    .text_color(pal.primary)
+                    .child("需要批准 · 扩展权限"),
+            )
+            .when_some(req.reason.clone(), |this, reason| {
+                this.child(div().text_size(text_md()).text_color(pal.fg).child(reason))
+            })
+            .child(div().text_size(text_sm()).text_color(pal.muted).child(summary))
+            .when(!req.cwd.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(text_xs())
+                        .text_color(pal.muted)
+                        .child(req.cwd.clone()),
+                )
+            })
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        Button::new(SharedString::from(format!("perm-turn-{}", req.token)))
+                            .primary()
+                            .with_size(Size::Small)
+                            .child("本回合允许")
+                            .on_click(cx.listener(move |view, _e, _w, cx| {
+                                view.respond_permission(
+                                    grant_turn.0.clone(),
+                                    grant_turn.1.clone(),
+                                    "turn",
+                                    cx,
+                                )
                             })),
                     )
                     .child(
-                        Button::new(SharedString::from(format!("decline-{}", req.token)))
+                        Button::new(SharedString::from(format!("perm-session-{}", req.token)))
+                            .ghost()
+                            .with_size(Size::Small)
+                            .child("整个会话允许")
+                            .on_click(cx.listener(move |view, _e, _w, cx| {
+                                view.respond_permission(
+                                    grant_session.0.clone(),
+                                    grant_session.1.clone(),
+                                    "session",
+                                    cx,
+                                )
+                            })),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("perm-deny-{}", req.token)))
                             .ghost()
                             .with_size(Size::Small)
                             .text_color(pal.danger)
                             .child("拒绝")
                             .on_click(cx.listener(move |view, _e, _w, cx| {
-                                view.respond_approval(token_decline.clone(), ApprovalDecision::Decline, cx)
+                                view.respond_permission(
+                                    deny_token.clone(),
+                                    serde_json::json!({}),
+                                    "turn",
+                                    cx,
+                                )
                             })),
                     ),
             )
+    }
+
+    /// Pinned red card for a turn error (the status line alone is too transient).
+    fn render_error(&self, message: String, pal: Pal, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .rounded(px(10.0))
+            .p(px(8.0))
+            .border_1()
+            .border_color(pal.danger.opacity(0.4))
+            .bg(pal.danger.opacity(0.06))
+            .child(
+                Icon::new(HeroIconName::ExclamationTriangle)
+                    .size_3()
+                    .text_color(pal.danger),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(text_sm())
+                    .text_color(pal.danger)
+                    .child(message),
+            )
+            .child(icon_action(
+                SharedString::from("err-dismiss"),
+                HeroIconName::XMark,
+                pal,
+                cx.listener(|view, _e, _w, cx| {
+                    view.last_error = None;
+                    cx.notify();
+                }),
+            ))
+    }
+
+    /// One queued (not yet sent) turn: content preview + remove.
+    fn render_queued(
+        &self,
+        idx: usize,
+        parts: &[UserInputPart],
+        pal: Pal,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .rounded(px(10.0))
+            .px(px(10.0))
+            .py(px(6.0))
+            .border_1()
+            .border_color(pal.border)
+            .bg(pal.secondary.opacity(0.35))
+            .child(Icon::new(HeroIconName::Clock).size_3().text_color(pal.muted))
+            .child(div().text_size(text_xs()).text_color(pal.muted).child("排队中"))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(text_sm())
+                    .text_color(pal.fg)
+                    .child(queued_label(parts)),
+            )
+            .child(icon_action(
+                SharedString::from(format!("queued-x-{idx}")),
+                HeroIconName::XMark,
+                pal,
+                cx.listener(move |view, _e, _w, cx| view.remove_queued(idx, cx)),
+            ))
     }
 
     fn render_composer(
@@ -2448,6 +3032,163 @@ fn render_done(pal: Pal, secs: u64, tokens: u64) -> Div {
         .child(div().text_size(text_sm()).text_color(pal.muted).child(meta))
 }
 
+/// The turn's todo plan (turn/plan/updated), pinned while the turn runs.
+fn render_plan(explanation: Option<&str>, steps: &[PlanStep], pal: Pal) -> Div {
+    let done = steps.iter().filter(|s| s.status == "completed").count();
+    let mut list = div()
+        .id("chat-plan-steps")
+        .flex()
+        .flex_col()
+        .gap_1()
+        .max_h(px(160.0))
+        .overflow_y_scroll();
+    for (ix, step) in steps.iter().enumerate() {
+        let status: AnyElement = match step.status.as_str() {
+            "completed" => Icon::new(HeroIconName::Check)
+                .size_3()
+                .text_color(pal.muted)
+                .into_any_element(),
+            "inProgress" => div()
+                .size(px(7.0))
+                .rounded_full()
+                .bg(pal.primary)
+                .into_any_element(),
+            _ => div()
+                .size(px(7.0))
+                .rounded_full()
+                .border_1()
+                .border_color(pal.muted)
+                .into_any_element(),
+        };
+        let color = if step.status == "completed" { pal.muted } else { pal.fg };
+        list = list.child(
+            div()
+                .id(SharedString::from(format!("plan-step-{ix}")))
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(div().flex_none().w(px(10.0)).flex().justify_center().child(status))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(text_sm())
+                        .text_color(color)
+                        .child(step.step.clone()),
+                ),
+        );
+    }
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .rounded(px(10.0))
+        .p(px(10.0))
+        .border_1()
+        .border_color(pal.border)
+        .bg(pal.secondary.opacity(0.35))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(Icon::new(HeroIconName::Bars3).size_3().text_color(pal.muted))
+                .child(div().text_size(text_xs()).text_color(pal.muted).child("计划"))
+                .child(
+                    div()
+                        .text_size(text_xs())
+                        .text_color(pal.muted)
+                        .child(format!("{done}/{}", steps.len())),
+                ),
+        )
+        .when_some(explanation.filter(|e| !e.is_empty()), |this, explanation| {
+            this.child(
+                div()
+                    .text_size(text_sm())
+                    .text_color(pal.muted)
+                    .child(explanation.to_string()),
+            )
+        })
+        .child(list)
+}
+
+/// User-facing text for advisory notices (compaction, reroute, warnings).
+fn notice_text(kind: &str, message: &str) -> String {
+    let label = match kind {
+        "thread/compacted" => "上下文已压缩",
+        "model/rerouted" => "模型已自动切换",
+        "deprecationNotice" => "弃用提示",
+        _ => "提示",
+    };
+    if message.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label}: {message}")
+    }
+}
+
+/// Preview line for a queued turn: its text plus an attachment count.
+fn queued_label(parts: &[UserInputPart]) -> String {
+    let text = parts
+        .iter()
+        .find_map(|p| match p {
+            UserInputPart::Text(t) => Some(t.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let extras = parts
+        .iter()
+        .filter(|p| !matches!(p, UserInputPart::Text(_)))
+        .count();
+    match (text.is_empty(), extras) {
+        (false, 0) => text,
+        (false, n) => format!("{text} (+{n} 附件)"),
+        (true, n) => format!("{n} 个附件"),
+    }
+}
+
+/// Human summary of a requested permission profile (paths / network).
+fn permission_summary(requested: &serde_json::Value) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(fs) = requested.get("fileSystem").filter(|v| !v.is_null()) {
+        let mut paths: Vec<String> = Vec::new();
+        if let Some(entries) = fs.get("entries").and_then(|v| v.as_array()) {
+            for entry in entries {
+                let path = entry.get("path");
+                let path = path
+                    .and_then(|v| v.as_str())
+                    .or_else(|| path.and_then(|v| v.get("path")).and_then(|v| v.as_str()));
+                if let Some(path) = path {
+                    paths.push(path.to_string());
+                }
+            }
+        }
+        for key in ["read", "write"] {
+            if let Some(arr) = fs.get(key).and_then(|v| v.as_array()) {
+                paths.extend(arr.iter().filter_map(|v| v.as_str().map(String::from)));
+            }
+        }
+        if paths.is_empty() {
+            parts.push("文件系统扩展访问".into());
+        } else {
+            parts.push(format!("文件系统: {}", paths.join(", ")));
+        }
+    }
+    if requested
+        .get("network")
+        .and_then(|n| n.get("enabled"))
+        .and_then(|v| v.as_bool())
+        == Some(true)
+    {
+        parts.push("网络访问".into());
+    }
+    if parts.is_empty() {
+        "扩展权限".into()
+    } else {
+        parts.join(" · ")
+    }
+}
+
 fn meta_row(time: SharedString, pal: Pal) -> Div {
     div()
         .flex()
@@ -2645,12 +3386,17 @@ impl ChatView {
         if let Some(p) = image_path(item) {
             return self.render_image(item, p, pal, cx);
         }
-        let (label, icon) = match item.kind {
-            TimelineKind::Reasoning => ("思考", HeroIconName::LightBulb),
-            TimelineKind::Command => ("命令", HeroIconName::CommandLine),
-            TimelineKind::FileChange => ("文件", HeroIconName::DocumentText),
-            TimelineKind::Plan => ("计划", HeroIconName::Bars3),
-            _ => ("工具", HeroIconName::Cog6Tooth),
+        let (label, icon) = match item.item_type.as_str() {
+            "webSearch" => ("搜索", HeroIconName::MagnifyingGlass),
+            "mcpToolCall" => ("MCP", HeroIconName::Cog6Tooth),
+            "contextCompaction" => ("压缩", HeroIconName::ArchiveBoxArrowDown),
+            _ => match item.kind {
+                TimelineKind::Reasoning => ("思考", HeroIconName::LightBulb),
+                TimelineKind::Command => ("命令", HeroIconName::CommandLine),
+                TimelineKind::FileChange => ("文件", HeroIconName::DocumentText),
+                TimelineKind::Plan => ("计划", HeroIconName::Bars3),
+                _ => ("工具", HeroIconName::Cog6Tooth),
+            },
         };
         let is_cmd = item.kind == TimelineKind::Command;
         let is_reasoning = item.kind == TimelineKind::Reasoning;
@@ -2674,7 +3420,9 @@ impl ChatView {
             || !item.output.is_empty()
             || (is_reasoning && (item.text.lines().count() > 1 || item.text.chars().count() > 64))
             || (!is_cmd && !is_reasoning && !is_filechange && !item.text.is_empty());
-        let expanded = self.expanded.contains(&item.id);
+        // 独立的文件改动卡默认展开(codex app 风格);expanded 集合此时反向存折叠。
+        let default_open = is_filechange && !nested;
+        let expanded = self.expanded.contains(&item.id) != default_open;
         let id = item.id.clone();
 
         let status: AnyElement = match item.status {

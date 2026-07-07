@@ -83,6 +83,31 @@ pub trait AgentSession: Send + Sync {
     fn respond_approval(&self, _token: &str, _decision: ApprovalDecision) -> Result<(), String> {
         Ok(())
     }
+    /// Approve a command and persist the proposed execpolicy amendment.
+    fn respond_approval_amendment(
+        &self,
+        _token: &str,
+        _amendment: Vec<String>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+    /// Answer a mid-turn question request: `(question id, answers)` pairs.
+    fn respond_user_input(
+        &self,
+        _token: &str,
+        _answers: Vec<(String, Vec<String>)>,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+    /// Answer a permission escalation: grant `granted` for `scope`.
+    fn respond_permissions(
+        &self,
+        _token: &str,
+        _granted: serde_json::Value,
+        _scope: &str,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     fn list_models(&self) -> Result<Vec<AgentModel>, String> {
         Ok(Vec::new())
     }

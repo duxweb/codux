@@ -114,6 +114,15 @@ impl Timeline {
             .push_str(delta);
     }
 
+    /// Replace a fileChange item's raw `changes` (patchUpdated keeps diffs live).
+    pub fn set_changes(&mut self, id: &str, changes: Value) {
+        let item = self.slot(id, TimelineKind::FileChange, "fileChange");
+        if item.raw.is_null() {
+            item.raw = serde_json::json!({});
+        }
+        item.raw["changes"] = changes;
+    }
+
     /// Count items of a given kind (e.g. user turns).
     pub fn count_kind(&self, kind: TimelineKind) -> usize {
         self.items.iter().filter(|it| it.kind == kind).count()

@@ -40,6 +40,58 @@ pub enum ApprovalDecision {
     Cancel,
 }
 
+/// One step of the turn plan (`turn/plan/updated`).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanStep {
+    pub step: String,
+    /// `pending` | `inProgress` | `completed`.
+    pub status: String,
+}
+
+/// A selectable option of a `item/tool/requestUserInput` question.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInputOption {
+    pub label: String,
+    pub description: String,
+}
+
+/// One question codex asks the user mid-turn (`item/tool/requestUserInput`).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInputQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub options: Vec<UserInputOption>,
+    /// Offer a free-text "other" answer besides the options.
+    pub is_other: bool,
+    /// The answer is a secret (render a masked input).
+    pub is_secret: bool,
+}
+
+/// A server→client question round-trip; answered with
+/// [`crate::codex::CodexSession::respond_user_input`] using `token`.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserInputRequest {
+    pub token: String,
+    pub questions: Vec<UserInputQuestion>,
+}
+
+/// A permission-escalation ask (`item/permissions/requestApproval`); answered
+/// with [`crate::codex::CodexSession::respond_permissions`] using `token`.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermissionRequest {
+    pub token: String,
+    pub reason: Option<String>,
+    pub cwd: String,
+    /// The requested permission profile, untouched (echoed back on grant).
+    pub requested: Value,
+}
+
 impl ApprovalDecision {
     /// The wire value codex expects in `{ "decision": ... }`.
     pub fn wire(self) -> &'static str {
@@ -63,9 +115,21 @@ pub enum AgentEvent {
     MessageDelta { id: String, text: String },
     ReasoningDelta { id: String, text: String },
     CommandOutputDelta { id: String, text: String },
+    PlanDelta { id: String, text: String },
+    /// Live replacement of a fileChange item's `changes` (patchUpdated).
+    FileChangesUpdated { id: String, changes: Value },
     ItemCompleted(TimelineItem),
     TokenUsage(TokenUsage),
     ApprovalRequest(ApprovalRequest),
+    UserInputRequest(UserInputRequest),
+    PermissionRequest(PermissionRequest),
+    /// The turn's todo plan (replaces the previous plan wholesale).
+    TurnPlan { explanation: Option<String>, steps: Vec<PlanStep> },
+    /// The CLI named/renamed the thread.
+    ThreadNameUpdated(String),
+    /// User-relevant advisory (compaction, model reroute, warnings): `kind` is
+    /// the protocol method, `message` its human text when the wire carries one.
+    Notice { kind: String, message: String },
     Status(String),
     TurnCompleted,
     Error(String),

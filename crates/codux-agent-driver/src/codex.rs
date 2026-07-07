@@ -12,7 +12,10 @@ use std::thread;
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::event::{AgentEvent, ApprovalDecision, ApprovalRequest, TokenUsage};
+use crate::event::{
+    AgentEvent, ApprovalDecision, ApprovalRequest, PermissionRequest, PlanStep, TokenUsage,
+    UserInputOption, UserInputQuestion, UserInputRequest,
+};
 use crate::jsonrpc::{Inbound, JsonRpcClient};
 use crate::timeline::{ItemStatus, Timeline, TimelineItem, TimelineKind};
 use crate::{AgentDriver, AgentInvocation, AgentTransport, SessionConfig};
@@ -451,18 +454,73 @@ impl CodexSession {
 
     /// Answer an [`ApprovalRequest`] previously emitted to the sink.
     pub fn respond_approval(&self, token: &str, decision: ApprovalDecision) -> Result<(), String> {
-        let pending = self
-            .inner
+        let pending = self.take_pending(token)?;
+        // MCP elicitations answer with `{action}`, everything else `{decision}`.
+        let result = if pending.method == "mcpServer/elicitation/request" {
+            let action = match decision {
+                ApprovalDecision::Accept | ApprovalDecision::AcceptForSession => "accept",
+                ApprovalDecision::Decline => "decline",
+                ApprovalDecision::Cancel => "cancel",
+            };
+            json!({ "action": action })
+        } else {
+            json!({ "decision": decision.wire() })
+        };
+        self.inner.client.respond(pending.id, result)
+    }
+
+    /// Approve a command AND persist the proposed execpolicy amendment so
+    /// similar commands stop prompting.
+    pub fn respond_approval_amendment(
+        &self,
+        token: &str,
+        amendment: Vec<String>,
+    ) -> Result<(), String> {
+        let pending = self.take_pending(token)?;
+        self.inner.client.respond(
+            pending.id,
+            json!({ "decision": { "acceptWithExecpolicyAmendment": {
+                "execpolicy_amendment": amendment,
+            } } }),
+        )
+    }
+
+    /// Answer an [`crate::event::UserInputRequest`]: `(question id, answers)`.
+    pub fn respond_user_input(
+        &self,
+        token: &str,
+        answers: Vec<(String, Vec<String>)>,
+    ) -> Result<(), String> {
+        let pending = self.take_pending(token)?;
+        let map: serde_json::Map<String, Value> = answers
+            .into_iter()
+            .map(|(qid, ans)| (qid, json!({ "answers": ans })))
+            .collect();
+        self.inner
+            .client
+            .respond(pending.id, json!({ "answers": map }))
+    }
+
+    /// Answer a [`crate::event::PermissionRequest`]: grant `granted` (echo the
+    /// requested profile, or `{}` to deny) for `scope` (`turn` | `session`).
+    pub fn respond_permissions(
+        &self,
+        token: &str,
+        granted: Value,
+        scope: &str,
+    ) -> Result<(), String> {
+        let pending = self.take_pending(token)?;
+        self.inner
+            .client
+            .respond(pending.id, json!({ "permissions": granted, "scope": scope }))
+    }
+
+    fn take_pending(&self, token: &str) -> Result<Pending, String> {
+        self.inner
             .pending_approvals
             .lock()
             .remove(token)
-            .ok_or("unknown approval token")?;
-        self.inner
-            .client
-            .respond(pending.id, json!({ "decision": decision.wire() }))
-            .map(|_| {
-                let _ = pending.method; // method kept for future per-kind responses
-            })
+            .ok_or_else(|| "unknown approval token".to_string())
     }
 
     pub fn interrupt(&self) -> Result<(), String> {
@@ -631,6 +689,10 @@ fn apply(inner: &Inner, ev: &AgentEvent) {
             tl.append_text(id, text, TimelineKind::Reasoning, "reasoning")
         }
         AgentEvent::CommandOutputDelta { id, text } => tl.append_output(id, text),
+        AgentEvent::PlanDelta { id, text } => {
+            tl.append_text(id, text, TimelineKind::Plan, "plan")
+        }
+        AgentEvent::FileChangesUpdated { id, changes } => tl.set_changes(id, changes.clone()),
         _ => {}
     }
 }
@@ -663,13 +725,69 @@ fn notification_to_events(inner: &Inner, method: &str, params: &Value) -> Vec<Ag
             id,
             text: d,
         }),
-        "item/reasoning/textDelta" => delta_event(params, |id, d| AgentEvent::ReasoningDelta {
-            id,
-            text: d,
-        }),
-        "item/commandExecution/outputDelta" => {
+        // GPT-5-class models stream reasoning as summaries, not raw CoT — both
+        // delta channels feed the same reasoning card.
+        "item/reasoning/textDelta" | "item/reasoning/summaryTextDelta" => {
+            delta_event(params, |id, d| AgentEvent::ReasoningDelta { id, text: d })
+        }
+        "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
             delta_event(params, |id, d| AgentEvent::CommandOutputDelta { id, text: d })
         }
+        "item/plan/delta" => delta_event(params, |id, d| AgentEvent::PlanDelta { id, text: d }),
+        "item/fileChange/patchUpdated" => params
+            .get("itemId")
+            .and_then(Value::as_str)
+            .zip(params.get("changes"))
+            .map(|(id, changes)| {
+                vec![AgentEvent::FileChangesUpdated {
+                    id: id.to_string(),
+                    changes: changes.clone(),
+                }]
+            })
+            .unwrap_or_default(),
+        "turn/plan/updated" => {
+            let steps = params
+                .get("plan")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|s| {
+                            Some(PlanStep {
+                                step: s.get("step").and_then(Value::as_str)?.to_string(),
+                                status: s
+                                    .get("status")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("pending")
+                                    .to_string(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            vec![AgentEvent::TurnPlan {
+                explanation: params
+                    .get("explanation")
+                    .and_then(Value::as_str)
+                    .map(String::from),
+                steps,
+            }]
+        }
+        "thread/name/updated" => params
+            .get("threadName")
+            .and_then(Value::as_str)
+            .filter(|name| !name.trim().is_empty())
+            .map(|name| vec![AgentEvent::ThreadNameUpdated(name.to_string())])
+            .unwrap_or_default(),
+        "thread/compacted" | "model/rerouted" | "warning" | "configWarning"
+        | "deprecationNotice" | "guardianWarning" => vec![AgentEvent::Notice {
+            kind: method.to_string(),
+            message: params
+                .get("message")
+                .or_else(|| params.get("text"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        }],
         "thread/tokenUsage/updated" => params
             .get("tokenUsage")
             .map(|u| vec![AgentEvent::TokenUsage(parse_usage(u))])
@@ -681,8 +799,9 @@ fn notification_to_events(inner: &Inner, method: &str, params: &Value) -> Vec<Ag
                 .unwrap_or_else(|| params.to_string()),
         )],
         // Lifecycle/status chatter we keep as a low-priority status signal.
-        "thread/status/changed" | "thread/compacted" | "account/rateLimits/updated"
-        | "turn/diff/updated" | "turn/plan/updated" => vec![AgentEvent::Status(method.to_string())],
+        "thread/status/changed" | "account/rateLimits/updated" | "turn/diff/updated" => {
+            vec![AgentEvent::Status(method.to_string())]
+        }
         _ => Vec::new(),
     }
 }
@@ -702,19 +821,6 @@ fn server_request_to_event(inner: &Inner, id: Value, method: &str, params: &Valu
         Value::String(s) => s.clone(),
         other => other.to_string(),
     };
-    let summary = match method {
-        "item/commandExecution/requestApproval" => params
-            .get("command")
-            .and_then(Value::as_str)
-            .unwrap_or("(command)")
-            .to_string(),
-        "item/fileChange/requestApproval" => params
-            .get("reason")
-            .and_then(Value::as_str)
-            .unwrap_or("apply file changes")
-            .to_string(),
-        _ => method.to_string(),
-    };
     inner.pending_approvals.lock().insert(
         token.clone(),
         Pending {
@@ -722,12 +828,98 @@ fn server_request_to_event(inner: &Inner, id: Value, method: &str, params: &Valu
             method: method.to_string(),
         },
     );
-    AgentEvent::ApprovalRequest(ApprovalRequest {
-        token,
-        method: method.to_string(),
-        summary,
-        raw: params.clone(),
-    })
+    match method {
+        // Mid-turn questions: answered with `{answers}` — not a decision.
+        "item/tool/requestUserInput" => {
+            let questions = params
+                .get("questions")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|q| {
+                            Some(UserInputQuestion {
+                                id: q.get("id").and_then(Value::as_str)?.to_string(),
+                                header: q
+                                    .get("header")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                question: q
+                                    .get("question")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                                    .to_string(),
+                                options: q
+                                    .get("options")
+                                    .and_then(Value::as_array)
+                                    .map(|opts| {
+                                        opts.iter()
+                                            .filter_map(|o| {
+                                                Some(UserInputOption {
+                                                    label: o
+                                                        .get("label")
+                                                        .and_then(Value::as_str)?
+                                                        .to_string(),
+                                                    description: o
+                                                        .get("description")
+                                                        .and_then(Value::as_str)
+                                                        .unwrap_or_default()
+                                                        .to_string(),
+                                                })
+                                            })
+                                            .collect()
+                                    })
+                                    .unwrap_or_default(),
+                                is_other: q.get("isOther").and_then(Value::as_bool).unwrap_or(false),
+                                is_secret: q
+                                    .get("isSecret")
+                                    .and_then(Value::as_bool)
+                                    .unwrap_or(false),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            AgentEvent::UserInputRequest(UserInputRequest { token, questions })
+        }
+        // Permission escalation: answered with `{permissions, scope}`.
+        "item/permissions/requestApproval" => AgentEvent::PermissionRequest(PermissionRequest {
+            token,
+            reason: params.get("reason").and_then(Value::as_str).map(String::from),
+            cwd: params
+                .get("cwd")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            requested: params.get("permissions").cloned().unwrap_or(Value::Null),
+        }),
+        _ => {
+            let summary = match method {
+                "item/commandExecution/requestApproval" => params
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .unwrap_or("(command)")
+                    .to_string(),
+                "item/fileChange/requestApproval" => params
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("apply file changes")
+                    .to_string(),
+                "mcpServer/elicitation/request" => params
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or(method)
+                    .to_string(),
+                _ => method.to_string(),
+            };
+            AgentEvent::ApprovalRequest(ApprovalRequest {
+                token,
+                method: method.to_string(),
+                summary,
+                raw: params.clone(),
+            })
+        }
+    }
 }
 
 fn parse_usage(u: &Value) -> TokenUsage {
@@ -879,6 +1071,15 @@ impl crate::session::AgentSession for CodexSession {
     }
     fn respond_approval(&self, token: &str, decision: ApprovalDecision) -> Result<(), String> {
         CodexSession::respond_approval(self, token, decision)
+    }
+    fn respond_approval_amendment(&self, token: &str, amendment: Vec<String>) -> Result<(), String> {
+        CodexSession::respond_approval_amendment(self, token, amendment)
+    }
+    fn respond_user_input(&self, token: &str, answers: Vec<(String, Vec<String>)>) -> Result<(), String> {
+        CodexSession::respond_user_input(self, token, answers)
+    }
+    fn respond_permissions(&self, token: &str, granted: Value, scope: &str) -> Result<(), String> {
+        CodexSession::respond_permissions(self, token, granted, scope)
     }
     fn list_models(&self) -> Result<Vec<AgentModel>, String> {
         CodexSession::list_models(self)
