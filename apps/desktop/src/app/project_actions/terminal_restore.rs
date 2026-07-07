@@ -169,6 +169,14 @@ impl CoduxApp {
                 if slot.pane.is_some() {
                     continue;
                 }
+                // Chat panes host a chat view, never a PTY.
+                if slot
+                    .terminal_id
+                    .as_deref()
+                    .is_some_and(crate::app::agent_chat::terminal_id_is_chat)
+                {
+                    continue;
+                }
                 let pty_config = terminal_pty_config_for_terminal_id(
                     base_pty_config,
                     slot.terminal_id.as_deref(),

@@ -66,11 +66,13 @@ impl JsonRpcClient {
             let stderr_tail = stderr_tail.clone();
             thread::spawn(move || {
                 let reader = BufReader::new(stderr);
+                // Child stderr is diagnostics only (codex-core traces its own
+                // internal warnings there); keep the tail for death reports
+                // instead of mirroring every line into our stderr.
                 for line in reader.lines().map_while(Result::ok) {
                     if line.is_empty() {
                         continue;
                     }
-                    eprintln!("[agent stderr] {line}");
                     let mut tail = stderr_tail.lock();
                     tail.push(line);
                     let len = tail.len();

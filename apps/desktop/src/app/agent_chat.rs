@@ -19,7 +19,7 @@ use codux_agent_driver::{
 };
 use flume::Sender;
 use gpui::{
-    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, EventEmitter, FollowMode,
+    AnyElement, AppContext, ClipboardItem, Context, Div, Entity, FollowMode,
     InteractiveElement, IntoElement, ListAlignment, ListState, ParentElement, PathPromptOptions,
     Render, SharedString, StatefulInteractiveElement, Styled, Task, WeakEntity, Window, div, img,
     list, prelude::FluentBuilder as _, px, rems,
@@ -32,41 +32,178 @@ use gpui_component::{
     text::TextView,
 };
 
-use crate::app::types::WorkspaceView;
 use crate::heroicons::HeroIconName;
 
+/// Chat panes live in the terminal split tree under their own id namespace
+/// (like `gpui-term-`), so layout persistence/restore carries them for free.
+pub(in crate::app) fn terminal_id_is_chat(terminal_id: &str) -> bool {
+    terminal_id.starts_with("gpui-chat-")
+}
+
+fn unique_chat_terminal_id() -> String {
+    format!("gpui-chat-{}", uuid::Uuid::new_v4())
+}
+
 impl crate::app::CoduxApp {
-    /// Toggle the AI chat pane hosted inside the terminal split area.
-    pub(in crate::app) fn toggle_chat_split(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.chat_split_open {
-            self.chat_split_open = false;
-        } else {
-            self.workspace_view = WorkspaceView::Terminal;
-            self.chat_split_open = true;
-            self.ensure_chat_panel(window, cx);
+    /// Insert an AI chat pane into the terminal split tree, to the right of the
+    /// pane the button was clicked on — a chat pane is one more split, only its
+    /// content is a chat session instead of a PTY.
+    pub(in crate::app) fn open_chat_split(
+        &mut self,
+        source_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::app::terminal_state::{
+            terminal_split_tree_for_panes, terminal_split_tree_insert_pane,
+            terminal_top_grid_for_panes, terminal_top_ratios_for_panes,
+        };
+        let Some(active_tab) = self.main_terminal() else {
+            return;
+        };
+        let pane_count = active_tab.panes.len();
+        if pane_count >= codux_runtime::terminal_layout::TERMINAL_SPLIT_CAP {
+            self.status_message = "main split limit reached".to_string();
+            self.invalidate_terminal_workspace(cx);
+            return;
         }
-        self.update_terminal_workspace_view(cx);
-        cx.notify();
+        let source_index = source_index.min(pane_count.saturating_sub(1));
+        let top_ratios = terminal_top_ratios_for_panes(
+            self.state.terminal_layout.top_ratios.clone(),
+            pane_count,
+        );
+        let grid = terminal_top_grid_for_panes(
+            self.state.terminal_layout.top_grid.clone(),
+            &top_ratios,
+            pane_count,
+        );
+        let tree = terminal_split_tree_for_panes(
+            self.state.terminal_layout.split_tree.clone(),
+            &grid,
+            &top_ratios,
+            pane_count,
+        )
+        .unwrap_or(codux_runtime::terminal_layout::TerminalSplitNode::Leaf { pane: 0 });
+        let insert_index = source_index + 1;
+        let split_tree = match terminal_split_tree_insert_pane(
+            &tree,
+            source_index,
+            insert_index,
+            crate::app::TerminalSplitDirection::Right,
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                self.status_message = error.to_string();
+                self.invalidate_terminal_workspace(cx);
+                return;
+            }
+        };
+        let chat_id = unique_chat_terminal_id();
+        let title = crate::app::workspace_shared::workspace_i18n(
+            &self.state.settings.language,
+            "terminal.chat.title",
+            "AI Chat",
+        );
+        if let Some(tab) = self.main_terminal_mut() {
+            let insert_index = insert_index.min(tab.panes.len());
+            tab.panes.insert(
+                insert_index,
+                crate::app::types::TerminalPaneSlot {
+                    title,
+                    terminal_id: Some(chat_id.clone()),
+                    pane: None,
+                    restored_output_bytes: 0,
+                    restored_output_tail: String::new(),
+                },
+            );
+        }
+        self.set_terminal_split_tree(Some(split_tree));
+        self.ensure_chat_view(&chat_id, window, cx);
+        self.sync_terminal_state_after_layout_change(cx);
+        self.invalidate_terminal_workspace(cx);
     }
 
-    /// Create the chat panel for the active worktree if it does not exist yet.
-    /// Panels are keyed by worktree path so conversations survive switching.
-    pub(in crate::app) fn ensure_chat_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Create the chat view for a chat pane id if it does not exist yet. Views
+    /// are app-level so switching worktrees keeps conversations alive.
+    pub(in crate::app) fn ensure_chat_view(
+        &mut self,
+        chat_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.chat_views.contains_key(chat_id) {
+            return;
+        }
         let Some(cwd) = self.selected_worktree_path() else {
             return;
         };
-        if self.chat_panels.contains_key(&cwd) {
-            return;
-        }
         let codex_program = self
             .runtime
             .root
             .join("scripts/wrappers/bin/codex")
             .to_string_lossy()
             .to_string();
-        let cwd_for_view = cwd.clone();
-        let panel = cx.new(|cx| ChatPanel::new(cwd_for_view, codex_program, window, cx));
-        self.chat_panels.insert(cwd, panel);
+        let view = cx.new(|cx| ChatView::new(cwd, codex_program, window, cx));
+        self.chat_views.insert(chat_id.to_string(), view);
+    }
+
+    /// Close a chat pane: remove it from the split tree and drop its session.
+    pub(in crate::app) fn close_chat_pane(&mut self, pane_index: usize, cx: &mut Context<Self>) {
+        use crate::app::terminal_state::{
+            terminal_split_tree_for_panes, terminal_split_tree_remove_pane,
+            terminal_top_grid_for_panes, terminal_top_ratios_for_panes,
+        };
+        let Some(tab_index) = (!self.terminals.is_empty()).then_some(0) else {
+            return;
+        };
+        let Some(chat_id) = self.terminals[tab_index]
+            .panes
+            .get(pane_index)
+            .and_then(|slot| slot.terminal_id.clone())
+            .filter(|id| terminal_id_is_chat(id))
+        else {
+            return;
+        };
+        let pane_count = self.terminals[tab_index].panes.len();
+        let top_ratios = terminal_top_ratios_for_panes(
+            self.state.terminal_layout.top_ratios.clone(),
+            pane_count,
+        );
+        let grid = terminal_top_grid_for_panes(
+            self.state.terminal_layout.top_grid.clone(),
+            &top_ratios,
+            pane_count,
+        );
+        let tree = terminal_split_tree_for_panes(
+            self.state.terminal_layout.split_tree.clone(),
+            &grid,
+            &top_ratios,
+            pane_count,
+        )
+        .unwrap_or(codux_runtime::terminal_layout::TerminalSplitNode::Leaf { pane: 0 });
+        let split_tree = terminal_split_tree_remove_pane(&tree, pane_index);
+        self.terminals[tab_index].panes.remove(pane_index);
+        self.set_terminal_split_tree(split_tree);
+        self.chat_views.remove(&chat_id);
+        // Closing the last pane leaves an empty grid; fall back to one
+        // click-to-open terminal slot so the workspace never renders empty.
+        if self.terminals[tab_index].panes.is_empty() {
+            let title = self.text("terminal.title", "Terminal");
+            self.terminals[tab_index]
+                .panes
+                .push(crate::app::types::TerminalPaneSlot {
+                    title,
+                    terminal_id: None,
+                    pane: None,
+                    restored_output_bytes: 0,
+                    restored_output_tail: String::new(),
+                });
+            self.set_terminal_split_tree(Some(
+                codux_runtime::terminal_layout::TerminalSplitNode::Leaf { pane: 0 },
+            ));
+        }
+        self.sync_terminal_state_after_layout_change(cx);
+        self.invalidate_terminal_workspace(cx);
     }
 }
 
@@ -170,11 +307,6 @@ impl Attachment {
             Attachment::Image { path } => UserInputPart::LocalImage { path: path.clone() },
         }
     }
-}
-
-/// Event from a chat tab up to its panel (for tab-level actions like /new).
-pub(in crate::app) enum ChatViewEvent {
-    NewTab,
 }
 
 /// One virtualized transcript row: a single message, or a run of consecutive
@@ -351,8 +483,6 @@ pub(in crate::app) struct ChatView {
     _tick: Task<()>,
 }
 
-impl EventEmitter<ChatViewEvent> for ChatView {}
-
 impl ChatView {
     pub(in crate::app) fn new(
         cwd: String,
@@ -458,23 +588,6 @@ impl ChatView {
             _drain: drain,
             _tick: tick,
         }
-    }
-
-    /// Short label for the tab bar: a snippet of the first user message.
-    pub(in crate::app) fn title(&self) -> SharedString {
-        self.items
-            .iter()
-            .find(|i| i.kind == TimelineKind::UserPrompt && !i.text.trim().is_empty())
-            .map(|i| {
-                let line = i.text.trim().lines().next().unwrap_or_default();
-                let snippet: String = line.chars().take(16).collect();
-                if line.chars().count() > 16 {
-                    SharedString::from(format!("{snippet}…"))
-                } else {
-                    SharedString::from(snippet)
-                }
-            })
-            .unwrap_or_else(|| SharedString::from("新对话"))
     }
 
     /// Apply a burst of messages with a SINGLE snapshot + render. Streaming emits
@@ -671,6 +784,33 @@ impl ChatView {
 
     /// Resume a prior thread in place: tear down the current session and start a
     /// resumed one whose timeline is hydrated with the thread's history.
+    /// `/new`: drop the current session and start a fresh one in place — the
+    /// pane keeps its split position, only the conversation resets.
+    fn start_new_session(&mut self, cx: &mut Context<Self>) {
+        if let Some(old) = self.session.take() {
+            std::thread::spawn(move || old.shutdown());
+        }
+        self.items.clear();
+        self.item_times.clear();
+        self.item_versions.clear();
+        self.pending_approvals.clear();
+        self.sync_blocks();
+        self.last_completed = None;
+        self.busy = false;
+        self.starting = true;
+        self.status = SharedString::from("连接中…");
+        spawn_session(
+            self.tx.clone(),
+            self.cwd.clone(),
+            self.codex_program.clone(),
+            self.access,
+            self.model.clone(),
+            self.effort.to_string(),
+            None,
+        );
+        cx.notify();
+    }
+
     fn do_resume(&mut self, thread_id: String, cx: &mut Context<Self>) {
         self.show_threads = false;
         if let Some(old) = self.session.take() {
@@ -817,7 +957,7 @@ impl ChatView {
         // Commands that don't require a live session.
         match cmd {
             "/new" => {
-                cx.emit(ChatViewEvent::NewTab);
+                self.start_new_session(cx);
                 return;
             }
             "/status" => {
@@ -2769,193 +2909,4 @@ fn render_diff(diff: &str, pal: Pal, mono: SharedString) -> Div {
         block = block.child(div().text_color(color).child(line.to_string()));
     }
     block
-}
-
-/// Multi-tab host for chat sessions bound to a single worktree. Each tab is its
-/// own [`ChatView`] (its own codex session); the worktree-keyed entity lives in
-/// `WorkspaceBodyView`, so switching projects/worktrees rebuilds the whole panel
-/// — exactly like the terminal's tab strip but for AI conversations.
-pub(in crate::app) struct ChatPanel {
-    cwd: String,
-    codex_program: String,
-    tabs: Vec<Entity<ChatView>>,
-    active: usize,
-}
-
-impl ChatPanel {
-    pub(in crate::app) fn new(
-        cwd: String,
-        codex_program: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let first = Self::make_tab(&cwd, &codex_program, window, cx);
-        Self {
-            cwd,
-            codex_program,
-            tabs: vec![first],
-            active: 0,
-        }
-    }
-
-    fn make_tab(
-        cwd: &str,
-        codex_program: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<ChatView> {
-        let cwd = cwd.to_string();
-        let program = codex_program.to_string();
-        let tab = cx.new(|cx| ChatView::new(cwd, program, window, cx));
-        // A /new from inside a tab opens another tab in this panel.
-        cx.subscribe_in(&tab, window, |panel, _tab, event, window, cx| match event {
-            ChatViewEvent::NewTab => panel.add_tab(window, cx),
-        })
-        .detach();
-        tab
-    }
-
-    fn add_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let tab = Self::make_tab(&self.cwd, &self.codex_program, window, cx);
-        self.tabs.push(tab);
-        self.active = self.tabs.len() - 1;
-        cx.notify();
-    }
-
-    fn select(&mut self, idx: usize, cx: &mut Context<Self>) {
-        if idx < self.tabs.len() {
-            self.active = idx;
-            cx.notify();
-        }
-    }
-
-    fn close_tab(&mut self, idx: usize, window: &mut Window, cx: &mut Context<Self>) {
-        if idx >= self.tabs.len() {
-            return;
-        }
-        self.tabs.remove(idx);
-        if self.tabs.is_empty() {
-            self.tabs
-                .push(Self::make_tab(&self.cwd, &self.codex_program, window, cx));
-            self.active = 0;
-        } else if self.active >= self.tabs.len() {
-            self.active = self.tabs.len() - 1;
-        } else if idx < self.active {
-            self.active -= 1;
-        }
-        cx.notify();
-    }
-}
-
-impl Render for ChatPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let fg = theme.foreground;
-        let secondary_fg = theme.secondary_foreground;
-        let border = theme.border;
-        let hover = theme.secondary_hover;
-        let transparent = theme.transparent;
-        let active = self.active;
-        let multiple = self.tabs.len() > 1;
-
-        let mut strip = div()
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap_1()
-            .h(px(44.0))
-            .px(px(8.0))
-            .border_b_1()
-            .border_color(border)
-            .overflow_x_hidden();
-
-        // Tabs match the terminal split's bottom tab style.
-        for (i, tab) in self.tabs.iter().enumerate() {
-            let is_active = i == active;
-            let title = tab.read(cx).title();
-            let mut chip = div()
-                .id(SharedString::from(format!("chat-tab-{i}")))
-                .h(px(30.0))
-                .px_3()
-                .flex()
-                .items_center()
-                .gap_2()
-                .min_w_0()
-                .max_w(px(180.0))
-                .rounded_md()
-                .cursor_pointer()
-                .text_color(if is_active { fg } else { secondary_fg })
-                .bg(if is_active { hover } else { transparent })
-                .hover(|s| s.bg(hover))
-                .on_click(cx.listener(move |panel, _e, _w, cx| panel.select(i, cx)))
-                // Title: flexes and truncates; the close button stays pinned right.
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .text_size(rems(0.75))
-                        .line_height(rems(0.875))
-                        .child(title),
-                );
-            if multiple {
-                chip = chip.child(
-                    div()
-                        .id(SharedString::from(format!("chat-tab-close-{i}")))
-                        .flex_none()
-                        .size(px(20.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded_sm()
-                        .text_color(secondary_fg)
-                        .hover(|s| s.bg(hover))
-                        .on_click(cx.listener(move |panel, _e, window, cx| {
-                            cx.stop_propagation();
-                            window.prevent_default();
-                            panel.close_tab(i, window, cx)
-                        }))
-                        .child(Icon::new(HeroIconName::XMark).size_3()),
-                );
-            }
-            strip = strip.child(chip);
-        }
-
-        strip = strip.child(
-            div()
-                .id("chat-tab-add")
-                .size(px(26.0))
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .rounded_sm()
-                .cursor_pointer()
-                .text_color(secondary_fg)
-                .hover(|s| s.bg(hover))
-                .on_click(cx.listener(|panel, _e, window, cx| panel.add_tab(window, cx)))
-                .child(Icon::new(HeroIconName::Plus).size_3p5()),
-        );
-
-        let body = self
-            .tabs
-            .get(active)
-            .cloned()
-            .map(gpui::AnyView::from);
-
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .min_w_0()
-            .min_h_0()
-            // Match the terminal area's translucent backing.
-            .bg(crate::theme::terminal_fill(crate::theme::color(
-                crate::theme::BG_TERMINAL,
-            )))
-            .child(strip)
-            .when_some(body, |this, view| {
-                this.child(div().flex_1().min_h_0().child(view))
-            })
-    }
 }

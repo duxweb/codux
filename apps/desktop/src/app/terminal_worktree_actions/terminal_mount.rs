@@ -37,6 +37,14 @@ impl CoduxApp {
         if slot.pane.is_some() {
             return Ok(());
         }
+        // Chat panes host a chat view, never a PTY.
+        if slot
+            .terminal_id
+            .as_deref()
+            .is_some_and(super::super::agent_chat::terminal_id_is_chat)
+        {
+            return Ok(());
+        }
 
         let pty_config = terminal_pty_config_for_terminal_id(
             &base_pty_config,
@@ -152,6 +160,15 @@ impl CoduxApp {
         _pane_index: usize,
         slot: &TerminalPaneSlot,
     ) -> Option<String> {
+        // Chat panes have no PTY: they must never resolve to a terminal id,
+        // or they would surface as phantom runtime sessions.
+        if slot
+            .terminal_id
+            .as_deref()
+            .is_some_and(super::super::agent_chat::terminal_id_is_chat)
+        {
+            return None;
+        }
         slot.terminal_id
             .clone()
             .or_else(|| tab.terminal_id.clone())

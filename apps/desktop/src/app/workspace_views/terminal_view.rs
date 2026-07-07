@@ -9,8 +9,6 @@ pub(in crate::app) struct TerminalWorkspaceSnapshot {
     pub(super) top_grid: TerminalTopGrid,
     pub(super) split_tree: Option<TerminalSplitNode>,
     pub(super) main_panes: Vec<TerminalPaneViewSnapshot>,
-    pub(super) chat_open: bool,
-    pub(super) chat_panel: Option<gpui::Entity<crate::app::agent_chat::ChatPanel>>,
 }
 
 impl TerminalWorkspaceSnapshot {
@@ -35,6 +33,10 @@ impl TerminalWorkspaceSnapshot {
 pub(super) struct TerminalPaneViewSnapshot {
     pub(super) terminal_id: Option<String>,
     pub(super) view: Option<gpui::Entity<TerminalView>>,
+    /// Chat pane content (`gpui-chat-…` slots): the live chat view, or None
+    /// until the user mounts it (click-to-open, mirrors terminal mounting).
+    pub(super) chat_view: Option<gpui::Entity<crate::app::agent_chat::ChatView>>,
+    pub(super) is_chat: bool,
     pub(super) title: String,
     pub(super) subtitle: Option<String>,
     pub(super) search_open: bool,
@@ -43,17 +45,24 @@ pub(super) struct TerminalPaneViewSnapshot {
 impl PartialEq for TerminalPaneViewSnapshot {
     fn eq(&self, other: &Self) -> bool {
         if self.terminal_id != other.terminal_id
+            || self.is_chat != other.is_chat
             || self.title != other.title
             || self.subtitle != other.subtitle
             || self.search_open != other.search_open
         {
             return false;
         }
-        match (&self.view, &other.view) {
+        let views_equal = match (&self.view, &other.view) {
             (Some(left), Some(right)) => left.entity_id() == right.entity_id(),
             (None, None) => true,
             _ => false,
-        }
+        };
+        views_equal
+            && match (&self.chat_view, &other.chat_view) {
+                (Some(left), Some(right)) => left.entity_id() == right.entity_id(),
+                (None, None) => true,
+                _ => false,
+            }
     }
 }
 
@@ -178,42 +187,18 @@ impl Render for TerminalWorkspaceView {
             self.open_split_menu_pane,
             cx,
         );
-        // Chat pane rendered as one more terminal split column; the prepaint
-        // probe stays on the terminal column only so split ratios keep using
-        // the real terminal width.
-        let chat_pane = self.snapshot.chat_open.then(|| {
-            terminal_chat_pane(
-                self.app_entity.clone(),
-                &self.snapshot.language,
-                self.snapshot.chat_panel.clone(),
-                cx,
-            )
-        });
 
         div()
             .flex()
-            .flex_row()
-            .size_full()
+            .flex_col()
+            .flex_1()
+            .flex_basis(px(0.0))
             .min_w_0()
             .min_h_0()
-            .child(terminal_column(main, cx.entity()))
-            .children(chat_pane)
-    }
-}
-
-fn terminal_column(
-    main: AnyElement,
-    view: gpui::Entity<TerminalWorkspaceView>,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .flex_1()
-        .flex_basis(px(0.0))
-        .min_w_0()
-        .min_h_0()
-        .h_full()
-        .on_prepaint({
+            .w_full()
+            .h_full()
+            .on_prepaint({
+                let view = cx.entity();
                 move |bounds, _, cx| {
                     view.update(cx, |view, cx| {
                         let height = bounds.size.height;
@@ -243,4 +228,5 @@ fn terminal_column(
                     .overflow_hidden()
                     .child(main),
             )
+    }
 }

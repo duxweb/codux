@@ -341,12 +341,10 @@ pub struct CoduxApp {
     /// Secondary body panel shown next to the terminal workspace (split mode).
     /// `None` = single full-body view (the default). Session-only; not persisted.
     pub(in crate::app) workspace_split: Option<WorkspaceSplitKind>,
-    /// AI chat pane shown as a terminal split. Session-only; not persisted.
-    pub(in crate::app) chat_split_open: bool,
-    /// Chat panels kept alive per worktree path (like terminals): switching
-    /// worktrees and back re-mounts the same live panel instead of rebuilding,
-    /// so conversations survive. The view only mounts; state persists here.
-    pub(in crate::app) chat_panels: HashMap<String, gpui::Entity<super::agent_chat::ChatPanel>>,
+    /// Chat views kept alive per chat pane id (`gpui-chat-…`): switching
+    /// worktrees and back re-mounts the same live view instead of rebuilding,
+    /// so conversations survive. The pane only mounts; state persists here.
+    pub(in crate::app) chat_views: HashMap<String, gpui::Entity<super::agent_chat::ChatView>>,
     pub(in crate::app) assistant_panel: Option<AssistantPanel>,
     pub(in crate::app) project_column_collapsed: bool,
     pub(in crate::app) task_column_collapsed: bool,

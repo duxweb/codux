@@ -251,6 +251,22 @@ impl CoduxApp {
                     .iter()
                     .enumerate()
                     .map(|(index, slot)| {
+                        // Chat pane slot: content is a chat view, not a PTY.
+                        if let Some(chat_id) = slot
+                            .terminal_id
+                            .as_deref()
+                            .filter(|id| crate::app::agent_chat::terminal_id_is_chat(id))
+                        {
+                            return TerminalPaneViewSnapshot {
+                                terminal_id: Some(chat_id.to_string()),
+                                view: None,
+                                chat_view: self.chat_views.get(chat_id).cloned(),
+                                is_chat: true,
+                                title: slot.title.clone(),
+                                subtitle: None,
+                                search_open: false,
+                            };
+                        }
                         let terminal_id = Self::terminal_slot_terminal_id(tab, index, slot);
                         let osc_title = terminal_id
                             .as_deref()
@@ -267,6 +283,8 @@ impl CoduxApp {
                         TerminalPaneViewSnapshot {
                             terminal_id,
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
+                            chat_view: None,
+                            is_chat: false,
                             title,
                             subtitle,
                             search_open,
@@ -300,10 +318,6 @@ impl CoduxApp {
             top_grid,
             split_tree,
             main_panes,
-            chat_open: self.chat_split_open,
-            chat_panel: self
-                .selected_worktree_path()
-                .and_then(|cwd| self.chat_panels.get(&cwd).cloned()),
         }
     }
 }

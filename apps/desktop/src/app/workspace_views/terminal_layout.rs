@@ -540,6 +540,11 @@ fn terminal_pane(
     let session_drop_entity = app_entity.clone();
     let pane_view = slot.view.clone();
     let drop_terminal_id = slot.terminal_id.clone();
+    // Chat panes share the split chrome; only the hosted content differs.
+    let is_chat = slot.is_chat;
+    let chat_view = slot.chat_view.clone();
+    let chat_pane_id = slot.terminal_id.clone();
+    let mount_entity = app_entity.clone();
     // The search bar floats over the same top-right corner as the controls.
     let search_open = slot.search_open;
 
@@ -565,21 +570,58 @@ fn terminal_pane(
                 .min_w_0()
                 .min_h_0()
                 .overflow_hidden()
-                .child(match pane_view {
-                    Some(view) => gpui::AnyView::from(view).into_any_element(),
-                    None => div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
-                        .text_color(color(theme::TEXT_DIM))
-                        .child(workspace_i18n(
-                            language,
-                            "terminal.detached.mounting",
-                            "Mounting terminal...",
-                        ))
-                        .into_any_element(),
+                .child(if is_chat {
+                    match chat_view {
+                        Some(view) => gpui::AnyView::from(view).into_any_element(),
+                        // View not created yet (e.g. restored layout): mount on
+                        // click, mirroring the terminal click-to-open pattern.
+                        None => div()
+                            .id(SharedString::from(format!("terminal-pane-chat-mount-{index}")))
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
+                            .text_color(color(theme::TEXT_DIM))
+                            .on_click(cx.listener(move |_view, _event, window, cx| {
+                                let chat_pane_id = chat_pane_id.clone();
+                                defer_terminal_workspace_app_update(
+                                    mount_entity.clone(),
+                                    window,
+                                    cx,
+                                    move |app, window, app_cx| {
+                                        if let Some(chat_pane_id) = chat_pane_id.as_deref() {
+                                            app.ensure_chat_view(chat_pane_id, window, app_cx);
+                                            app.update_terminal_workspace_view(app_cx);
+                                        }
+                                    },
+                                );
+                            }))
+                            .child(workspace_i18n(
+                                language,
+                                "terminal.chat.start",
+                                "Click to start AI chat",
+                            ))
+                            .into_any_element(),
+                    }
+                } else {
+                    match pane_view {
+                        Some(view) => gpui::AnyView::from(view).into_any_element(),
+                        None => div()
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
+                            .text_color(color(theme::TEXT_DIM))
+                            .child(workspace_i18n(
+                                language,
+                                "terminal.detached.mounting",
+                                "Mounting terminal...",
+                            ))
+                            .into_any_element(),
+                    }
                 }),
         )
         .when(!search_open, |pane| {
@@ -611,7 +653,7 @@ fn terminal_pane(
                             "terminal.detach",
                             "Open in Separate Window",
                         )),
-                        pane_count > 1,
+                        pane_count > 1 && !is_chat,
                         cx,
                         move |app, window, cx| app.float_terminal_pane(index, window, cx),
                     ))
@@ -624,7 +666,7 @@ fn terminal_pane(
                             "terminal.collapse",
                             "Collapse to Sidebar",
                         )),
-                        pane_count > 1,
+                        pane_count > 1 && !is_chat,
                         cx,
                         move |app, window, cx| app.collapse_terminal_pane(index, window, cx),
                     ))
@@ -635,166 +677,77 @@ fn terminal_pane(
                         open_split_menu_pane,
                         cx,
                     ))
-                    .child(terminal_pane_control_button(
-                        app_entity.clone(),
-                        chat_id,
-                        HeroIconName::Sparkles,
-                        SharedString::from(workspace_i18n(
-                            language,
-                            "terminal.chat.open",
-                            "AI Chat Split",
-                        )),
-                        true,
-                        cx,
-                        move |app, window, cx| app.toggle_chat_split(window, cx),
-                    ))
+                    .when(!is_chat, |controls| {
+                        controls.child(terminal_pane_control_button(
+                            app_entity.clone(),
+                            chat_id,
+                            HeroIconName::Sparkles,
+                            SharedString::from(workspace_i18n(
+                                language,
+                                "terminal.chat.open",
+                                "AI Chat Split",
+                            )),
+                            true,
+                            cx,
+                            move |app, window, cx| app.open_chat_split(index, window, cx),
+                        ))
+                    })
                     .child(terminal_pane_control_button(
                         app_entity,
                         close_id,
                         HeroIconName::XMark,
-                        SharedString::from(workspace_i18n(
-                            language,
-                            "terminal.split.close",
-                            "Close Split",
-                        )),
-                        pane_count > 1,
+                        SharedString::from(if is_chat {
+                            workspace_i18n(language, "terminal.chat.close", "Close Chat Split")
+                        } else {
+                            workspace_i18n(language, "terminal.split.close", "Close Split")
+                        }),
+                        pane_count > 1 || is_chat,
                         cx,
                         move |app, window, cx| app.close_terminal_pane(index, window, cx),
                     )),
             )
         })
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .right_0()
-                .bottom_0()
-                .left_0()
-                .invisible()
-                .p_2()
-                .group_drag_over::<TaskSessionDrag>("terminal-pane", |this| this.visible())
-                .on_drop(
-                    cx.listener(move |_view, drag: &TaskSessionDrag, window, cx| {
-                        let session_id = drag.session_id.clone();
-                        let terminal_id = drop_terminal_id.clone();
-                        defer_terminal_workspace_app_update(
-                            session_drop_entity.clone(),
-                            window,
-                            cx,
-                            move |app, window, app_cx| {
-                                app.paste_ai_session_restore_to_main_pane(
-                                    terminal_id.as_deref(),
-                                    &session_id,
-                                    window,
-                                    app_cx,
-                                );
-                            },
-                        );
-                        cx.stop_propagation();
-                    }),
-                )
-                .child(
-                    div()
-                        .size_full()
-                        .rounded(px(10.0))
-                        .border_1()
-                        .border_color(color(theme::ACCENT).opacity(0.70))
-                        .bg(color(theme::ACCENT).opacity(0.12)),
-                ),
-        )
-        .into_any_element()
-}
-
-/// The AI chat pane rendered as one more terminal split column: same chrome
-/// and hover controls as a terminal pane, hosting the per-worktree ChatPanel.
-pub(super) fn terminal_chat_pane(
-    app_entity: gpui::Entity<CoduxApp>,
-    language: &str,
-    panel: Option<gpui::Entity<crate::app::agent_chat::ChatPanel>>,
-    cx: &mut Context<TerminalWorkspaceView>,
-) -> AnyElement {
-    let mount_entity = app_entity.clone();
-    div()
-        .id("terminal-chat-pane")
-        .relative()
-        .group("terminal-chat-pane")
-        .flex()
-        .flex_col()
-        .flex_1()
-        .flex_basis(px(0.0))
-        .size_full()
-        .min_w_0()
-        .min_h_0()
-        .overflow_hidden()
-        .border_l_1()
-        .border_color(color(theme::BORDER_SOFT))
-        .child(
-            div()
-                .flex_1()
-                .flex_basis(px(0.0))
-                .min_w_0()
-                .min_h_0()
-                .overflow_hidden()
-                .child(match panel {
-                    Some(panel) => gpui::AnyView::from(panel).into_any_element(),
-                    // Worktree switched while the pane is open: the panel for
-                    // this worktree does not exist yet and creating it needs a
-                    // Window, so reuse the click-to-open mount pattern.
-                    None => div()
-                        .id("terminal-chat-pane-mount")
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .bg(theme::terminal_fill(color(theme::BG_TERMINAL)))
-                        .text_color(color(theme::TEXT_DIM))
-                        .on_click(cx.listener(move |_view, _event, window, cx| {
+        .when(!is_chat, |pane| {
+            pane.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .left_0()
+                    .invisible()
+                    .p_2()
+                    .group_drag_over::<TaskSessionDrag>("terminal-pane", |this| this.visible())
+                    .on_drop(
+                        cx.listener(move |_view, drag: &TaskSessionDrag, window, cx| {
+                            let session_id = drag.session_id.clone();
+                            let terminal_id = drop_terminal_id.clone();
                             defer_terminal_workspace_app_update(
-                                mount_entity.clone(),
+                                session_drop_entity.clone(),
                                 window,
                                 cx,
-                                |app, window, app_cx| {
-                                    app.ensure_chat_panel(window, app_cx);
-                                    app.update_terminal_workspace_view(app_cx);
+                                move |app, window, app_cx| {
+                                    app.paste_ai_session_restore_to_main_pane(
+                                        terminal_id.as_deref(),
+                                        &session_id,
+                                        window,
+                                        app_cx,
+                                    );
                                 },
                             );
-                        }))
-                        .child(workspace_i18n(
-                            language,
-                            "terminal.chat.start",
-                            "Click to start AI chat",
-                        ))
-                        .into_any_element(),
-                }),
-        )
-        .child(
-            div()
-                .absolute()
-                .top(px(6.0))
-                .right(px(8.0))
-                .flex()
-                .items_center()
-                .gap_1()
-                .rounded(px(6.0))
-                .p(px(2.0))
-                .bg(theme::elevate(color(theme::BG_TERMINAL), 0.08).opacity(0.92))
-                .opacity(0.0)
-                .group_hover("terminal-chat-pane", |style| style.opacity(1.0))
-                .child(terminal_pane_control_button(
-                    app_entity,
-                    SharedString::from("terminal-chat-pane-close"),
-                    HeroIconName::XMark,
-                    SharedString::from(workspace_i18n(
-                        language,
-                        "terminal.chat.close",
-                        "Close Chat Split",
-                    )),
-                    true,
-                    cx,
-                    |app, window, cx| app.toggle_chat_split(window, cx),
-                )),
-        )
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .size_full()
+                            .rounded(px(10.0))
+                            .border_1()
+                            .border_color(color(theme::ACCENT).opacity(0.70))
+                            .bg(color(theme::ACCENT).opacity(0.12)),
+                    ),
+            )
+        })
         .into_any_element()
 }
 

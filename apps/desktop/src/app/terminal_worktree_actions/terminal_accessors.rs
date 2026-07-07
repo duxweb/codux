@@ -62,17 +62,14 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn activate_first_terminal(&mut self) {
-        let Some(terminal_id) = self
-            .terminals
-            .iter()
-            .find_map(|tab| tab.panes.first().and_then(|slot| slot.terminal_id.clone()))
-            .or_else(|| {
-                self.terminals
-                    .first()
-                    .and_then(|tab| tab.panes.first())
-                    .and_then(|slot| slot.terminal_id.clone())
+        // First slot that is an actual terminal — chat panes can't be active.
+        let Some(terminal_id) = self.terminals.iter().find_map(|tab| {
+            tab.panes.iter().find_map(|slot| {
+                slot.terminal_id
+                    .clone()
+                    .filter(|id| !super::super::agent_chat::terminal_id_is_chat(id))
             })
-        else {
+        }) else {
             return;
         };
         self.set_active_terminal_runtime_id(Some(&terminal_id));

@@ -95,6 +95,7 @@ impl CoduxApp {
             .panes
             .get(pane_index)
             .and_then(|slot| slot.terminal_id.clone())
+            .filter(|id| !super::agent_chat::terminal_id_is_chat(id))
         else {
             return;
         };
@@ -149,6 +150,15 @@ impl CoduxApp {
             let tab_terminal_id = tab.terminal_id.clone();
             let mut index = 0;
             while tab.panes.len() > 1 && index < tab.panes.len() {
+                // Chat panes are desktop-local; a remote layout can't close them.
+                if tab.panes[index]
+                    .terminal_id
+                    .as_deref()
+                    .is_some_and(super::agent_chat::terminal_id_is_chat)
+                {
+                    index += 1;
+                    continue;
+                }
                 let terminal_id = tab.panes[index]
                     .terminal_id
                     .clone()
@@ -190,7 +200,7 @@ impl CoduxApp {
         // New top split panes -> append to the main (Top) tab.
         for pane in &layout.top_panes {
             let raw_id = pane.terminal_id.trim();
-            if raw_id.is_empty() {
+            if raw_id.is_empty() || super::agent_chat::terminal_id_is_chat(raw_id) {
                 continue;
             }
             let pane_plan = TerminalPanePlan {
@@ -458,6 +468,15 @@ impl CoduxApp {
         if pane_index >= self.terminals[tab_index].panes.len() {
             return;
         }
+        // Chat panes stay in the split; they cannot collapse or float.
+        if self.terminals[tab_index]
+            .panes
+            .get(pane_index)
+            .and_then(|slot| slot.terminal_id.as_deref())
+            .is_some_and(super::agent_chat::terminal_id_is_chat)
+        {
+            return;
+        }
 
         let pane_count = self.terminals[tab_index].panes.len();
         let top_ratios = terminal_top_ratios_for_panes(
@@ -585,6 +604,15 @@ impl CoduxApp {
             return;
         }
         if pane_index >= self.terminals[tab_index].panes.len() {
+            return;
+        }
+        // Chat panes stay in the split; they cannot collapse or float.
+        if self.terminals[tab_index]
+            .panes
+            .get(pane_index)
+            .and_then(|slot| slot.terminal_id.as_deref())
+            .is_some_and(super::agent_chat::terminal_id_is_chat)
+        {
             return;
         }
 
@@ -772,6 +800,16 @@ impl CoduxApp {
         let Some(tab_index) = (!self.terminals.is_empty()).then_some(0) else {
             return;
         };
+        // Chat panes have no PTY to kill; they close via their own path.
+        if self.terminals[tab_index]
+            .panes
+            .get(pane_index)
+            .and_then(|slot| slot.terminal_id.as_deref())
+            .is_some_and(super::agent_chat::terminal_id_is_chat)
+        {
+            self.close_chat_pane(pane_index, cx);
+            return;
+        }
         if self.terminals[tab_index].panes.len() <= 1 {
             self.reset_terminal_pane(pane_index, window, cx);
             return;
@@ -826,7 +864,8 @@ impl CoduxApp {
             .panes
             .get(pane_index.saturating_sub(1))
             .or_else(|| self.terminals[tab_index].panes.first())
-            .and_then(|slot| slot.terminal_id.clone());
+            .and_then(|slot| slot.terminal_id.clone())
+            .filter(|id| !super::agent_chat::terminal_id_is_chat(id));
         self.select_active_terminal_runtime_id(next_active_terminal_id.as_deref());
         self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
