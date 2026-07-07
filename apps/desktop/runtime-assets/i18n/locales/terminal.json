@@ -35,7 +35,9 @@
       "terminal.chat.open": "KI-Chat-Split",
       "terminal.chat.close": "Chat-Split schließen",
       "terminal.chat.start": "Klicken, um den KI-Chat zu starten",
-      "terminal.chat.title": "KI-Chat"
+      "terminal.chat.title": "KI-Chat",
+      "terminal.chat.agent.title": "Neuer KI-Chat",
+      "terminal.chat.agent.soon": "Demnächst"
     },
     "en": {
       "terminal.closed": "Closed terminal.",
@@ -76,7 +78,9 @@
       "terminal.chat.open": "AI Chat Split",
       "terminal.chat.close": "Close Chat Split",
       "terminal.chat.start": "Click to start AI chat",
-      "terminal.chat.title": "AI Chat"
+      "terminal.chat.title": "AI Chat",
+      "terminal.chat.agent.title": "New AI chat",
+      "terminal.chat.agent.soon": "Coming soon"
     },
     "es": {
       "terminal.closed": "Closed terminal.",
@@ -113,7 +117,9 @@
       "terminal.chat.open": "Panel de chat de IA",
       "terminal.chat.close": "Cerrar panel de chat",
       "terminal.chat.start": "Haz clic para iniciar el chat de IA",
-      "terminal.chat.title": "Chat de IA"
+      "terminal.chat.title": "Chat de IA",
+      "terminal.chat.agent.title": "Nuevo chat de IA",
+      "terminal.chat.agent.soon": "Próximamente"
     },
     "fr": {
       "terminal.closed": "Closed terminal.",
@@ -150,7 +156,9 @@
       "terminal.chat.open": "Volet de chat IA",
       "terminal.chat.close": "Fermer le volet de chat",
       "terminal.chat.start": "Cliquez pour démarrer le chat IA",
-      "terminal.chat.title": "Chat IA"
+      "terminal.chat.title": "Chat IA",
+      "terminal.chat.agent.title": "Nouveau chat IA",
+      "terminal.chat.agent.soon": "Bientôt disponible"
     },
     "ja": {
       "terminal.closed": "Closed terminal.",
@@ -187,7 +195,9 @@
       "terminal.chat.open": "AI チャット分割",
       "terminal.chat.close": "チャット分割を閉じる",
       "terminal.chat.start": "クリックして AI チャットを開始",
-      "terminal.chat.title": "AI チャット"
+      "terminal.chat.title": "AI チャット",
+      "terminal.chat.agent.title": "新しい AI チャット",
+      "terminal.chat.agent.soon": "近日対応"
     },
     "ko": {
       "terminal.closed": "Closed terminal.",
@@ -224,7 +234,9 @@
       "terminal.chat.open": "AI 채팅 분할",
       "terminal.chat.close": "채팅 분할 닫기",
       "terminal.chat.start": "클릭하여 AI 채팅 시작",
-      "terminal.chat.title": "AI 채팅"
+      "terminal.chat.title": "AI 채팅",
+      "terminal.chat.agent.title": "새 AI 채팅",
+      "terminal.chat.agent.soon": "곧 지원"
     },
     "pt-BR": {
       "terminal.closed": "Closed terminal.",
@@ -261,7 +273,9 @@
       "terminal.chat.open": "Divisão de chat de IA",
       "terminal.chat.close": "Fechar divisão de chat",
       "terminal.chat.start": "Clique para iniciar o chat de IA",
-      "terminal.chat.title": "Chat de IA"
+      "terminal.chat.title": "Chat de IA",
+      "terminal.chat.agent.title": "Novo chat de IA",
+      "terminal.chat.agent.soon": "Em breve"
     },
     "ru": {
       "terminal.closed": "Closed terminal.",
@@ -298,7 +312,9 @@
       "terminal.chat.open": "Панель ИИ-чата",
       "terminal.chat.close": "Закрыть панель чата",
       "terminal.chat.start": "Нажмите, чтобы начать чат с ИИ",
-      "terminal.chat.title": "ИИ-чат"
+      "terminal.chat.title": "ИИ-чат",
+      "terminal.chat.agent.title": "Новый ИИ-чат",
+      "terminal.chat.agent.soon": "Скоро"
     },
     "zh-Hans": {
       "terminal.closed": "已关闭终端。",
@@ -339,7 +355,9 @@
       "terminal.chat.open": "AI 对话分屏",
       "terminal.chat.close": "关闭对话分屏",
       "terminal.chat.start": "点击开启 AI 对话",
-      "terminal.chat.title": "AI 对话"
+      "terminal.chat.title": "AI 对话",
+      "terminal.chat.agent.title": "新建 AI 会话",
+      "terminal.chat.agent.soon": "即将支持"
     },
     "zh-Hant": {
       "terminal.closed": "已關閉終端機。",
@@ -380,7 +398,9 @@
       "terminal.chat.open": "AI 對話分屏",
       "terminal.chat.close": "關閉對話分屏",
       "terminal.chat.start": "點擊開啟 AI 對話",
-      "terminal.chat.title": "AI 對話"
+      "terminal.chat.title": "AI 對話",
+      "terminal.chat.agent.title": "新建 AI 會話",
+      "terminal.chat.agent.soon": "即將支持"
     }
   }
 }

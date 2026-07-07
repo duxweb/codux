@@ -4,6 +4,12 @@ const TERMINAL_SPLIT_BASE_SIZE: Pixels = px(640.0);
 const TERMINAL_SPLIT_BASE_WIDTH: Pixels = px(1200.0);
 const TERMINAL_TOP_PANE_MIN_WIDTH: Pixels = px(160.0);
 const TERMINAL_TOP_PANE_MIN_HEIGHT: Pixels = px(120.0);
+const SPLIT_MENU_DIRECTIONS: [TerminalSplitDirection; 4] = [
+    TerminalSplitDirection::Left,
+    TerminalSplitDirection::Right,
+    TerminalSplitDirection::Up,
+    TerminalSplitDirection::Down,
+];
 
 fn terminal_layout_key_for_element_id(key: &str) -> String {
     key.chars()
@@ -28,7 +34,7 @@ pub(super) fn terminal_main_split_area(
     container_width: Option<Pixels>,
     container_height: Option<Pixels>,
     pane_drop_preview: Option<TerminalPaneDropPreview>,
-    open_split_menu_pane: Option<usize>,
+    open_pane_menu: Option<PaneMenu>,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
     if panes.is_empty() {
@@ -63,7 +69,7 @@ pub(super) fn terminal_main_split_area(
         pane_count,
         total_width,
         total_height,
-        open_split_menu_pane,
+        open_pane_menu,
         cx,
     );
 
@@ -360,7 +366,7 @@ fn terminal_split_node_element(
     pane_count: usize,
     total_width: Pixels,
     total_height: Pixels,
-    open_split_menu_pane: Option<usize>,
+    open_pane_menu: Option<PaneMenu>,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
     let content = match node {
@@ -373,7 +379,7 @@ fn terminal_split_node_element(
                     language,
                     pane_count,
                     slot,
-                    open_split_menu_pane,
+                    open_pane_menu,
                     cx,
                 )
             })
@@ -426,7 +432,7 @@ fn terminal_split_node_element(
                     pane_count,
                     total_width,
                     total_height,
-                    open_split_menu_pane,
+                    open_pane_menu,
                     cx,
                 );
                 match axis {
@@ -529,7 +535,7 @@ fn terminal_pane(
     language: &str,
     pane_count: usize,
     slot: TerminalPaneViewSnapshot,
-    open_split_menu_pane: Option<usize>,
+    open_pane_menu: Option<PaneMenu>,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
     let close_id = SharedString::from(format!("terminal-pane-close-{index}"));
@@ -640,9 +646,10 @@ fn terminal_pane(
                     .group_hover("terminal-pane", |style| style.opacity(1.0))
                     // The popover overlay lives outside the group, so hovering the
                     // menu would fade the controls out — pin them while it's open.
-                    .when(open_split_menu_pane == Some(index), |style| {
-                        style.opacity(1.0)
-                    })
+                    .when(
+                        open_pane_menu.is_some_and(|menu| menu.pane_index == index),
+                        |style| style.opacity(1.0),
+                    )
                     .child(terminal_pane_drag_handle(app_entity.clone(), index, cx))
                     .child(terminal_pane_control_button(
                         app_entity.clone(),
@@ -674,22 +681,17 @@ fn terminal_pane(
                         app_entity.clone(),
                         add_id,
                         index,
-                        open_split_menu_pane,
+                        open_pane_menu,
                         cx,
                     ))
                     .when(!is_chat, |controls| {
-                        controls.child(terminal_pane_control_button(
+                        controls.child(terminal_pane_chat_button(
                             app_entity.clone(),
                             chat_id,
-                            HeroIconName::Sparkles,
-                            SharedString::from(workspace_i18n(
-                                language,
-                                "terminal.chat.open",
-                                "AI Chat Split",
-                            )),
-                            true,
+                            index,
+                            language,
+                            open_pane_menu,
                             cx,
-                            move |app, window, cx| app.open_chat_split(index, window, cx),
                         ))
                     })
                     .child(terminal_pane_control_button(
@@ -809,16 +811,11 @@ fn terminal_pane_split_button(
     app_entity: gpui::Entity<CoduxApp>,
     id: SharedString,
     pane_index: usize,
-    open_split_menu_pane: Option<usize>,
+    open_pane_menu: Option<PaneMenu>,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
-    const DIRECTIONS: [TerminalSplitDirection; 4] = [
-        TerminalSplitDirection::Left,
-        TerminalSplitDirection::Right,
-        TerminalSplitDirection::Up,
-        TerminalSplitDirection::Down,
-    ];
-    let is_open = open_split_menu_pane.is_some_and(|index| index == pane_index);
+    let is_open = open_pane_menu
+        .is_some_and(|menu| menu.pane_index == pane_index && menu.kind == PaneMenuKind::Split);
     let view = cx.entity();
     let content_id = SharedString::from(format!("{id}-menu-content"));
     let button = Button::new(SharedString::from(format!("{id}-default")))
@@ -835,13 +832,13 @@ fn terminal_pane_split_button(
                 .size_3p5()
                 .text_color(cx.theme().secondary_foreground),
         )
-        .on_hover(split_menu_hover_listener(view.clone(), pane_index))
+        .on_hover(pane_menu_hover_listener(view.clone(), pane_index, PaneMenuKind::Split))
         .on_click({
             let app_entity = app_entity.clone();
             let view = view.clone();
             move |_, window, cx| {
                 let _ = view.update(cx, |view, cx| {
-                    view.open_split_menu_pane = None;
+                    view.open_pane_menu = None;
                     cx.notify();
                 });
                 cx.update_entity(&app_entity, |app, cx| {
@@ -871,7 +868,7 @@ fn terminal_pane_split_button(
                 div()
                     .flex()
                     .gap_1()
-                    .children(DIRECTIONS.into_iter().map(|direction| {
+                    .children(SPLIT_MENU_DIRECTIONS.into_iter().map(|direction| {
                         terminal_split_direction_menu_button(
                             app_entity.clone(),
                             view.clone(),
@@ -892,23 +889,24 @@ fn terminal_pane_split_button(
                 .bg(cx.theme().popover)
                 .shadow_lg()
                 .p_1()
-                .on_hover(split_menu_hover_listener(view.clone(), pane_index))
+                .on_hover(pane_menu_hover_listener(view.clone(), pane_index, PaneMenuKind::Split))
                 .child(row(TerminalSplitScope::Inner, &app_entity, &view))
                 .child(row(TerminalSplitScope::Root, &app_entity, &view))
         })
         .into_any_element()
 }
 
-fn split_menu_hover_listener(
+fn pane_menu_hover_listener(
     view: gpui::Entity<TerminalWorkspaceView>,
     pane_index: usize,
+    kind: PaneMenuKind,
 ) -> impl Fn(&bool, &mut Window, &mut gpui::App) + 'static {
     move |hovered, _window, cx| {
         let _ = view.update(cx, |view, cx| {
             if *hovered {
-                view.set_split_menu_open(pane_index, true, cx);
+                view.set_pane_menu_open(pane_index, kind, true, cx);
             } else {
-                view.close_split_menu_after_hover_gap(pane_index, cx);
+                view.close_pane_menu_after_hover_gap(pane_index, kind, cx);
             }
         });
     }
@@ -935,7 +933,7 @@ fn terminal_split_direction_menu_button(
         .child(terminal_split_direction_icon(direction, scope))
         .on_click(move |_, window, cx| {
             let _ = view.update(cx, |view, cx| {
-                view.open_split_menu_pane = None;
+                view.open_pane_menu = None;
                 cx.notify();
             });
             cx.update_entity(&app_entity, |app, cx| {
@@ -943,6 +941,248 @@ fn terminal_split_direction_menu_button(
             });
         })
         .into_any_element()
+}
+
+/// The "✦" chat button mirrors the "+" split button: hover opens the same
+/// direction grid; picking a direction steps the popover to an agent list
+/// (codex first) and the chosen agent's chat pane lands at that position.
+fn terminal_pane_chat_button(
+    app_entity: gpui::Entity<CoduxApp>,
+    id: SharedString,
+    pane_index: usize,
+    language: &str,
+    open_pane_menu: Option<PaneMenu>,
+    cx: &mut Context<TerminalWorkspaceView>,
+) -> AnyElement {
+    let menu = open_pane_menu
+        .filter(|menu| menu.pane_index == pane_index && menu.kind == PaneMenuKind::Chat);
+    let is_open = menu.is_some();
+    let chat_pick = menu.and_then(|menu| menu.chat_pick);
+    let view = cx.entity();
+    let content_id = SharedString::from(format!("{id}-menu-content"));
+    let language = language.to_string();
+    let button = Button::new(SharedString::from(format!("{id}-default")))
+        .with_size(Size::Size(px(22.0)))
+        .rounded(px(3.0))
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .foreground(cx.theme().secondary_foreground)
+                .hover(cx.theme().secondary_hover)
+                .active(cx.theme().secondary_hover),
+        )
+        .icon(
+            Icon::new(HeroIconName::Sparkles)
+                .size_3p5()
+                .text_color(cx.theme().secondary_foreground),
+        )
+        .on_hover(pane_menu_hover_listener(
+            view.clone(),
+            pane_index,
+            PaneMenuKind::Chat,
+        ))
+        .on_click({
+            // Click = the default placement (split right, inner) but the agent
+            // still has to be chosen, so jump straight to the picker step.
+            let view = view.clone();
+            move |_, _window, cx| {
+                let _ = view.update(cx, |view, cx| {
+                    view.set_chat_menu_pick(
+                        pane_index,
+                        (TerminalSplitDirection::Right, TerminalSplitScope::Inner),
+                        cx,
+                    );
+                });
+            }
+        });
+
+    Popover::new(id)
+        .anchor(Anchor::TopRight)
+        .appearance(false)
+        .overlay_closable(false)
+        .open(is_open)
+        .trigger(button)
+        .content(move |_, _window, cx| {
+            let container = div()
+                .id(content_id.clone())
+                .flex()
+                .flex_col()
+                .gap_1()
+                .rounded_lg()
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().popover)
+                .shadow_lg()
+                .p_1()
+                .on_hover(pane_menu_hover_listener(
+                    view.clone(),
+                    pane_index,
+                    PaneMenuKind::Chat,
+                ));
+            if let Some((direction, scope)) = chat_pick {
+                // Step 2: which agent runs the new chat pane.
+                container
+                    .child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .text_size(rems(0.6875))
+                            .text_color(cx.theme().secondary_foreground)
+                            .child(workspace_i18n(
+                                &language,
+                                "terminal.chat.agent.title",
+                                "New AI chat",
+                            )),
+                    )
+                    .child(chat_agent_menu_row(
+                        app_entity.clone(),
+                        view.clone(),
+                        pane_index,
+                        direction,
+                        scope,
+                        "Codex",
+                        true,
+                        &language,
+                    ))
+                    .child(chat_agent_menu_row(
+                        app_entity.clone(),
+                        view.clone(),
+                        pane_index,
+                        direction,
+                        scope,
+                        "Claude Code",
+                        false,
+                        &language,
+                    ))
+                    .child(chat_agent_menu_row(
+                        app_entity.clone(),
+                        view.clone(),
+                        pane_index,
+                        direction,
+                        scope,
+                        "OpenCode",
+                        false,
+                        &language,
+                    ))
+            } else {
+                // Step 1: same direction grid as the terminal split button.
+                let row = |scope: TerminalSplitScope, view: &gpui::Entity<TerminalWorkspaceView>| {
+                    div()
+                        .flex()
+                        .gap_1()
+                        .children(SPLIT_MENU_DIRECTIONS.into_iter().map(|direction| {
+                            chat_split_direction_menu_button(
+                                view.clone(),
+                                pane_index,
+                                direction,
+                                scope,
+                            )
+                        }))
+                };
+                container
+                    .child(row(TerminalSplitScope::Inner, &view))
+                    .child(row(TerminalSplitScope::Root, &view))
+            }
+        })
+        .into_any_element()
+}
+
+/// Direction tile in the chat menu: steps to the agent picker instead of
+/// splitting immediately.
+fn chat_split_direction_menu_button(
+    view: gpui::Entity<TerminalWorkspaceView>,
+    pane_index: usize,
+    direction: TerminalSplitDirection,
+    scope: TerminalSplitScope,
+) -> AnyElement {
+    div()
+        .id(SharedString::from(format!(
+            "terminal-pane-chat-split-{pane_index}-{scope:?}-{direction:?}"
+        )))
+        .size(px(30.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_md()
+        .cursor_pointer()
+        .hover(|style| style.bg(color(theme::ACCENT).opacity(0.12)))
+        .child(terminal_split_direction_icon(direction, scope))
+        .on_click(move |_, _window, cx| {
+            let _ = view.update(cx, |view, cx| {
+                view.set_chat_menu_pick(pane_index, (direction, scope), cx);
+            });
+        })
+        .into_any_element()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn chat_agent_menu_row(
+    app_entity: gpui::Entity<CoduxApp>,
+    view: gpui::Entity<TerminalWorkspaceView>,
+    pane_index: usize,
+    direction: TerminalSplitDirection,
+    scope: TerminalSplitScope,
+    label: &'static str,
+    enabled: bool,
+    language: &str,
+) -> AnyElement {
+    let row = div()
+        .id(SharedString::from(format!(
+            "terminal-pane-chat-agent-{pane_index}-{label}"
+        )))
+        .min_w(px(132.0))
+        .px_2()
+        .py(px(5.0))
+        .flex()
+        .items_center()
+        .gap_2()
+        .rounded_md()
+        .child(
+            Icon::new(HeroIconName::Sparkles)
+                .size_3()
+                .text_color(if enabled {
+                    color(theme::ACCENT)
+                } else {
+                    color(theme::TEXT_DIM)
+                }),
+        )
+        .child(
+            div()
+                .flex_1()
+                .text_size(rems(0.75))
+                .text_color(if enabled {
+                    color(theme::TEXT)
+                } else {
+                    color(theme::TEXT_DIM)
+                })
+                .child(label),
+        );
+    if enabled {
+        row.cursor_pointer()
+            .hover(|style| style.bg(color(theme::ACCENT).opacity(0.12)))
+            .on_click(move |_, window, cx| {
+                let _ = view.update(cx, |view, cx| {
+                    view.open_pane_menu = None;
+                    cx.notify();
+                });
+                cx.update_entity(&app_entity, |app, cx| {
+                    app.open_chat_split_direction(direction, scope, pane_index, window, cx);
+                });
+            })
+            .into_any_element()
+    } else {
+        row.opacity(0.55)
+            .child(
+                div()
+                    .text_size(rems(0.625))
+                    .text_color(color(theme::TEXT_DIM))
+                    .child(workspace_i18n(
+                        language,
+                        "terminal.chat.agent.soon",
+                        "Coming soon",
+                    )),
+            )
+            .into_any_element()
+    }
 }
 
 /// Split glyphs: INNER = dashed frame (the current pane) cut in half, the new

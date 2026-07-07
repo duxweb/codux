@@ -45,19 +45,24 @@ fn unique_chat_terminal_id() -> String {
 }
 
 impl crate::app::CoduxApp {
-    /// Insert an AI chat pane into the terminal split tree, to the right of the
-    /// pane the button was clicked on — a chat pane is one more split, only its
-    /// content is a chat session instead of a PTY.
-    pub(in crate::app) fn open_chat_split(
+    /// Insert an AI chat pane into the terminal split tree at the picked
+    /// direction/scope — a chat pane is one more split, only its content is a
+    /// chat session instead of a PTY. (Codex-first; the agent picker gates
+    /// other kinds until their drivers land.)
+    pub(in crate::app) fn open_chat_split_direction(
         &mut self,
+        direction: crate::app::TerminalSplitDirection,
+        scope: crate::app::TerminalSplitScope,
         source_index: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         use crate::app::terminal_state::{
             terminal_split_tree_for_panes, terminal_split_tree_insert_pane,
-            terminal_top_grid_for_panes, terminal_top_ratios_for_panes,
+            terminal_split_tree_insert_pane_root, terminal_top_grid_for_panes,
+            terminal_top_ratios_for_panes,
         };
+        use crate::app::{TerminalSplitDirection, TerminalSplitScope};
         let Some(active_tab) = self.main_terminal() else {
             return;
         };
@@ -84,13 +89,35 @@ impl crate::app::CoduxApp {
             pane_count,
         )
         .unwrap_or(codux_runtime::terminal_layout::TerminalSplitNode::Leaf { pane: 0 });
-        let insert_index = source_index + 1;
-        let split_tree = match terminal_split_tree_insert_pane(
-            &tree,
-            source_index,
-            insert_index,
-            crate::app::TerminalSplitDirection::Right,
-        ) {
+        let before = matches!(
+            direction,
+            TerminalSplitDirection::Left | TerminalSplitDirection::Up
+        );
+        let insert_index = match scope {
+            TerminalSplitScope::Inner => {
+                if before {
+                    source_index
+                } else {
+                    source_index + 1
+                }
+            }
+            TerminalSplitScope::Root => {
+                if before {
+                    0
+                } else {
+                    pane_count
+                }
+            }
+        };
+        let split_tree_result = match scope {
+            TerminalSplitScope::Inner => {
+                terminal_split_tree_insert_pane(&tree, source_index, insert_index, direction)
+            }
+            TerminalSplitScope::Root => {
+                terminal_split_tree_insert_pane_root(&tree, insert_index, direction)
+            }
+        };
+        let split_tree = match split_tree_result {
             Ok(result) => result,
             Err(error) => {
                 self.status_message = error.to_string();

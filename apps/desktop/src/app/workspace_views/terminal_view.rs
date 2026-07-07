@@ -75,8 +75,25 @@ pub(in crate::app) struct TerminalWorkspaceView {
     container_height: Option<Pixels>,
     container_width: Option<Pixels>,
     pub(super) pane_drop_preview: Option<TerminalPaneDropPreview>,
-    pub(super) open_split_menu_pane: Option<usize>,
+    pub(super) open_pane_menu: Option<PaneMenu>,
     split_menu_hover_epoch: u64,
+}
+
+/// Which hover menu a pane control button has open.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PaneMenuKind {
+    /// The "+" terminal split direction grid.
+    Split,
+    /// The "✦" chat split: direction grid, then the agent picker.
+    Chat,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct PaneMenu {
+    pub(super) pane_index: usize,
+    pub(super) kind: PaneMenuKind,
+    /// Chat menu step 2: the picked direction, while the agent list shows.
+    pub(super) chat_pick: Option<(TerminalSplitDirection, TerminalSplitScope)>,
 }
 
 impl TerminalWorkspaceView {
@@ -90,7 +107,7 @@ impl TerminalWorkspaceView {
             container_height: None,
             container_width: None,
             pane_drop_preview: None,
-            open_split_menu_pane: None,
+            open_pane_menu: None,
             split_menu_hover_epoch: 0,
         }
     }
@@ -114,10 +131,10 @@ impl TerminalWorkspaceView {
             }
         }
         if self
-            .open_split_menu_pane
-            .is_some_and(|index| index >= snapshot.main_panes.len())
+            .open_pane_menu
+            .is_some_and(|menu| menu.pane_index >= snapshot.main_panes.len())
         {
-            self.open_split_menu_pane = None;
+            self.open_pane_menu = None;
         }
         self.snapshot = snapshot;
         cx.notify();
@@ -127,27 +144,53 @@ impl TerminalWorkspaceView {
         self.snapshot.set_terminal_views_visible(visible, cx);
     }
 
-    pub(super) fn set_split_menu_open(
+    pub(super) fn set_pane_menu_open(
         &mut self,
         pane_index: usize,
+        kind: PaneMenuKind,
         open: bool,
         cx: &mut Context<Self>,
     ) {
-        let next = open.then_some(pane_index);
-        if self.open_split_menu_pane == next {
-            if open {
-                self.split_menu_hover_epoch = self.split_menu_hover_epoch.wrapping_add(1);
-            }
+        let matches_current = self
+            .open_pane_menu
+            .is_some_and(|menu| menu.pane_index == pane_index && menu.kind == kind);
+        if open && matches_current {
+            // Keep chat_pick: re-hover must not reset the agent-picker step.
+            self.split_menu_hover_epoch = self.split_menu_hover_epoch.wrapping_add(1);
             return;
         }
-        self.open_split_menu_pane = next;
+        if !open && !matches_current {
+            return;
+        }
+        self.open_pane_menu = open.then_some(PaneMenu {
+            pane_index,
+            kind,
+            chat_pick: None,
+        });
         self.split_menu_hover_epoch = self.split_menu_hover_epoch.wrapping_add(1);
         cx.notify();
     }
 
-    pub(super) fn close_split_menu_after_hover_gap(
+    /// Step the open chat menu from the direction grid to the agent picker.
+    pub(super) fn set_chat_menu_pick(
         &mut self,
         pane_index: usize,
+        pick: (TerminalSplitDirection, TerminalSplitScope),
+        cx: &mut Context<Self>,
+    ) {
+        self.open_pane_menu = Some(PaneMenu {
+            pane_index,
+            kind: PaneMenuKind::Chat,
+            chat_pick: Some(pick),
+        });
+        self.split_menu_hover_epoch = self.split_menu_hover_epoch.wrapping_add(1);
+        cx.notify();
+    }
+
+    pub(super) fn close_pane_menu_after_hover_gap(
+        &mut self,
+        pane_index: usize,
+        kind: PaneMenuKind,
         cx: &mut Context<Self>,
     ) {
         let epoch = self.split_menu_hover_epoch;
@@ -158,10 +201,12 @@ impl TerminalWorkspaceView {
                 .timer(Duration::from_millis(260))
                 .await;
             let _ = view.update(cx, |view, cx| {
-                if view.open_split_menu_pane == Some(pane_index)
+                if view
+                    .open_pane_menu
+                    .is_some_and(|menu| menu.pane_index == pane_index && menu.kind == kind)
                     && view.split_menu_hover_epoch == epoch
                 {
-                    view.open_split_menu_pane = None;
+                    view.open_pane_menu = None;
                     view.split_menu_hover_epoch = view.split_menu_hover_epoch.wrapping_add(1);
                     cx.notify();
                 }
@@ -184,7 +229,7 @@ impl Render for TerminalWorkspaceView {
             self.container_width,
             self.container_height,
             self.pane_drop_preview,
-            self.open_split_menu_pane,
+            self.open_pane_menu,
             cx,
         );
 
