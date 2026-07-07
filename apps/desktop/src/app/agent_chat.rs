@@ -1714,6 +1714,8 @@ impl ChatView {
         div()
             .flex()
             .flex_col()
+            .w_full()
+            .min_w_0()
             .gap_1()
             .px(px(12.0))
             .pt(if ix == 0 { px(12.0) } else { px(0.0) })
@@ -1762,6 +1764,7 @@ impl ChatView {
         div()
             .flex()
             .w_full()
+            .min_w_0()
             .justify_end()
             .child(
                 div()
@@ -1769,10 +1772,13 @@ impl ChatView {
                     .flex()
                     .flex_col()
                     .items_end()
+                    .min_w_0()
                     .gap_1()
                     .max_w(relative_w())
                     .child(
                         div()
+                            .min_w_0()
+                            .overflow_hidden()
                             .rounded(px(12.0))
                             .px(px(12.0))
                             .py(px(8.0))
@@ -1816,11 +1822,13 @@ impl ChatView {
         div()
             .flex()
             .w_full()
+            .min_w_0()
             .justify_end()
             .child(
                 div()
                     .flex()
                     .flex_col()
+                    .min_w_0()
                     .gap_1()
                     .w_full()
                     .max_w(relative_w())
@@ -1928,14 +1936,14 @@ impl ChatView {
     ) -> Div {
         let is_cmd = req.method.contains("commandExecution") || req.method == "execCommandApproval";
         let is_elicit = req.method.contains("elicitation");
-        let title = if is_cmd {
-            "需要批准 · 执行命令"
+        let (title, icon) = if is_cmd {
+            ("执行命令", HeroIconName::CommandLine)
         } else if req.method.contains("fileChange") || req.method == "applyPatchApproval" {
-            "需要批准 · 应用文件改动"
+            ("应用文件改动", HeroIconName::DocumentText)
         } else if is_elicit {
-            "需要批准 · MCP 请求"
+            ("MCP 请求", HeroIconName::QuestionMarkCircle)
         } else {
-            "需要批准"
+            ("审批请求", HeroIconName::ShieldCheck)
         };
         let cwd = req
             .raw
@@ -1972,33 +1980,71 @@ impl ChatView {
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .rounded(px(10.0))
-            .p(px(10.0))
+            .w_full()
+            .min_w_0()
+            .gap_1()
+            .rounded(px(8.0))
+            .p(px(8.0))
             .border_1()
-            .border_color(pal.primary.opacity(0.4))
-            .bg(pal.primary.opacity(0.06))
+            .border_color(pal.primary.opacity(0.22))
+            .bg(pal.secondary.opacity(0.5))
             .child(
                 div()
-                    .text_size(pal.sm)
-                    .text_color(pal.primary)
-                    .child(title),
+                    .flex()
+                    .items_center()
+                    .min_w_0()
+                    .gap_2()
+                    .child(Icon::new(icon).size_3().text_color(pal.primary))
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(pal.xs)
+                            .text_color(pal.primary)
+                            .child("需要批准"),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(pal.sm)
+                            .text_color(pal.fg)
+                            .child(title),
+                    ),
             )
             .child(
                 div()
+                    .w_full()
+                    .min_w_0()
+                    .rounded(px(6.0))
+                    .px(px(8.0))
+                    .py(px(5.0))
+                    .max_h(if is_cmd { px(72.0) } else { px(48.0) })
+                    .overflow_hidden()
+                    .bg(pal.primary.opacity(0.05))
                     .text_size(if is_cmd { pal.sm } else { pal.md })
                     .text_color(pal.fg)
                     .when(is_cmd, |s| s.font_family(mono))
+                    .when(!is_cmd, |s| s.line_clamp(2))
                     .child(req.summary.clone()),
             )
             .when_some(cwd, |this, cwd| {
-                this.child(div().text_size(pal.xs).text_color(pal.muted).child(cwd))
+                this.child(
+                    div()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(pal.xs)
+                        .text_color(pal.muted)
+                        .child(cwd),
+                )
             })
             .child(
                 div()
                     .flex()
+                    .items_center()
                     .flex_wrap()
-                    .gap_2()
+                    .gap_1()
+                    .pt(px(2.0))
                     .child({
                         let token = req.token.clone();
                         Button::new(SharedString::from(format!("appr-ok-{}", req.token)))
@@ -2015,7 +2061,7 @@ impl ChatView {
                     })
                     .when(!is_elicit, |this| {
                         this.child(decision_button(
-                            "本会话总是允许",
+                            "本会话",
                             ApprovalDecision::AcceptForSession,
                             false,
                             cx,
@@ -2027,19 +2073,14 @@ impl ChatView {
                             Button::new(SharedString::from(format!("appr-amend-{}", req.token)))
                                 .ghost()
                                 .with_size(Size::Small)
-                                .child("总是允许此类命令")
+                                .child("此类命令")
                                 .on_click(cx.listener(move |view, _e, _w, cx| {
                                     view.respond_amendment(token.clone(), amendment.clone(), cx)
                                 })),
                         )
                     })
                     .child(decision_button("拒绝", ApprovalDecision::Decline, true, cx))
-                    .child(decision_button(
-                        "拒绝并中断",
-                        ApprovalDecision::Cancel,
-                        true,
-                        cx,
-                    )),
+                    .child(decision_button("中断", ApprovalDecision::Cancel, true, cx)),
             )
     }
 
@@ -2192,25 +2233,61 @@ impl ChatView {
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .rounded(px(10.0))
-            .p(px(10.0))
+            .w_full()
+            .min_w_0()
+            .gap_1()
+            .rounded(px(8.0))
+            .p(px(8.0))
             .border_1()
-            .border_color(pal.primary.opacity(0.4))
-            .bg(pal.primary.opacity(0.06))
+            .border_color(pal.primary.opacity(0.22))
+            .bg(pal.secondary.opacity(0.5))
             .child(
                 div()
-                    .text_size(pal.sm)
-                    .text_color(pal.primary)
-                    .child("需要批准 · 扩展权限"),
+                    .flex()
+                    .items_center()
+                    .min_w_0()
+                    .gap_2()
+                    .child(Icon::new(HeroIconName::ShieldCheck).size_3().text_color(pal.primary))
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(pal.xs)
+                            .text_color(pal.primary)
+                            .child("需要批准"),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(pal.sm)
+                            .text_color(pal.fg)
+                            .child("扩展权限"),
+                    ),
             )
             .when_some(req.reason.clone(), |this, reason| {
-                this.child(div().text_size(pal.md).text_color(pal.fg).child(reason))
+                this.child(
+                    div()
+                        .min_w_0()
+                        .line_clamp(2)
+                        .text_size(pal.sm)
+                        .text_color(pal.fg)
+                        .child(reason),
+                )
             })
-            .child(div().text_size(pal.sm).text_color(pal.muted).child(summary))
+            .child(
+                div()
+                    .min_w_0()
+                    .line_clamp(2)
+                    .text_size(pal.sm)
+                    .text_color(pal.muted)
+                    .child(summary),
+            )
             .when(!req.cwd.is_empty(), |this| {
                 this.child(
                     div()
+                        .min_w_0()
+                        .truncate()
                         .text_size(pal.xs)
                         .text_color(pal.muted)
                         .child(req.cwd.clone()),
@@ -2219,8 +2296,10 @@ impl ChatView {
             .child(
                 div()
                     .flex()
+                    .items_center()
                     .flex_wrap()
-                    .gap_2()
+                    .gap_1()
+                    .pt(px(2.0))
                     .child(
                         Button::new(SharedString::from(format!("perm-turn-{}", req.token)))
                             .primary()
@@ -2239,7 +2318,7 @@ impl ChatView {
                         Button::new(SharedString::from(format!("perm-session-{}", req.token)))
                             .ghost()
                             .with_size(Size::Small)
-                            .child("整个会话允许")
+                            .child("本会话")
                             .on_click(cx.listener(move |view, _e, _w, cx| {
                                 view.respond_permission(
                                     grant_session.0.clone(),
@@ -2907,7 +2986,7 @@ impl ChatView {
 }
 
 fn relative_w() -> gpui::DefiniteLength {
-    gpui::relative(0.9)
+    gpui::relative(0.78)
 }
 
 /// One row in the `/` palette: icon + name + (truncated) description.
