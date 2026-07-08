@@ -3,6 +3,17 @@ pub(super) enum TerminalOscEvent {
     Progress(TerminalProgressOscState),
     Notification(TerminalNotificationKind),
     Command(TerminalCommandOscState),
+    Title(TerminalTitleAgentSignal),
+}
+
+// Agent state readable from OSC 0 titles: codex renders a leading braille
+// spinner frame while a turn runs and a fixed "Action Required" prefix while
+// blocked on input (title_setup defaults ["activity", "project-name"]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TerminalTitleAgentSignal {
+    Working,
+    Waiting,
+    Plain,
 }
 
 // OSC 133 semantic marks emitted by Codux's staged shell integration:
@@ -33,6 +44,7 @@ const MAX_UNTERMINATED_OSC: usize = 512;
 
 const TERMINAL_PROGRESS_OSC_PREFIX: &[u8] = b"\x1b]9;";
 const TERMINAL_COMMAND_OSC_PREFIX: &[u8] = b"\x1b]133;";
+const TERMINAL_TITLE_OSC_PREFIX: &[u8] = b"\x1b]0;";
 
 #[derive(Debug, Default)]
 pub(super) struct TerminalProgressOscParser {
@@ -65,14 +77,17 @@ impl TerminalProgressOscParser {
             };
             if TERMINAL_PROGRESS_OSC_PREFIX.starts_with(rest)
                 || TERMINAL_COMMAND_OSC_PREFIX.starts_with(rest)
+                || TERMINAL_TITLE_OSC_PREFIX.starts_with(rest)
             {
                 consumed_until = index;
                 break;
             }
-            let (prefix_len, is_command) = if rest.starts_with(TERMINAL_PROGRESS_OSC_PREFIX) {
-                (TERMINAL_PROGRESS_OSC_PREFIX.len(), false)
+            let (prefix_len, kind) = if rest.starts_with(TERMINAL_PROGRESS_OSC_PREFIX) {
+                (TERMINAL_PROGRESS_OSC_PREFIX.len(), OscPrefixKind::Progress)
             } else if rest.starts_with(TERMINAL_COMMAND_OSC_PREFIX) {
-                (TERMINAL_COMMAND_OSC_PREFIX.len(), true)
+                (TERMINAL_COMMAND_OSC_PREFIX.len(), OscPrefixKind::Command)
+            } else if rest.starts_with(TERMINAL_TITLE_OSC_PREFIX) {
+                (TERMINAL_TITLE_OSC_PREFIX.len(), OscPrefixKind::Title)
             } else {
                 index += 1;
                 consumed_until = index;
@@ -82,14 +97,22 @@ impl TerminalProgressOscParser {
                 consumed_until = index;
                 break;
             };
-            if is_command {
-                if let Some(state) = terminal_command_osc_state(payload) {
-                    events.push(TerminalOscEvent::Command(state));
+            match kind {
+                OscPrefixKind::Command => {
+                    if let Some(state) = terminal_command_osc_state(payload) {
+                        events.push(TerminalOscEvent::Command(state));
+                    }
                 }
-            } else if let Some(state) = terminal_progress_osc_state(payload) {
-                events.push(TerminalOscEvent::Progress(state));
-            } else if let Some(kind) = terminal_notification_kind(payload) {
-                events.push(TerminalOscEvent::Notification(kind));
+                OscPrefixKind::Title => {
+                    events.push(TerminalOscEvent::Title(terminal_title_agent_signal(payload)));
+                }
+                OscPrefixKind::Progress => {
+                    if let Some(state) = terminal_progress_osc_state(payload) {
+                        events.push(TerminalOscEvent::Progress(state));
+                    } else if let Some(kind) = terminal_notification_kind(payload) {
+                        events.push(TerminalOscEvent::Notification(kind));
+                    }
+                }
             }
             index += prefix_len + payload.len() + terminator_len;
             consumed_until = index;
@@ -131,6 +154,27 @@ fn terminal_progress_osc_state(payload: &[u8]) -> Option<TerminalProgressOscStat
         "4" => Some(TerminalProgressOscState::Warning),
         _ => None,
     }
+}
+
+#[derive(Clone, Copy)]
+enum OscPrefixKind {
+    Progress,
+    Command,
+    Title,
+}
+
+fn terminal_title_agent_signal(payload: &[u8]) -> TerminalTitleAgentSignal {
+    // Braille patterns U+2800–U+28FF encode as E2 A0..A3 xx.
+    if payload.len() >= 3 && payload[0] == 0xE2 && (0xA0..=0xA3).contains(&payload[1]) {
+        return TerminalTitleAgentSignal::Working;
+    }
+    // Blink phases toggle "!" and "." but keep the prefix text stable.
+    if payload.starts_with(b"[ ! ] Action Required")
+        || payload.starts_with(b"[ . ] Action Required")
+    {
+        return TerminalTitleAgentSignal::Waiting;
+    }
+    TerminalTitleAgentSignal::Plain
 }
 
 fn terminal_command_osc_state(payload: &[u8]) -> Option<TerminalCommandOscState> {

@@ -25,6 +25,9 @@ pub struct TerminalStatusEvent {
 }
 
 pub(crate) const TERMINAL_PROGRESS_OSC_SOURCE: &str = "terminal-progress-osc";
+// Turn state decoded from a CLI's OSC 0 title (codex braille spinner / Action
+// Required prefix); owns the progress axis like real progress OSC does.
+pub(crate) const TERMINAL_TITLE_OSC_SOURCE: &str = "terminal-title-osc";
 pub(crate) const RUNTIME_PROBE_STATUS_SOURCE: &str = "runtime-probe";
 // OSC 133 C/D from the staged shell integration; command-level, so the desktop
 // must not stale-GC it against AI turn liveness.
@@ -57,7 +60,12 @@ pub(crate) struct ProbeStatusFallback {
 
 impl ProbeStatusFallback {
     pub(crate) fn note_status_event(&mut self, event: &TerminalStatusEvent) {
-        if event.source == TERMINAL_PROGRESS_OSC_SOURCE {
+        let title_progress = event.source == TERMINAL_TITLE_OSC_SOURCE
+            && matches!(
+                event.state,
+                TerminalStatusState::Working | TerminalStatusState::Completed
+            );
+        if event.source == TERMINAL_PROGRESS_OSC_SOURCE || title_progress {
             self.progress_osc_terminals
                 .insert(event.terminal_id.clone());
         }
@@ -259,6 +267,26 @@ mod tests {
         fallback.note_status_event(&osc_event("term-1", "terminal-notification-osc"));
 
         let busy = fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
+        assert_eq!(states(&busy), [TerminalStatusState::Working]);
+    }
+
+    #[test]
+    fn title_working_claims_progress_ownership_but_title_waiting_does_not() {
+        let mut fallback = ProbeStatusFallback::default();
+        fallback.note_status_event(&osc_event("term-1", TERMINAL_TITLE_OSC_SOURCE));
+
+        let busy = fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
+        assert!(busy.is_empty());
+
+        let mut waiting_only = ProbeStatusFallback::default();
+        waiting_only.note_status_event(&TerminalStatusEvent {
+            terminal_id: "term-2".to_string(),
+            terminal_instance_id: None,
+            state: TerminalStatusState::Waiting,
+            updated_at: 1.0,
+            source: TERMINAL_TITLE_OSC_SOURCE.to_string(),
+        });
+        let busy = waiting_only.sync_entries([("term-2", None, "responding", false)].into_iter(), 2.0);
         assert_eq!(states(&busy), [TerminalStatusState::Working]);
     }
 

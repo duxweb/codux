@@ -275,6 +275,101 @@ fn terminal_command_osc_survives_chunk_split() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+#[test]
+fn terminal_title_spinner_drives_turn_level_status() {
+    let dir = std::env::temp_dir().join(format!("codux-terminal-osc-title-{}", Uuid::new_v4()));
+    let bridge = Arc::new(AIRuntimeBridge::with_paths(
+        dir.join("root"),
+        dir.join("temp"),
+        dir.join("home"),
+    ));
+    bridge.ensure_started().expect("runtime should start");
+    let terminal_id = format!("test-terminal-osc-title-{}", Uuid::new_v4());
+    let binding = AIRuntimeTerminalBinding {
+        terminal_id: terminal_id.clone(),
+        project_id: "project-1".to_string(),
+        slot_id: "slot-1".to_string(),
+        title: "Terminal".to_string(),
+        cwd: "/tmp/project".to_string(),
+        tool: None,
+        is_active: false,
+        session_key: Some("codex-session-1".to_string()),
+        terminal_instance_id: Some("terminal-instance-1".to_string()),
+    };
+    let mut watcher = AIRuntimeTerminalOutputWatcher::new(binding.clone(), Arc::clone(&bridge));
+    let mut send = |payload: &str| {
+        watcher.handle_terminal_event(&TerminalEvent::Output {
+            session_id: terminal_id.clone(),
+            text: String::new(),
+            bytes: payload.as_bytes().to_vec(),
+        });
+    };
+
+    // Plain startup title emits nothing; the braille spinner starts the turn.
+    send("\x1b]0;Data\x07");
+    send("\x1b]0;⠋ | Data\x07\x1b]0;⠙ | Data\x07");
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+    assert_eq!(status.source, "terminal-title-osc");
+
+    // Blocked on approval: both blink phases map to one Waiting.
+    send("\x1b]0;[ ! ] Action Required | Data\x07\x1b]0;[ . ] Action Required | Data\x07");
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Waiting);
+    assert_eq!(status.source, "terminal-title-osc");
+
+    // Approved: spinner returns, then the turn finishes back to a plain title.
+    send("\x1b]0;⠹ | Data\x07");
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+    send("\x1b]0;Data\x07");
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Completed);
+    assert_eq!(status.source, "terminal-title-osc");
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn dismissed_action_required_title_clears_instead_of_completing() {
+    let dir = std::env::temp_dir().join(format!(
+        "codux-terminal-osc-title-dismiss-{}",
+        Uuid::new_v4()
+    ));
+    let bridge = Arc::new(AIRuntimeBridge::with_paths(
+        dir.join("root"),
+        dir.join("temp"),
+        dir.join("home"),
+    ));
+    bridge.ensure_started().expect("runtime should start");
+    let terminal_id = format!("test-terminal-osc-title-dismiss-{}", Uuid::new_v4());
+    let binding = AIRuntimeTerminalBinding {
+        terminal_id: terminal_id.clone(),
+        project_id: "project-1".to_string(),
+        slot_id: "slot-1".to_string(),
+        title: "Terminal".to_string(),
+        cwd: "/tmp/project".to_string(),
+        tool: None,
+        is_active: false,
+        session_key: Some("codex-session-1".to_string()),
+        terminal_instance_id: Some("terminal-instance-1".to_string()),
+    };
+    let mut watcher = AIRuntimeTerminalOutputWatcher::new(binding.clone(), Arc::clone(&bridge));
+
+    watcher.handle_terminal_event(&TerminalEvent::Output {
+        session_id: terminal_id.clone(),
+        text: String::new(),
+        bytes: "\x1b]0;[ ! ] Action Required | Data\x07".as_bytes().to_vec(),
+    });
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Waiting);
+
+    watcher.handle_terminal_event(&TerminalEvent::Output {
+        session_id: terminal_id.clone(),
+        text: String::new(),
+        bytes: "\x1b]0;Data\x07".as_bytes().to_vec(),
+    });
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
+    assert_eq!(status.source, "terminal-title-osc");
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn terminal_output_refreshes_kiro_screen_signal_without_poll() {

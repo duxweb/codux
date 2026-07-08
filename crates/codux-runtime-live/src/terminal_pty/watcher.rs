@@ -21,6 +21,8 @@ pub(super) struct AIRuntimeTerminalOutputWatcher {
     parser: TerminalProgressOscParser,
     last_activity_at: f64,
     last_screen_signal_at: f64,
+    // Titles repeat every spinner frame; only signal TRANSITIONS become status.
+    last_title_signal: Option<TerminalTitleAgentSignal>,
 }
 
 /// Throttle output heartbeats so a chatty turn does not lock the state store on
@@ -36,6 +38,7 @@ impl AIRuntimeTerminalOutputWatcher {
             parser: TerminalProgressOscParser::default(),
             last_activity_at: 0.0,
             last_screen_signal_at: 0.0,
+            last_title_signal: None,
         }
     }
 
@@ -84,8 +87,33 @@ impl AIRuntimeTerminalOutputWatcher {
                     },
                     crate::ai_runtime::terminal_status::TERMINAL_COMMAND_OSC_SOURCE,
                 ),
+                TerminalOscEvent::Title(signal) => self.handle_title_signal(signal),
             }
         }
+    }
+
+    // codex paints turn state into its OSC 0 title (braille spinner while
+    // responding, "Action Required" while blocked); transitions map onto the
+    // status channel. A plain title after a spinner is a finished turn; after
+    // an Action Required prefix it is a dismissed prompt, which only clears.
+    fn handle_title_signal(&mut self, signal: TerminalTitleAgentSignal) {
+        let previous = self.last_title_signal.replace(signal);
+        if previous == Some(signal) {
+            return;
+        }
+        let state = match signal {
+            TerminalTitleAgentSignal::Working => TerminalStatusState::Working,
+            TerminalTitleAgentSignal::Waiting => TerminalStatusState::Waiting,
+            TerminalTitleAgentSignal::Plain => match previous {
+                Some(TerminalTitleAgentSignal::Working) => TerminalStatusState::Completed,
+                Some(TerminalTitleAgentSignal::Waiting) => TerminalStatusState::Idle,
+                _ => return,
+            },
+        };
+        self.submit_terminal_status(
+            state,
+            crate::ai_runtime::terminal_status::TERMINAL_TITLE_OSC_SOURCE,
+        );
     }
 
     fn submit_terminal_status(&self, state: TerminalStatusState, source: &str) {
