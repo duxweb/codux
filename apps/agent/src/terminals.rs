@@ -18,8 +18,8 @@ use codux_protocol::{
 use codux_remote_transport::RemoteTransport;
 use codux_runtime_core::terminal::terminal_snapshot_payload;
 use codux_runtime_live::remote_terminal_dispatch::{
-    self, RemoteTerminalDispatch, TerminalMessage, finish_terminal_create_viewer_lifecycle,
-    prepare_terminal_create_lifecycle,
+    self, RemoteTerminalDispatch, TerminalMessage, apply_terminal_osc_color_env,
+    finish_terminal_create_viewer_lifecycle, prepare_terminal_create_lifecycle,
 };
 use codux_runtime_live::terminal_pty::{TerminalManager, TerminalPtyConfig};
 use codux_runtime_live::terminal_pty::{
@@ -561,7 +561,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             .get("projectId")
             .and_then(Value::as_str)
             .map(str::to_string);
-        let config = TerminalPtyConfig {
+        let mut config = TerminalPtyConfig {
             cwd: payload
                 .get("cwd")
                 .or_else(|| payload.get("projectPath"))
@@ -628,6 +628,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             ),
             ..Default::default()
         };
+        apply_terminal_osc_color_env(&mut config, payload);
         let lifecycle = prepare_terminal_create_lifecycle(
             self.driver,
             &config,

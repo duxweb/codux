@@ -53,8 +53,9 @@ use codux_runtime_core::{
 use codux_runtime_live::{
     host_metrics::sample_host_metrics,
     remote_terminal_dispatch::{
-        RemoteTerminalDispatch, TerminalMessage, finish_terminal_create_viewer_lifecycle,
-        is_terminal_kind, prepare_terminal_create_lifecycle,
+        RemoteTerminalDispatch, TerminalMessage, apply_terminal_osc_color_env,
+        finish_terminal_create_viewer_lifecycle, is_terminal_kind,
+        prepare_terminal_create_lifecycle,
     },
 };
 use codux_terminal_core::{

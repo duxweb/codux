@@ -63,8 +63,9 @@ impl RemoteHostRuntime {
             .get("rows")
             .and_then(Value::as_u64)
             .map(|value| value as u16);
-        let config =
+        let mut config =
             remote_terminal_pty_config(&scope, terminal_id, &title, command, cwd, cols, rows);
+        apply_terminal_osc_color_env(&mut config, &envelope.payload);
         Ok(RemoteTerminalPlan {
             config,
             scope,

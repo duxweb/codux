@@ -937,6 +937,8 @@ impl RemoteController {
         project_id: Option<&str>,
         title: Option<&str>,
         terminal_id: Option<&str>,
+        osc_fg: Option<&str>,
+        osc_bg: Option<&str>,
     ) -> Result<String, String> {
         // Pass our stable terminal id so the host keys the session by it and
         // RE-ATTACHES to the still-running shell on a later open (persistent
@@ -949,6 +951,8 @@ impl RemoteController {
             "projectId": project_id,
             "title": title,
             "terminalId": terminal_id,
+            "oscFg": osc_fg,
+            "oscBg": osc_bg,
         }))
     }
 

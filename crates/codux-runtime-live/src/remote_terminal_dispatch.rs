@@ -82,6 +82,28 @@ pub fn prepare_terminal_create_lifecycle(
     }
 }
 
+/// Seed OSC 10/11 colors sent by the creating viewer (ConPTY answers those
+/// queries with its own black palette, so TUIs would detect dark under a light
+/// theme; the wrapper rewrites the answer from these env values).
+pub fn apply_terminal_osc_color_env(config: &mut TerminalPtyConfig, payload: &Value) {
+    for (key, env_key) in [
+        ("oscFg", "DMUX_TERMINAL_OSC_FG"),
+        ("oscBg", "DMUX_TERMINAL_OSC_BG"),
+    ] {
+        if let Some(value) = payload
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            config
+                .env
+                .get_or_insert_with(Default::default)
+                .insert(env_key.to_string(), value.to_string());
+        }
+    }
+}
+
 /// Shared create lifecycle final viewer registration for the actual session id.
 pub fn finish_terminal_create_viewer_lifecycle(
     session_id: &str,
@@ -346,8 +368,37 @@ pub trait RemoteTerminalDispatch {
 
 #[cfg(test)]
 mod tests {
-    use super::{finish_terminal_create_viewer_lifecycle, prepare_terminal_create_lifecycle};
+    use super::{
+        apply_terminal_osc_color_env, finish_terminal_create_viewer_lifecycle,
+        prepare_terminal_create_lifecycle,
+    };
     use crate::terminal_pty::{TerminalManager, TerminalPtyConfig};
+    use serde_json::json;
+
+    #[test]
+    fn osc_color_env_applies_from_create_payload() {
+        let mut config = TerminalPtyConfig::default();
+        apply_terminal_osc_color_env(
+            &mut config,
+            &json!({"oscFg": "rgb:3a3a/3a3a/3a3a", "oscBg": " rgb:ffff/ffff/ffff "}),
+        );
+        let env = config.env.expect("env seeded");
+        assert_eq!(
+            env.get("DMUX_TERMINAL_OSC_FG").map(String::as_str),
+            Some("rgb:3a3a/3a3a/3a3a")
+        );
+        assert_eq!(
+            env.get("DMUX_TERMINAL_OSC_BG").map(String::as_str),
+            Some("rgb:ffff/ffff/ffff")
+        );
+    }
+
+    #[test]
+    fn osc_color_env_ignores_missing_or_blank_values() {
+        let mut config = TerminalPtyConfig::default();
+        apply_terminal_osc_color_env(&mut config, &json!({"oscFg": "  ", "cols": 80}));
+        assert!(config.env.is_none());
+    }
 
     #[test]
     fn create_lifecycle_preregisters_stable_terminal_viewer() {
