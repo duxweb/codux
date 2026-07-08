@@ -37,6 +37,7 @@ enum AIRuntimeSupervisorMessage {
     Poll,
     ScreenSignal(String),
     TerminalStatus(TerminalStatusEvent),
+    ForgetTerminal(String),
     ScanBindings,
     ScanBindingFile(AIRuntimeBindingFileEvent),
     TranscriptTail(Vec<String>),
@@ -142,6 +143,12 @@ impl AIRuntimeSupervisor {
     }
 
     pub fn remove_session(&self, terminal_id: &str) -> bool {
+        // The store mutates synchronously (callers want the bool), but the
+        // fallback tracker lives on the loop thread; forget it there so a
+        // reopened terminal with the same id starts from a clean phase.
+        let _ = self.tx.try_send(AIRuntimeSupervisorMessage::ForgetTerminal(
+            terminal_id.to_string(),
+        ));
         self.state.remove_session(terminal_id)
     }
 
@@ -260,6 +267,9 @@ fn supervisor_loop(
             AIRuntimeSupervisorMessage::TerminalStatus(status) => {
                 probe_fallback.note_status_event(&status);
                 push_event(&events, AIRuntimeSupervisorEvent::TerminalStatus { status });
+            }
+            AIRuntimeSupervisorMessage::ForgetTerminal(terminal_id) => {
+                probe_fallback.forget(&terminal_id);
             }
             AIRuntimeSupervisorMessage::TranscriptTail(terminal_ids) => {
                 let terminal_ids = terminal_ids.into_iter().collect::<HashSet<_>>();

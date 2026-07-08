@@ -63,6 +63,11 @@ impl ProbeStatusFallback {
         }
     }
 
+    pub(crate) fn forget(&mut self, terminal_id: &str) {
+        self.phases.remove(terminal_id);
+        self.progress_osc_terminals.remove(terminal_id);
+    }
+
     pub(crate) fn sync(
         &mut self,
         snapshot: &AIRuntimeStateSnapshot,
@@ -74,6 +79,7 @@ impl ProbeStatusFallback {
                     session.terminal_id.as_str(),
                     session.terminal_instance_id.as_deref(),
                     session.state.as_str(),
+                    session.has_completed_turn && !session.was_interrupted,
                 )
             }),
             now,
@@ -82,12 +88,12 @@ impl ProbeStatusFallback {
 
     fn sync_entries<'a>(
         &mut self,
-        entries: impl Iterator<Item = (&'a str, Option<&'a str>, &'a str)>,
+        entries: impl Iterator<Item = (&'a str, Option<&'a str>, &'a str, bool)>,
         now: f64,
     ) -> Vec<TerminalStatusEvent> {
         let mut events = Vec::new();
         let mut live = HashSet::new();
-        for (terminal_id, terminal_instance_id, session_state) in entries {
+        for (terminal_id, terminal_instance_id, session_state, turn_completed) in entries {
             live.insert(terminal_id.to_string());
             let next = probe_phase(session_state);
             let previous = self
@@ -95,7 +101,8 @@ impl ProbeStatusFallback {
                 .insert(terminal_id.to_string(), next)
                 .unwrap_or(ProbePhase::Idle);
             let osc_owned = self.progress_osc_terminals.contains(terminal_id);
-            let Some(state) = probe_transition_status(previous, next, osc_owned) else {
+            let Some(state) = probe_transition_status(previous, next, osc_owned, turn_completed)
+            else {
                 continue;
             };
             events.push(TerminalStatusEvent {
@@ -123,14 +130,23 @@ impl ProbeStatusFallback {
     }
 }
 
+// Completed is reserved for genuinely finished turns: a silently timed-out or
+// interrupted runtime goes back to idle with `turn_completed == false` (see
+// store::helpers::mark_timed_out) and must clear the dot, not fake a green one.
 fn probe_transition_status(
     previous: ProbePhase,
     next: ProbePhase,
     osc_owned: bool,
+    turn_completed: bool,
 ) -> Option<TerminalStatusState> {
     if previous == next {
         return None;
     }
+    let idle_state = if turn_completed {
+        TerminalStatusState::Completed
+    } else {
+        TerminalStatusState::Idle
+    };
     match next {
         ProbePhase::NeedsInput => Some(TerminalStatusState::Waiting),
         // Closing a needs-input episode must not depend on the CLI re-emitting
@@ -138,11 +154,9 @@ fn probe_transition_status(
         ProbePhase::Busy if previous == ProbePhase::NeedsInput => {
             Some(TerminalStatusState::Working)
         }
-        ProbePhase::Idle if previous == ProbePhase::NeedsInput => {
-            Some(TerminalStatusState::Completed)
-        }
+        ProbePhase::Idle if previous == ProbePhase::NeedsInput => Some(idle_state),
         ProbePhase::Busy if !osc_owned => Some(TerminalStatusState::Working),
-        ProbePhase::Idle if !osc_owned => Some(TerminalStatusState::Completed),
+        ProbePhase::Idle if !osc_owned => Some(idle_state),
         _ => None,
     }
 }
@@ -169,22 +183,46 @@ mod tests {
     fn probe_fallback_drives_full_turn_without_osc() {
         let mut fallback = ProbeStatusFallback::default();
 
-        let started = fallback.sync_entries([("term-1", Some("i-1"), "responding")].into_iter(), 1.0);
+        let started =
+            fallback.sync_entries([("term-1", Some("i-1"), "responding", false)].into_iter(), 1.0);
         assert_eq!(states(&started), [TerminalStatusState::Working]);
         assert_eq!(started[0].source, RUNTIME_PROBE_STATUS_SOURCE);
         assert_eq!(started[0].terminal_instance_id.as_deref(), Some("i-1"));
 
-        let unchanged = fallback.sync_entries([("term-1", Some("i-1"), "responding")].into_iter(), 2.0);
+        let unchanged =
+            fallback.sync_entries([("term-1", Some("i-1"), "responding", false)].into_iter(), 2.0);
         assert!(unchanged.is_empty());
 
-        let waiting = fallback.sync_entries([("term-1", Some("i-1"), "needsInput")].into_iter(), 3.0);
+        let waiting =
+            fallback.sync_entries([("term-1", Some("i-1"), "needsInput", false)].into_iter(), 3.0);
         assert_eq!(states(&waiting), [TerminalStatusState::Waiting]);
 
-        let resumed = fallback.sync_entries([("term-1", Some("i-1"), "responding")].into_iter(), 4.0);
+        let resumed =
+            fallback.sync_entries([("term-1", Some("i-1"), "responding", false)].into_iter(), 4.0);
         assert_eq!(states(&resumed), [TerminalStatusState::Working]);
 
-        let finished = fallback.sync_entries([("term-1", Some("i-1"), "idle")].into_iter(), 5.0);
+        let finished =
+            fallback.sync_entries([("term-1", Some("i-1"), "idle", true)].into_iter(), 5.0);
         assert_eq!(states(&finished), [TerminalStatusState::Completed]);
+    }
+
+    #[test]
+    fn silent_timeout_clears_instead_of_faking_completion() {
+        let mut fallback = ProbeStatusFallback::default();
+        fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
+
+        // mark_timed_out retires with has_completed_turn=false: clear, no green.
+        let retired = fallback.sync_entries([("term-1", None, "idle", false)].into_iter(), 2.0);
+        assert_eq!(states(&retired), [TerminalStatusState::Idle]);
+    }
+
+    #[test]
+    fn interrupted_needs_input_episode_clears_instead_of_completing() {
+        let mut fallback = ProbeStatusFallback::default();
+        fallback.sync_entries([("term-1", None, "needsInput", false)].into_iter(), 1.0);
+
+        let rejected = fallback.sync_entries([("term-1", None, "idle", false)].into_iter(), 2.0);
+        assert_eq!(states(&rejected), [TerminalStatusState::Idle]);
     }
 
     #[test]
@@ -192,10 +230,10 @@ mod tests {
         let mut fallback = ProbeStatusFallback::default();
         fallback.note_status_event(&osc_event("term-1", TERMINAL_PROGRESS_OSC_SOURCE));
 
-        let busy = fallback.sync_entries([("term-1", None, "responding")].into_iter(), 1.0);
+        let busy = fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
         assert!(busy.is_empty());
 
-        let idle = fallback.sync_entries([("term-1", None, "idle")].into_iter(), 2.0);
+        let idle = fallback.sync_entries([("term-1", None, "idle", true)].into_iter(), 2.0);
         assert!(idle.is_empty());
     }
 
@@ -203,13 +241,15 @@ mod tests {
     fn progress_osc_terminal_still_gets_needs_input_episode() {
         let mut fallback = ProbeStatusFallback::default();
         fallback.note_status_event(&osc_event("term-1", TERMINAL_PROGRESS_OSC_SOURCE));
-        fallback.sync_entries([("term-1", None, "responding")].into_iter(), 1.0);
+        fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
 
-        let waiting = fallback.sync_entries([("term-1", None, "needsInput")].into_iter(), 2.0);
+        let waiting =
+            fallback.sync_entries([("term-1", None, "needsInput", false)].into_iter(), 2.0);
         assert_eq!(states(&waiting), [TerminalStatusState::Waiting]);
 
         // Episode close self-corrects even though the terminal owns progress OSC.
-        let resumed = fallback.sync_entries([("term-1", None, "responding")].into_iter(), 3.0);
+        let resumed =
+            fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 3.0);
         assert_eq!(states(&resumed), [TerminalStatusState::Working]);
     }
 
@@ -218,7 +258,7 @@ mod tests {
         let mut fallback = ProbeStatusFallback::default();
         fallback.note_status_event(&osc_event("term-1", "terminal-notification-osc"));
 
-        let busy = fallback.sync_entries([("term-1", None, "responding")].into_iter(), 1.0);
+        let busy = fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
         assert_eq!(states(&busy), [TerminalStatusState::Working]);
     }
 
@@ -226,7 +266,7 @@ mod tests {
     fn vanished_sessions_are_forgotten_including_their_osc_mark() {
         let mut fallback = ProbeStatusFallback::default();
         fallback.note_status_event(&osc_event("term-1", TERMINAL_PROGRESS_OSC_SOURCE));
-        fallback.sync_entries([("term-1", None, "responding")].into_iter(), 1.0);
+        fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
 
         let gone = fallback.sync_entries(std::iter::empty(), 2.0);
         assert!(gone.is_empty());
@@ -234,7 +274,22 @@ mod tests {
         assert!(fallback.progress_osc_terminals.is_empty());
 
         // Re-appearing busy counts as a fresh start, not a stale continuation.
-        let back = fallback.sync_entries([("term-1", None, "responding")].into_iter(), 3.0);
+        let back = fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 3.0);
+        assert_eq!(states(&back), [TerminalStatusState::Working]);
+    }
+
+    #[test]
+    fn forget_resets_phase_and_osc_ownership_for_reopened_terminal() {
+        let mut fallback = ProbeStatusFallback::default();
+        fallback.note_status_event(&osc_event("term-1", TERMINAL_PROGRESS_OSC_SOURCE));
+        fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 1.0);
+
+        fallback.forget("term-1");
+        assert!(fallback.phases.is_empty());
+        assert!(fallback.progress_osc_terminals.is_empty());
+
+        // Same terminal id reopened: fresh phase, no inherited OSC ownership.
+        let back = fallback.sync_entries([("term-1", None, "responding", false)].into_iter(), 2.0);
         assert_eq!(states(&back), [TerminalStatusState::Working]);
     }
 
@@ -244,12 +299,12 @@ mod tests {
         fallback.note_status_event(&osc_event("term-osc", TERMINAL_PROGRESS_OSC_SOURCE));
         // Unrelated session churn must not evict the mark of a terminal whose
         // probe session has not appeared yet.
-        fallback.sync_entries([("term-other", None, "responding")].into_iter(), 1.0);
+        fallback.sync_entries([("term-other", None, "responding", false)].into_iter(), 1.0);
 
         let busy = fallback.sync_entries(
             [
-                ("term-other", None, "responding"),
-                ("term-osc", None, "responding"),
+                ("term-other", None, "responding", false),
+                ("term-osc", None, "responding", false),
             ]
             .into_iter(),
             2.0,

@@ -231,6 +231,12 @@ typeset -g _dmux_osc133_command_running=""
 
 _dmux_osc133_preexec() {
   _dmux_osc133_command_running=1
+  # AI TUIs own their status (progress OSC / runtime probe); a session-long
+  # command mark would fake a permanent spinner, so skip C and keep only the
+  # exit-time D, which sweeps up any leftover dot.
+  if _dmux_resolve_tool_from_command "$1" >/dev/null 2>&1; then
+    return 0
+  fi
   printf '\033]133;C\007'
 }
 
