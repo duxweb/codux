@@ -21,10 +21,10 @@ use codux_protocol::{
     REMOTE_MEMORY_EXTRACT, REMOTE_MEMORY_READ, REMOTE_MEMORY_RESULT, REMOTE_PAIRING_CONFIRMED,
     REMOTE_PAIRING_REJECTED, REMOTE_PAIRING_REQUEST, REMOTE_PROJECT_LIST, REMOTE_TERMINAL_BUFFER,
     REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED,
-    REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_OUTPUT,
-    REMOTE_TERMINAL_STATUS, REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TRANSPORT_IROH,
-    REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE,
-    REMOTE_WORKTREE_UPDATED, RemoteHostMetrics,
+    REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_LIST,
+    REMOTE_TERMINAL_OUTPUT, REMOTE_TERMINAL_STATUS, REMOTE_TERMINAL_VIEWPORT_RESIZE,
+    REMOTE_TRANSPORT_IROH, REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE,
+    REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_UPDATED, RemoteHostMetrics,
 };
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportCandidate,
@@ -926,6 +926,10 @@ impl RemoteController {
         }
     }
 
+    pub fn list_terminals(&self) -> Result<Value, String> {
+        self.request(REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_LIST, json!({}))
+    }
+
     /// Typed terminal create (keeps `serde_json` out of the UI crate).
     pub fn open_terminal(
         &self,
@@ -1668,9 +1672,18 @@ mod tests {
                 return false;
             };
             self.sent.lock().unwrap().push(envelope.clone());
-            if envelope.get("type").and_then(Value::as_str) == Some(REMOTE_TERMINAL_CREATE) {
-                self.inner
-                    .route(br#"{"type":"terminal.created","payload":{"sessionId":"session-1"}}"#);
+            match envelope.get("type").and_then(Value::as_str) {
+                Some(REMOTE_TERMINAL_CREATE) => {
+                    self.inner.route(
+                        br#"{"type":"terminal.created","payload":{"sessionId":"session-1"}}"#,
+                    );
+                }
+                Some(REMOTE_TERMINAL_LIST) => {
+                    self.inner.route(
+                        br#"{"type":"terminal.list","payload":{"terminals":[{"id":"session-1"}]}}"#,
+                    );
+                }
+                _ => {}
             }
             true
         }
@@ -1844,6 +1857,35 @@ mod tests {
         assert_eq!(
             payload.get("worktreeId").and_then(Value::as_str),
             Some("worktree-1")
+        );
+    }
+
+    #[test]
+    fn list_terminals_requests_terminal_list() {
+        let inner = Arc::new(ControllerInner::default());
+        let transport = Arc::new(CapturingReplyTransport::new(Arc::clone(&inner)));
+        let controller = RemoteController {
+            transport: transport.clone(),
+            device_id: "device-1".to_string(),
+            inner,
+            next_id: AtomicU64::new(1),
+        };
+
+        let payload = controller.list_terminals().expect("terminal list");
+
+        assert_eq!(
+            payload
+                .get("terminals")
+                .and_then(Value::as_array)
+                .and_then(|terminals| terminals.first())
+                .and_then(|terminal| terminal.get("id"))
+                .and_then(Value::as_str),
+            Some("session-1")
+        );
+        let sent = transport.sent();
+        assert_eq!(
+            sent[0].get("type").and_then(Value::as_str),
+            Some(REMOTE_TERMINAL_LIST)
         );
     }
 

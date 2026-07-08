@@ -292,9 +292,12 @@ impl TerminalPane {
         // unregistering first would leave a window with NO forwarder for the live
         // session, and the host's baseline (sent right after `terminal.created`,
         // keyed by session_id) would be dropped — the "sometimes blank" outcome.
-        pending
-            .session
-            .attach_remote(controller.clone(), session_id.clone(), pending.output_tx.clone());
+        pending.session.attach_remote(
+            controller.clone(),
+            session_id.clone(),
+            pending.output_tx.clone(),
+            remote_config,
+        );
         if let Some(terminal_id) = pre_registered_terminal_id
             .as_deref()
             .filter(|terminal_id| *terminal_id != session_id)
@@ -338,10 +341,9 @@ impl TerminalPane {
         self.session.matches_pty_config(config)
     }
 
-    /// Rebind a remote pane to a reconnected controller (same host session).
-    /// Returns `true` only when the pane was bound to a DIFFERENT controller
-    /// (an actual rebind); `false` for local panes or an already-current
-    /// binding, so reconciling on a timer is cheap and idempotent.
+    /// Rebind a remote pane to the current controller for its host. If the host
+    /// process restarted, recreate the stable remote terminal id from the saved
+    /// launch config and update this pane to the new session.
     pub fn rebind_remote_controller(&self, controller: Arc<RemoteController>) -> bool {
         self.session.rebind_remote(controller)
     }
@@ -443,6 +445,8 @@ struct RemoteTerminalBackend {
     controller: Arc<RemoteController>,
     session_id: String,
     output_tx: flume::Sender<Vec<u8>>,
+    config: TerminalPtyConfig,
+    reconnecting: bool,
 }
 
 /// Register the per-session output forwarder that pushes the host's
@@ -461,6 +465,61 @@ fn register_remote_output(
             let _ = output_tx.send(bytes);
         }),
     );
+}
+
+fn restore_remote_session(
+    controller: &RemoteController,
+    current_session_id: &str,
+    config: &TerminalPtyConfig,
+    output_tx: &flume::Sender<Vec<u8>>,
+) -> Result<String, String> {
+    if remote_terminal_exists(controller, current_session_id)? {
+        return Ok(current_session_id.to_string());
+    }
+    let pre_registered_terminal_id = config.terminal_id.as_deref();
+    if let Some(terminal_id) = pre_registered_terminal_id {
+        register_remote_output(controller, terminal_id, output_tx);
+    }
+    let remote_env = config.env.as_ref();
+    let osc_fg = remote_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_FG"));
+    let osc_bg = remote_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_BG"));
+    let result = controller.open_terminal(
+        config.cwd.as_deref(),
+        config.command.as_deref(),
+        config.cols,
+        config.rows,
+        config.root_project_id.as_deref(),
+        config.worktree_id.as_deref(),
+        config.title.as_deref(),
+        config.terminal_id.as_deref(),
+        osc_fg.map(String::as_str),
+        osc_bg.map(String::as_str),
+    );
+    if result.is_err()
+        && let Some(terminal_id) = pre_registered_terminal_id
+    {
+        controller.unregister_terminal_output(terminal_id);
+    }
+    result
+}
+
+fn remote_terminal_exists(
+    controller: &RemoteController,
+    session_id: &str,
+) -> Result<bool, String> {
+    let payload = controller.list_terminals()?;
+    Ok(payload
+        .get("terminals")
+        .and_then(|terminals| terminals.as_array())
+        .is_some_and(|terminals| {
+            terminals.iter().any(|terminal| {
+                terminal
+                    .get("id")
+                    .or_else(|| terminal.get("sessionId"))
+                    .and_then(|value| value.as_str())
+                    == Some(session_id)
+            })
+        }))
 }
 
 struct TerminalSessionBindingInner {
@@ -539,6 +598,7 @@ impl TerminalSessionBinding {
         controller: Arc<RemoteController>,
         session_id: String,
         output_tx: flume::Sender<Vec<u8>>,
+        config: TerminalPtyConfig,
     ) {
         let (pending_writes, last_resize) = {
             let mut inner = self.inner.lock();
@@ -557,6 +617,8 @@ impl TerminalSessionBinding {
                 controller: controller.clone(),
                 session_id: session_id.clone(),
                 output_tx,
+                config,
+                reconnecting: false,
             });
             inner.pending_match_config = None;
             inner.pending_write_bytes = 0;
@@ -570,17 +632,11 @@ impl TerminalSessionBinding {
         }
     }
 
-    /// Rebind a remote terminal to a freshly reconnected controller, keeping the
-    /// same host session: re-register the output forwarder on the new controller
-    /// and route input/resize through it. The host kept the PTY (and its running
-    /// shell/AI) alive, keeps this device in its viewer registry, and resumes
-    /// streaming by itself — we must NOT re-request `terminal_buffer_tail` here
-    /// (same contract as `attach_pending_session_remote`): replaying the history
-    /// tail into the live emulator, which has no seq-dedup, paints the prompt
-    /// twice. Returns `true` only when an actual rebind happened (bound to a
-    /// different controller), so callers can reconcile cheaply on a timer.
+    /// Rebind a remote terminal to a freshly connected controller. Network
+    /// reconnects keep the same host PTY; host restarts lose it, so recreate the
+    /// stable terminal id from the saved launch config before routing input.
     fn rebind_remote(&self, controller: Arc<RemoteController>) -> bool {
-        let (controller, session_id, last_resize) = {
+        let (old_controller, old_session_id, output_tx, config, last_resize) = {
             let mut inner = self.inner.lock();
             let Some(remote) = inner.remote.as_mut() else {
                 return false;
@@ -588,21 +644,68 @@ impl TerminalSessionBinding {
             if Arc::ptr_eq(&remote.controller, &controller) {
                 return false;
             }
-            remote
-                .controller
-                .unregister_terminal_output(&remote.session_id);
-            register_remote_output(&controller, &remote.session_id, &remote.output_tx);
-            remote.controller = controller.clone();
+            if remote.reconnecting {
+                return false;
+            }
+            remote.reconnecting = true;
             (
-                controller.clone(),
+                remote.controller.clone(),
                 remote.session_id.clone(),
+                remote.output_tx.clone(),
+                remote.config.clone(),
                 inner.last_resize,
             )
         };
-        if let Some((cols, rows)) = last_resize {
-            controller.terminal_resize(&session_id, cols, rows);
-        }
+
+        let binding = self.clone();
+        codux_runtime::async_runtime::spawn_blocking(move || {
+            let next_session_id =
+                restore_remote_session(&controller, &old_session_id, &config, &output_tx);
+            let Ok(session_id) = next_session_id else {
+                binding.finish_remote_rebind(&old_session_id, None, None, None);
+                return;
+            };
+            binding.finish_remote_rebind(
+                &old_session_id,
+                Some(controller.clone()),
+                Some(session_id.clone()),
+                Some(output_tx),
+            );
+            old_controller.unregister_terminal_output(&old_session_id);
+            if old_session_id != session_id {
+                controller.unregister_terminal_output(&old_session_id);
+            }
+            if let Some((cols, rows)) = last_resize {
+                controller.terminal_resize(&session_id, cols, rows);
+            }
+        });
         true
+    }
+
+    fn finish_remote_rebind(
+        &self,
+        expected_session_id: &str,
+        controller: Option<Arc<RemoteController>>,
+        session_id: Option<String>,
+        output_tx: Option<flume::Sender<Vec<u8>>>,
+    ) {
+        let mut inner = self.inner.lock();
+        let Some(remote) = inner.remote.as_mut() else {
+            return;
+        };
+        if remote.session_id != expected_session_id {
+            remote.reconnecting = false;
+            return;
+        }
+        if let (Some(controller), Some(session_id), Some(output_tx)) =
+            (controller, session_id, output_tx)
+        {
+            register_remote_output(&controller, &session_id, &output_tx);
+            remote.controller = controller;
+            remote.session_id = session_id;
+            remote.output_tx = output_tx;
+        }
+        remote.reconnecting = false;
     }
 
     /// Device id of the host this binding's remote session is bound to (via its
