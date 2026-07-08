@@ -16,7 +16,8 @@ function Global:CoduxWriteOsc([string]$Payload) {
 
 function Global:CoduxCommandIsAiTool([string]$CommandLine) {
   if ([string]::IsNullOrWhiteSpace($CommandLine)) { return $false }
-  $first = $CommandLine.Trim().Split(@(' ', "`t"), 2)[0].Trim('"', "'")
+  # .Split(array, 2) breaks on PS 5.1 overload resolution; -split is portable.
+  $first = ($CommandLine.Trim() -split '\s+', 2)[0].Trim('"', "'")
   $leaf = Split-Path -Leaf $first
   $name = [System.IO.Path]::GetFileNameWithoutExtension($leaf).ToLowerInvariant()
   return $global:CoduxAiTools -contains $name
