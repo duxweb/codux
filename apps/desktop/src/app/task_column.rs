@@ -1031,6 +1031,9 @@ fn terminal_compact_row(
                         .as_deref()
                         .is_some_and(|id| app.dismiss_pane_agent_lifecycle_completion(id))
                 {
+                    // Mirror the status tick: the project-rail dot reads the
+                    // same lifecycle map and would otherwise keep stale green.
+                    app.sync_project_lifecycle_state(cx);
                     app.invalidate_task_column(cx);
                 }
                 if app.workspace_view != WorkspaceView::Terminal {
@@ -1197,6 +1200,7 @@ fn worktree_compact_row(
                 if lifecycle == Some(AgentLifecycleState::Completed)
                     && app.dismiss_worktree_pane_agent_lifecycle_completion(&lifecycle_dismiss_id)
                 {
+                    app.sync_project_lifecycle_state(cx);
                     app.invalidate_task_column(cx);
                 }
                 app.select_worktree(worktree_id.clone(), window, cx)
