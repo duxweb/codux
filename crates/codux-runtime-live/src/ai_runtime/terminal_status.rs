@@ -26,6 +26,9 @@ pub struct TerminalStatusEvent {
 
 pub(crate) const TERMINAL_PROGRESS_OSC_SOURCE: &str = "terminal-progress-osc";
 pub(crate) const RUNTIME_PROBE_STATUS_SOURCE: &str = "runtime-probe";
+// OSC 133 C/D from the staged shell integration; command-level, so the desktop
+// must not stale-GC it against AI turn liveness.
+pub const TERMINAL_COMMAND_OSC_SOURCE: &str = "terminal-command-osc";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ProbePhase {

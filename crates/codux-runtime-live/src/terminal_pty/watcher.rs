@@ -75,6 +75,15 @@ impl AIRuntimeTerminalOutputWatcher {
                         "terminal-notification-osc",
                     );
                 }
+                TerminalOscEvent::Command(state) => self.submit_terminal_status(
+                    match state {
+                        TerminalCommandOscState::Started => TerminalStatusState::Working,
+                        // D clears rather than completing: per-command green dots
+                        // for every `ls` would be pure noise.
+                        TerminalCommandOscState::Finished => TerminalStatusState::Idle,
+                    },
+                    crate::ai_runtime::terminal_status::TERMINAL_COMMAND_OSC_SOURCE,
+                ),
             }
         }
     }

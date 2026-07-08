@@ -50,5 +50,5 @@ pub use snapshot::{
 pub use state::{canonical_tool_name, runtime_state_for_hook_kind, status_for_runtime_state};
 pub use store::{AIRuntimeStateMutation, AIRuntimeStateStore};
 pub use supervisor::{AIRuntimeSupervisor, AIRuntimeSupervisorEvent};
-pub use terminal_status::{TerminalStatusEvent, TerminalStatusState};
+pub use terminal_status::{TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent, TerminalStatusState};
 pub use tool_driver::{AIRuntimeToolDriver, ai_runtime_tool_drivers, is_supported_runtime_tool};

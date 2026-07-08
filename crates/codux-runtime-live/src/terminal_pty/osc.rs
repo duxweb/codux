@@ -2,6 +2,15 @@
 pub(super) enum TerminalOscEvent {
     Progress(TerminalProgressOscState),
     Notification(TerminalNotificationKind),
+    Command(TerminalCommandOscState),
+}
+
+// OSC 133 semantic marks emitted by Codux's staged shell integration:
+// C = command started, D = command finished (A/B prompt marks are ignored).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TerminalCommandOscState {
+    Started,
+    Finished,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +30,9 @@ pub(super) enum TerminalNotificationKind {
 // Notification payloads ("Approval requested: …") can span PTY reads; anything
 // longer than this without a terminator is not one of ours and gets dropped.
 const MAX_UNTERMINATED_OSC: usize = 512;
+
+const TERMINAL_PROGRESS_OSC_PREFIX: &[u8] = b"\x1b]9;";
+const TERMINAL_COMMAND_OSC_PREFIX: &[u8] = b"\x1b]133;";
 
 #[derive(Debug, Default)]
 pub(super) struct TerminalProgressOscParser {
@@ -51,25 +63,35 @@ impl TerminalProgressOscParser {
             let Some(rest) = scan.get(index..) else {
                 break;
             };
-            if b"\x1b]9;".starts_with(rest) {
+            if TERMINAL_PROGRESS_OSC_PREFIX.starts_with(rest)
+                || TERMINAL_COMMAND_OSC_PREFIX.starts_with(rest)
+            {
                 consumed_until = index;
                 break;
             }
-            let Some(body) = rest.strip_prefix(b"\x1b]9;") else {
+            let (prefix_len, is_command) = if rest.starts_with(TERMINAL_PROGRESS_OSC_PREFIX) {
+                (TERMINAL_PROGRESS_OSC_PREFIX.len(), false)
+            } else if rest.starts_with(TERMINAL_COMMAND_OSC_PREFIX) {
+                (TERMINAL_COMMAND_OSC_PREFIX.len(), true)
+            } else {
                 index += 1;
                 consumed_until = index;
                 continue;
             };
-            let Some((payload, terminator_len)) = terminal_osc_payload(body) else {
+            let Some((payload, terminator_len)) = terminal_osc_payload(&rest[prefix_len..]) else {
                 consumed_until = index;
                 break;
             };
-            if let Some(state) = terminal_progress_osc_state(payload) {
+            if is_command {
+                if let Some(state) = terminal_command_osc_state(payload) {
+                    events.push(TerminalOscEvent::Command(state));
+                }
+            } else if let Some(state) = terminal_progress_osc_state(payload) {
                 events.push(TerminalOscEvent::Progress(state));
             } else if let Some(kind) = terminal_notification_kind(payload) {
                 events.push(TerminalOscEvent::Notification(kind));
             }
-            index += b"\x1b]9;".len() + payload.len() + terminator_len;
+            index += prefix_len + payload.len() + terminator_len;
             consumed_until = index;
         }
 
@@ -107,6 +129,18 @@ fn terminal_progress_osc_state(payload: &[u8]) -> Option<TerminalProgressOscStat
         "1" | "3" => Some(TerminalProgressOscState::Working),
         "2" => Some(TerminalProgressOscState::Error),
         "4" => Some(TerminalProgressOscState::Warning),
+        _ => None,
+    }
+}
+
+fn terminal_command_osc_state(payload: &[u8]) -> Option<TerminalCommandOscState> {
+    let kind_end = payload
+        .iter()
+        .position(|byte| *byte == b';')
+        .unwrap_or(payload.len());
+    match &payload[..kind_end] {
+        b"C" => Some(TerminalCommandOscState::Started),
+        b"D" => Some(TerminalCommandOscState::Finished),
         _ => None,
     }
 }

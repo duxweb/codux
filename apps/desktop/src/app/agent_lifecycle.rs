@@ -11,6 +11,7 @@ const STALE_ACTIVE_GRACE: Duration = Duration::from_secs(30);
 pub(in crate::app) struct PaneAgentLifecycle {
     pub state: AgentLifecycleState,
     updated_at: Instant,
+    from_command_osc: bool,
 }
 
 impl PaneAgentLifecycle {
@@ -18,11 +19,13 @@ impl PaneAgentLifecycle {
         Self {
             state: AgentLifecycleState::Idle,
             updated_at: Instant::now(),
+            from_command_osc: false,
         }
     }
 
-    pub(in crate::app) fn apply_status(&mut self, state: AgentLifecycleState) {
+    pub(in crate::app) fn apply_status(&mut self, state: AgentLifecycleState, from_command_osc: bool) {
         self.updated_at = Instant::now();
+        self.from_command_osc = from_command_osc;
         if self.state == state {
             return;
         }
@@ -39,6 +42,11 @@ impl PaneAgentLifecycle {
     }
 
     fn is_stale_active(&self, has_live_turn: bool, now: Instant) -> bool {
+        // Command-level (OSC 133) busy has no AI turn to cross-check; its
+        // lifecycle ends with the shell's D mark or the terminal pruning.
+        if self.from_command_osc {
+            return false;
+        }
         matches!(
             self.state,
             AgentLifecycleState::Working | AgentLifecycleState::Waiting
@@ -117,7 +125,10 @@ impl CoduxApp {
             .entry(terminal_id.clone())
             .or_insert_with(PaneAgentLifecycle::new);
         let previous = entry.state;
-        entry.apply_status(next);
+        entry.apply_status(
+            next,
+            status.source == codux_runtime::ai_runtime::TERMINAL_COMMAND_OSC_SOURCE,
+        );
         let changed = pane_lifecycle_sync_entry_changed(existed_before, previous, entry.state);
         if changed {
             codux_runtime::runtime_trace::runtime_trace(
@@ -362,17 +373,17 @@ mod tests {
     fn pane_lifecycle_applies_status_directly() {
         let mut lifecycle = PaneAgentLifecycle::new();
 
-        lifecycle.apply_status(AgentLifecycleState::Working);
+        lifecycle.apply_status(AgentLifecycleState::Working, false);
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
 
-        lifecycle.apply_status(AgentLifecycleState::Completed);
+        lifecycle.apply_status(AgentLifecycleState::Completed, false);
         assert_eq!(lifecycle.state, AgentLifecycleState::Completed);
     }
 
     #[test]
     fn completed_status_stays_until_dismissed() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed);
+        lifecycle.apply_status(AgentLifecycleState::Completed, false);
 
         assert!(lifecycle.dismiss_completed());
         assert_eq!(lifecycle.state, AgentLifecycleState::Idle);
@@ -381,7 +392,7 @@ mod tests {
     #[test]
     fn dismiss_completed_ignores_non_completed_state() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Working);
+        lifecycle.apply_status(AgentLifecycleState::Working, false);
 
         assert!(!lifecycle.dismiss_completed());
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
@@ -390,8 +401,8 @@ mod tests {
     #[test]
     fn completed_status_is_overwritten_by_following_loading() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed);
-        lifecycle.apply_status(AgentLifecycleState::Working);
+        lifecycle.apply_status(AgentLifecycleState::Completed, false);
+        lifecycle.apply_status(AgentLifecycleState::Working, false);
 
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
     }
@@ -405,7 +416,7 @@ mod tests {
     #[test]
     fn stale_working_is_collected_only_without_live_turn_after_grace() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Working);
+        lifecycle.apply_status(AgentLifecycleState::Working, false);
         let after_grace = lifecycle.updated_at + STALE_ACTIVE_GRACE;
 
         assert!(!lifecycle.is_stale_active(false, lifecycle.updated_at));
@@ -414,14 +425,26 @@ mod tests {
     }
 
     #[test]
+    fn command_osc_working_is_exempt_from_stale_collection() {
+        let mut lifecycle = PaneAgentLifecycle::new();
+        lifecycle.apply_status(AgentLifecycleState::Working, true);
+
+        assert!(!lifecycle.is_stale_active(false, lifecycle.updated_at + STALE_ACTIVE_GRACE));
+
+        // A later AI-sourced event re-enters the normal stale rules.
+        lifecycle.apply_status(AgentLifecycleState::Working, false);
+        assert!(lifecycle.is_stale_active(false, lifecycle.updated_at + STALE_ACTIVE_GRACE));
+    }
+
+    #[test]
     fn stale_collection_skips_terminal_states() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed);
+        lifecycle.apply_status(AgentLifecycleState::Completed, false);
         let after_grace = lifecycle.updated_at + STALE_ACTIVE_GRACE;
 
         assert!(!lifecycle.is_stale_active(false, after_grace));
 
-        lifecycle.apply_status(AgentLifecycleState::Waiting);
+        lifecycle.apply_status(AgentLifecycleState::Waiting, false);
         assert!(lifecycle.is_stale_active(false, lifecycle.updated_at + STALE_ACTIVE_GRACE));
     }
 

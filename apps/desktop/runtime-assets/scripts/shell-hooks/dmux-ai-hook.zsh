@@ -224,6 +224,28 @@ _dmux_ai_zshexit() {
   export DMUX_ACTIVE_AI_RESOLVED_PATH
 }
 
+# OSC 133 semantic marks (C=command start, D=command end, A=prompt); the Codux
+# terminal derives per-command busy state from C/D. Registered before the AI
+# precmd so $? still holds the finished command's exit code.
+typeset -g _dmux_osc133_command_running=""
+
+_dmux_osc133_preexec() {
+  _dmux_osc133_command_running=1
+  printf '\033]133;C\007'
+}
+
+_dmux_osc133_precmd() {
+  local exit_code=$?
+  if [[ -n "${_dmux_osc133_command_running}" ]]; then
+    _dmux_osc133_command_running=""
+    printf '\033]133;D;%d\007' "${exit_code}"
+  fi
+  printf '\033]133;A\007'
+}
+
+add-zsh-hook preexec _dmux_osc133_preexec
+add-zsh-hook precmd _dmux_osc133_precmd
+
 add-zsh-hook preexec _dmux_ai_preexec
 add-zsh-hook precmd _dmux_ai_precmd
 add-zsh-hook zshexit _dmux_ai_zshexit
