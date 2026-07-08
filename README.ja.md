@@ -22,7 +22,6 @@
   <a href="https://codux.dux.cn/zh-cn/getting-started/">ドキュメント</a> &middot;
   <a href="https://github.com/duxweb/codux/releases/latest">ダウンロード</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">モバイル</a> &middot;
-  <a href="#contact--support">連絡 / サポート</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">フィードバック</a>
 </p>
 
@@ -266,20 +265,8 @@ Codux にコード、issue、テスト、フィードバックで貢献してく
 
 <p align="center">
   <a href="https://github.com/duxweb/codux/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=duxweb/codux" alt="Codux contributors">
+    <img src="https://readme-contribs.as93.net/contributors/duxweb/codux" alt="Codux contributors">
   </a>
-</p>
-
-## Contact & Support
-
-作者の WeChat を追加するか、作者にコーヒーをおごることができます。
-
-<p align="center">
-  <img src="docs/images/wechat-author.png" width="220" alt="Author WeChat QR">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/images/wechat-donate.jpg" width="220" alt="WeChat support QR">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/images/alipay-donate.jpg" width="220" alt="Alipay support QR">
 </p>
 
 ## GitHub Star Trend

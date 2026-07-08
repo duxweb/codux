@@ -22,7 +22,6 @@
   <a href="https://codux.dux.cn/zh-cn/getting-started/">文档</a> &middot;
   <a href="https://github.com/duxweb/codux/releases/latest">下载</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">移动端</a> &middot;
-  <a href="#作者微信">作者微信</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">反馈</a>
 </p>
 
@@ -231,14 +230,6 @@ curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/script
 
 所有快捷键都能在 **设置 → 快捷键** 里自定义。
 
-## 作者微信
-
-扫码添加作者微信，备注 Codux，邀你加入 DUXAI 交流社群。
-
-<p align="center">
-  <img src="docs/images/wechat-author.png" width="320" alt="作者微信二维码">
-</p>
-
 ## 系统要求
 
 **桌面端**
@@ -274,20 +265,8 @@ Codux 认可并支持 [LINUX DO](https://linux.do) 社区。
 
 <p align="center">
   <a href="https://github.com/duxweb/codux/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=duxweb/codux" alt="Codux 贡献者">
+    <img src="https://readme-contribs.as93.net/contributors/duxweb/codux" alt="Codux 贡献者">
   </a>
-</p>
-
-## 联系与赞助
-
-欢迎添加作者微信，或请作者喝杯咖啡。
-
-<p align="center">
-  <img src="docs/images/wechat-author.png" width="220" alt="作者微信二维码">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/images/wechat-donate.jpg" width="220" alt="微信赞赏二维码">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/images/alipay-donate.jpg" width="220" alt="支付宝赞赏二维码">
 </p>
 
 ## GitHub Star 趋势
