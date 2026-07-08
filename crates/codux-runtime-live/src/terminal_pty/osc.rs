@@ -47,11 +47,11 @@ const TERMINAL_COMMAND_OSC_PREFIX: &[u8] = b"\x1b]133;";
 const TERMINAL_TITLE_OSC_PREFIX: &[u8] = b"\x1b]0;";
 
 #[derive(Debug, Default)]
-pub(super) struct TerminalProgressOscParser {
+pub(super) struct TerminalOscParser {
     scan_tail: Vec<u8>,
 }
 
-impl TerminalProgressOscParser {
+impl TerminalOscParser {
     pub(super) fn push(&mut self, bytes: &[u8]) -> Vec<TerminalOscEvent> {
         if bytes.is_empty() {
             return Vec::new();

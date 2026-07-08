@@ -28,6 +28,7 @@ pub(crate) const TERMINAL_PROGRESS_OSC_SOURCE: &str = "terminal-progress-osc";
 // Turn state decoded from a CLI's OSC 0 title (codex braille spinner / Action
 // Required prefix); owns the progress axis like real progress OSC does.
 pub(crate) const TERMINAL_TITLE_OSC_SOURCE: &str = "terminal-title-osc";
+pub(crate) const TERMINAL_NOTIFICATION_OSC_SOURCE: &str = "terminal-notification-osc";
 pub(crate) const RUNTIME_PROBE_STATUS_SOURCE: &str = "runtime-probe";
 // OSC 133 C/D from the staged shell integration; command-level, so the desktop
 // must not stale-GC it against AI turn liveness.

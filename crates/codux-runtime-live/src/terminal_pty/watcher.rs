@@ -18,27 +18,33 @@ pub(super) fn attach_ai_runtime_terminal_output_watcher(
 pub(super) struct AIRuntimeTerminalOutputWatcher {
     binding: AIRuntimeTerminalBinding,
     ai_runtime: Arc<AIRuntimeBridge>,
-    parser: TerminalProgressOscParser,
+    parser: TerminalOscParser,
     last_activity_at: f64,
     last_screen_signal_at: f64,
     // Titles repeat every spinner frame; only signal TRANSITIONS become status.
     last_title_signal: Option<TerminalTitleAgentSignal>,
+    last_title_submit_at: f64,
 }
 
 /// Throttle output heartbeats so a chatty turn does not lock the state store on
 /// every byte; one refresh per second is ample against the 90s staleness sweep.
 const OUTPUT_ACTIVITY_THROTTLE_SECONDS: f64 = 1.0;
 const SCREEN_SIGNAL_THROTTLE_SECONDS: f64 = 0.25;
+// Spinner/blink frames keep flowing while a turn is active; re-asserting the
+// deduped state occasionally keeps the desktop's 30s stale GC away without
+// leaning on the runtime probes.
+const TITLE_ACTIVE_KEEPALIVE_SECONDS: f64 = 5.0;
 
 impl AIRuntimeTerminalOutputWatcher {
     pub(super) fn new(binding: AIRuntimeTerminalBinding, ai_runtime: Arc<AIRuntimeBridge>) -> Self {
         Self {
             binding,
             ai_runtime,
-            parser: TerminalProgressOscParser::default(),
+            parser: TerminalOscParser::default(),
             last_activity_at: 0.0,
             last_screen_signal_at: 0.0,
             last_title_signal: None,
+            last_title_submit_at: 0.0,
         }
     }
 
@@ -75,7 +81,7 @@ impl AIRuntimeTerminalOutputWatcher {
                 | TerminalOscEvent::Notification(TerminalNotificationKind::PlanModePrompt) => {
                     self.submit_terminal_status(
                         TerminalStatusState::Waiting,
-                        "terminal-notification-osc",
+                        crate::ai_runtime::terminal_status::TERMINAL_NOTIFICATION_OSC_SOURCE,
                     );
                 }
                 TerminalOscEvent::Command(state) => self.submit_terminal_status(
@@ -97,8 +103,23 @@ impl AIRuntimeTerminalOutputWatcher {
     // status channel. A plain title after a spinner is a finished turn; after
     // an Action Required prefix it is a dismissed prompt, which only clears.
     fn handle_title_signal(&mut self, signal: TerminalTitleAgentSignal) {
+        let now = now_seconds();
         let previous = self.last_title_signal.replace(signal);
         if previous == Some(signal) {
+            let active = matches!(
+                signal,
+                TerminalTitleAgentSignal::Working | TerminalTitleAgentSignal::Waiting
+            );
+            if active && now - self.last_title_submit_at >= TITLE_ACTIVE_KEEPALIVE_SECONDS {
+                self.last_title_submit_at = now;
+                self.submit_terminal_status(
+                    match signal {
+                        TerminalTitleAgentSignal::Working => TerminalStatusState::Working,
+                        _ => TerminalStatusState::Waiting,
+                    },
+                    crate::ai_runtime::terminal_status::TERMINAL_TITLE_OSC_SOURCE,
+                );
+            }
             return;
         }
         let state = match signal {
@@ -110,6 +131,7 @@ impl AIRuntimeTerminalOutputWatcher {
                 _ => return,
             },
         };
+        self.last_title_submit_at = now;
         self.submit_terminal_status(
             state,
             crate::ai_runtime::terminal_status::TERMINAL_TITLE_OSC_SOURCE,

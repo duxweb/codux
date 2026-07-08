@@ -132,7 +132,7 @@ fn utf8_decoder_flushes_incomplete_tail_on_eof() {
 
 #[test]
 fn terminal_progress_osc_parser_detects_split_start_and_completion() {
-    let mut parser = TerminalProgressOscParser::default();
+    let mut parser = TerminalOscParser::default();
 
     assert!(parser.push(b"noise\x1b]9;").is_empty());
     assert_eq!(
@@ -151,7 +151,7 @@ fn terminal_progress_osc_parser_detects_split_start_and_completion() {
 
 #[test]
 fn terminal_progress_osc_parser_ignores_incomplete_sequence() {
-    let mut parser = TerminalProgressOscParser::default();
+    let mut parser = TerminalOscParser::default();
 
     assert!(parser.push(b"\x1b]9;4;0").is_empty());
     assert_eq!(
@@ -164,7 +164,7 @@ fn terminal_progress_osc_parser_ignores_incomplete_sequence() {
 
 #[test]
 fn terminal_progress_osc_parser_accepts_percent_error_and_warning() {
-    let mut parser = TerminalProgressOscParser::default();
+    let mut parser = TerminalOscParser::default();
 
     assert_eq!(
         parser.push(b"\x1b]9;4;1;50\x07\x1b]9;4;2\x07\x1b]9;4;4\x1b\\"),
@@ -178,7 +178,7 @@ fn terminal_progress_osc_parser_accepts_percent_error_and_warning() {
 
 #[test]
 fn terminal_osc_parser_detects_codex_wait_notifications() {
-    let mut parser = TerminalProgressOscParser::default();
+    let mut parser = TerminalOscParser::default();
 
     assert_eq!(
         parser
