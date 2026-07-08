@@ -66,6 +66,17 @@ impl RemoteHostRuntime {
         let mut config =
             remote_terminal_pty_config(&scope, terminal_id, &title, command, cwd, cols, rows);
         apply_terminal_osc_color_env(&mut config, &envelope.payload);
+        // Lazy respawns (subscribe/input envelopes) carry no viewer colors;
+        // fall back to the host theme so ConPTY still answers light correctly.
+        if let Ok(colors) = self.terminal_osc_colors.lock()
+            && let Some((foreground, background)) = colors.as_ref()
+        {
+            let env = config.env.get_or_insert_with(Default::default);
+            env.entry("DMUX_TERMINAL_OSC_FG".to_string())
+                .or_insert_with(|| foreground.clone());
+            env.entry("DMUX_TERMINAL_OSC_BG".to_string())
+                .or_insert_with(|| background.clone());
+        }
         Ok(RemoteTerminalPlan {
             config,
             scope,

@@ -172,11 +172,11 @@ impl ColorPalette {
             < relative_luminance(hsla_to_rgb(self.foreground))
     }
 
-    fn foreground_osc_payload(&self) -> String {
+    pub(crate) fn foreground_osc_payload(&self) -> String {
         osc_color_payload(self.foreground)
     }
 
-    fn background_osc_payload(&self) -> String {
+    pub(crate) fn background_osc_payload(&self) -> String {
         osc_color_payload(self.background)
     }
 

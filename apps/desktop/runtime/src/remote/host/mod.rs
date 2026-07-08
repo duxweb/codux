@@ -167,6 +167,9 @@ pub struct RemoteHostRuntime {
     // devices when the live AI runtime changes (so remote views tick like the
     // desktop's local view) and when a cold-on-request index finishes refreshing.
     pub(crate) ai_stats_watchers: Mutex<HashMap<String, HashMap<String, String>>>,
+    // Host theme's OSC 10/11 payloads; the fallback for remote spawn paths whose
+    // envelope carries no viewer colors (e.g. lazy respawn after a host restart).
+    pub(crate) terminal_osc_colors: Mutex<Option<(String, String)>>,
 }
 
 mod ai_stats;
@@ -292,6 +295,13 @@ impl RemoteHostRuntime {
             send_seq_by_device: Mutex::new(HashMap::new()),
             receive_seq_by_device: Mutex::new(HashMap::new()),
             ai_stats_watchers: Mutex::new(HashMap::new()),
+            terminal_osc_colors: Mutex::new(None),
+        }
+    }
+
+    pub fn set_terminal_osc_colors(&self, foreground: String, background: String) {
+        if let Ok(mut colors) = self.terminal_osc_colors.lock() {
+            *colors = Some((foreground, background));
         }
     }
 

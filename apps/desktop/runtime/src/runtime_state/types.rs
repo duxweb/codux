@@ -97,6 +97,13 @@ impl RuntimeService {
     pub fn ai_runtime_bridge(&self) -> Arc<AIRuntimeBridge> {
         Arc::clone(&self.ai_runtime)
     }
+
+    /// Register the desktop theme's OSC 10/11 payloads as the host-side seed
+    /// fallback for remote terminal spawns that carry no viewer colors.
+    pub fn set_remote_terminal_osc_colors(&self, foreground: String, background: String) {
+        self.remote_host
+            .set_terminal_osc_colors(foreground, background);
+    }
 }
 
 #[derive(Clone, Debug)]
