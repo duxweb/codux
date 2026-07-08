@@ -11,6 +11,12 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         ),
     ),
     (
+        "scripts/shell-hooks/dmux-ai-hook.ps1",
+        include_bytes!(
+            "../../../../apps/desktop/runtime-assets/scripts/shell-hooks/dmux-ai-hook.ps1"
+        ),
+    ),
+    (
         "scripts/shell-hooks/zsh/.zlogin",
         include_bytes!("../../../../apps/desktop/runtime-assets/scripts/shell-hooks/zsh/.zlogin"),
     ),

@@ -788,9 +788,14 @@ fn build_interactive_login_shell_command(shell: &str, command: Option<&str>) -> 
     ) {
         builder.args(["-NoLogo", "-NoProfile", "-NoExit"]);
         builder.args(["-ExecutionPolicy", "Bypass"]);
-        if let Some(command) = command {
-            builder.args(["-Command", command]);
-        }
+        // -NoProfile skips user profiles, so the Codux shell integration
+        // (OSC 133 marks) is dot-sourced explicitly when staged.
+        let hook_prefix = "if ($env:DMUX_PS_HOOK_SCRIPT -and (Test-Path -LiteralPath $env:DMUX_PS_HOOK_SCRIPT)) { . $env:DMUX_PS_HOOK_SCRIPT }; ";
+        let command = match command {
+            Some(command) => format!("{hook_prefix}{command}"),
+            None => hook_prefix.to_string(),
+        };
+        builder.args(["-Command", &command]);
         return builder;
     }
     if let Some(command) = command {

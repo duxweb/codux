@@ -24,6 +24,11 @@ impl AIRuntimeBridge {
             &self.zsh_hook_script(),
             false,
         )?;
+        stage_runtime_asset(
+            "scripts/shell-hooks/dmux-ai-hook.ps1",
+            &self.powershell_hook_script(),
+            false,
+        )?;
         for file_name in [".zshenv", ".zprofile", ".zshrc", ".zlogin"] {
             stage_runtime_asset(
                 &format!("scripts/shell-hooks/zsh/{file_name}"),

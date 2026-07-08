@@ -213,6 +213,13 @@ impl AIRuntimeBridge {
             .join("dmux-ai-hook.zsh")
     }
 
+    pub fn powershell_hook_script(&self) -> PathBuf {
+        self.root_dir
+            .join("scripts")
+            .join("shell-hooks")
+            .join("dmux-ai-hook.ps1")
+    }
+
     pub fn registry(&self) -> Arc<AIRuntimeRegistry> {
         Arc::clone(&self.registry)
     }

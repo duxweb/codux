@@ -477,6 +477,19 @@ pub(super) fn is_zsh_shell(shell: &str) -> bool {
             .is_some_and(|ch| !ch.is_ascii_alphanumeric())
 }
 
+pub(super) fn is_powershell_shell(shell: &str) -> bool {
+    matches!(
+        shell_name(shell).as_deref(),
+        Some("powershell" | "powershell.exe" | "pwsh" | "pwsh.exe")
+    )
+}
+
+pub(super) fn powershell_runtime_hook_ready(runtime_root: &Path) -> bool {
+    runtime_root
+        .join("scripts/shell-hooks/dmux-ai-hook.ps1")
+        .is_file()
+}
+
 pub(super) fn zsh_runtime_hook_ready(runtime_root: &Path) -> bool {
     let hook_dir = runtime_root.join("scripts/shell-hooks/zsh");
     hook_dir.join(".zshenv").is_file()

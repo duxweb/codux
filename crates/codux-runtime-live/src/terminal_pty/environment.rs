@@ -132,6 +132,15 @@ pub fn terminal_environment(
                     .to_string(),
             );
         }
+        if is_powershell_shell(shell) && powershell_runtime_hook_ready(runtime_root) {
+            values.insert(
+                "DMUX_PS_HOOK_SCRIPT".to_string(),
+                runtime_root
+                    .join("scripts/shell-hooks/dmux-ai-hook.ps1")
+                    .display()
+                    .to_string(),
+            );
+        }
     }
     if let Some(support_dir) = config
         .support_dir
