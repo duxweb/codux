@@ -22,7 +22,8 @@ use codux_protocol::{
     REMOTE_PAIRING_REJECTED, REMOTE_PAIRING_REQUEST, REMOTE_PROJECT_LIST, REMOTE_TERMINAL_BUFFER,
     REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED,
     REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_OUTPUT,
-    REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TRANSPORT_IROH, REMOTE_WORKTREE_CREATE,
+    REMOTE_TERMINAL_STATUS, REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TRANSPORT_IROH,
+    REMOTE_WORKTREE_CREATE,
     REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_UPDATED,
     RemoteHostMetrics,
 };
@@ -503,6 +504,22 @@ impl RemoteController {
         let mut payloads = Vec::new();
         events.retain(|(kind, payload)| {
             if kind == REMOTE_AI_STATS {
+                payloads.push(payload.clone());
+                false
+            } else {
+                true
+            }
+        });
+        payloads
+    }
+
+    /// Drain unsolicited `terminal.status` pushes (the host's live agent dots),
+    /// leaving any other queued events in place.
+    pub fn drain_pushed_terminal_status(&self) -> Vec<Value> {
+        let mut events = self.inner.events.lock().unwrap();
+        let mut payloads = Vec::new();
+        events.retain(|(kind, payload)| {
+            if kind == REMOTE_TERMINAL_STATUS {
                 payloads.push(payload.clone());
                 false
             } else {

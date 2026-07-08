@@ -43,6 +43,15 @@ impl RuntimeService {
 
     pub fn drain_ai_runtime_events_and_enqueue_memory(&self) -> AIRuntimeDrainResult {
         let events = self.ai_runtime.drain_supervisor_events();
+        // Mirror terminal status to connected controllers so a viewer of this
+        // host renders the same loading/waiting/completed dots.
+        for event in &events {
+            if let AIRuntimeSupervisorEvent::TerminalStatus { status } = event {
+                if let Ok(payload) = serde_json::to_value(status) {
+                    self.remote_host.broadcast_terminal_status(payload);
+                }
+            }
+        }
         let memory = events
             .iter()
             .filter_map(|event| match event {

@@ -114,6 +114,24 @@ impl CoduxApp {
         changed
     }
 
+    // Status pushed by a viewed remote host; same apply path as local events,
+    // and the shared prune keeps only terminals the current view still shows.
+    pub(in crate::app) fn apply_remote_terminal_status_payloads(
+        &mut self,
+        payloads: &[serde_json::Value],
+    ) -> bool {
+        let mut changed = false;
+        for payload in payloads {
+            let Ok(status) = serde_json::from_value::<TerminalStatusEvent>(payload.clone()) else {
+                continue;
+            };
+            if self.apply_terminal_status_event(&status) {
+                changed = true;
+            }
+        }
+        changed
+    }
+
     fn apply_terminal_status_event(&mut self, status: &TerminalStatusEvent) -> bool {
         let Some(next) = agent_lifecycle_state_for_terminal_status(status.state) else {
             return self.clear_pane_agent_lifecycle(&status.terminal_id);

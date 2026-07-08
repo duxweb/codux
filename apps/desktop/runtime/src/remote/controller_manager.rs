@@ -417,6 +417,21 @@ impl RemoteControllerManager {
     /// indicator). Instead we hand off to a background connect/reconnect loop and
     /// report unavailable now; the desktop's link-state poll refreshes the
     /// project once the loop establishes the link.
+    /// Collect `terminal.status` pushes from every live controller link
+    /// without dialing anything.
+    pub fn drain_pushed_terminal_status(&self) -> Vec<serde_json::Value> {
+        let controllers: Vec<Arc<RemoteController>> = self
+            .shared
+            .connections
+            .lock()
+            .map(|connections| connections.values().cloned().collect())
+            .unwrap_or_default();
+        controllers
+            .iter()
+            .flat_map(|controller| controller.drain_pushed_terminal_status())
+            .collect()
+    }
+
     pub fn controller_for(&self, device_id: &str) -> Result<Arc<RemoteController>, String> {
         if let Ok(connections) = self.shared.connections.lock() {
             if let Some(controller) = connections.get(device_id).cloned() {

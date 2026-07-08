@@ -1233,7 +1233,9 @@ impl CoduxApp {
         let drained = self
             .runtime_service
             .drain_ai_runtime_events_and_enqueue_memory();
-        let terminal_status_changed = self.apply_terminal_status_events(&drained.events);
+        let remote_terminal_status = self.runtime_service.drain_remote_terminal_status();
+        let terminal_status_changed = self.apply_terminal_status_events(&drained.events)
+            | self.apply_remote_terminal_status_payloads(&remote_terminal_status);
         self.dispatch_ai_completion_notifications(&drained.events);
         self.refresh_dock_badge_for_ai_runtime_events(&drained.events, cx);
         self.ai_runtime_state_save_tick = self.ai_runtime_state_save_tick.wrapping_add(1);
@@ -1418,7 +1420,9 @@ impl CoduxApp {
         let drained = self
             .runtime_service
             .drain_ai_runtime_events_and_enqueue_memory();
-        let terminal_status_changed = self.apply_terminal_status_events(&drained.events);
+        let remote_terminal_status = self.runtime_service.drain_remote_terminal_status();
+        let terminal_status_changed = self.apply_terminal_status_events(&drained.events)
+            | self.apply_remote_terminal_status_payloads(&remote_terminal_status);
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
         if memory_update_event {

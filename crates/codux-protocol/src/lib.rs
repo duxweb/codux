@@ -51,6 +51,7 @@ pub const REMOTE_WORKTREE_DELETE: &str = "worktree.delete";
 pub const REMOTE_WORKTREE_REMOVE: &str = "worktree.remove";
 pub const REMOTE_WORKTREE_UPDATED: &str = "worktree.updated";
 pub const REMOTE_TERMINAL_LIST: &str = "terminal.list";
+pub const REMOTE_TERMINAL_STATUS: &str = "terminal.status";
 pub const REMOTE_TERMINAL_SUBSCRIBE: &str = "terminal.subscribe";
 pub const REMOTE_TERMINAL_UNSUBSCRIBE: &str = "terminal.unsubscribe";
 pub const REMOTE_TERMINAL_CREATE: &str = "terminal.create";

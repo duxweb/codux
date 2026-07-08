@@ -14,7 +14,8 @@ use super::protocol::{
     REMOTE_RESOURCE_UNSUBSCRIBE, REMOTE_RESOURCE_WORKTREES, REMOTE_SSH_LIST,
     REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE, REMOTE_SSH_UPSERT, REMOTE_TERMINAL_BUFFER_MAX_CHARS,
     REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT_ACK,
-    REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT, REMOTE_TERMINAL_UPLOADED,
+    REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT, REMOTE_TERMINAL_STATUS,
+    REMOTE_TERMINAL_UPLOADED,
     REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG,
     REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE,
     REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_SELECT, REMOTE_WORKTREE_UPDATED,
@@ -387,6 +388,14 @@ impl RemoteHostRuntime {
             None,
             json!({ "op": "remove", "result": Value::Null }),
         );
+    }
+
+    /// Push one live terminal status event (loading/waiting/completed dots) to
+    /// connected controllers. These are transient one-shots — no resource
+    /// versioning; a viewer that missed one self-heals via the next event or
+    /// its own stale sweep.
+    pub fn broadcast_terminal_status(&self, payload: Value) {
+        self.send(REMOTE_TERMINAL_STATUS, None, None, payload);
     }
 
     fn publish_remote_terminal_layout_changed(&self) {

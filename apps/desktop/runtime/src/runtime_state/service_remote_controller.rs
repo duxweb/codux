@@ -16,6 +16,11 @@ impl RuntimeService {
         codux_runtime_live::host_metrics::sample_host_metrics()
     }
 
+    /// Terminal status pushes from viewed remote hosts (their agent dots).
+    pub fn drain_remote_terminal_status(&self) -> Vec<serde_json::Value> {
+        self.remote_controllers.drain_pushed_terminal_status()
+    }
+
     pub fn open_host_browser_url(
         &self,
         device_id: &str,

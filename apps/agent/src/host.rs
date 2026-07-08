@@ -17,7 +17,8 @@ use codux_protocol::{
     REMOTE_PAIRING_REQUEST, REMOTE_PROJECT_ADD, REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE,
     REMOTE_SSH_LIST, REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE, REMOTE_SSH_UPSERT,
     REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED,
-    REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_OUTPUT, REMOTE_TRANSPORT_IROH, REMOTE_TRANSPORT_PING,
+    REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_OUTPUT, REMOTE_TERMINAL_STATUS,
+    REMOTE_TRANSPORT_IROH, REMOTE_TRANSPORT_PING,
     REMOTE_TRANSPORT_PONG, REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE,
     REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_UPDATED,
 };
@@ -834,7 +835,9 @@ async fn connect_serving_host(
             },
         ));
     }
-    let ai_current_sessions = Arc::new(AgentAICurrentSessionProvider { ai_runtime });
+    let ai_current_sessions = Arc::new(AgentAICurrentSessionProvider {
+        ai_runtime: Arc::clone(&ai_runtime),
+    });
     let ai_stats_watchers: AIStatsWatchers = Arc::new(Mutex::new(HashMap::new()));
     let indexer = crate::ai_stats::open_indexer();
     // For a custom relay the iroh relay URL must be set explicitly; for presets
@@ -885,6 +888,7 @@ async fn connect_serving_host(
         ai_current_sessions,
         ai_stats_watchers,
     );
+    spawn_terminal_status_poller(Arc::clone(&slot), ai_runtime);
     Ok((host, slot))
 }
 
@@ -942,6 +946,36 @@ fn spawn_ai_stats_poller(
                         if let Some(transport) = guard.as_ref() {
                             transport.send(bytes, Some(device));
                         }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Forward live terminal status events (loading/waiting/completed dots) to
+/// connected controllers; this is also the headless host's only supervisor
+/// drain, so the event queue stays empty instead of riding its cap.
+fn spawn_terminal_status_poller(slot: TransportSlot, ai_runtime: Arc<AIRuntimeBridge>) {
+    tokio::spawn(async move {
+        use codux_runtime_live::ai_runtime::AIRuntimeSupervisorEvent;
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(1000));
+        loop {
+            ticker.tick().await;
+            for event in ai_runtime.drain_supervisor_events() {
+                let AIRuntimeSupervisorEvent::TerminalStatus { status } = event else {
+                    continue;
+                };
+                let Ok(payload) = serde_json::to_value(&status) else {
+                    continue;
+                };
+                let envelope = json!({ "type": REMOTE_TERMINAL_STATUS, "payload": payload });
+                let Ok(bytes) = serde_json::to_vec(&envelope) else {
+                    continue;
+                };
+                if let Ok(guard) = slot.lock() {
+                    if let Some(transport) = guard.as_ref() {
+                        transport.send(bytes, None);
                     }
                 }
             }
