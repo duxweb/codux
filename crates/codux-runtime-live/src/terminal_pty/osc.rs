@@ -164,15 +164,20 @@ enum OscPrefixKind {
 }
 
 fn terminal_title_agent_signal(payload: &[u8]) -> TerminalTitleAgentSignal {
-    // Braille patterns U+2800–U+28FF encode as E2 A0..A3 xx.
-    if payload.len() >= 3 && payload[0] == 0xE2 && (0xA0..=0xA3).contains(&payload[1]) {
-        return TerminalTitleAgentSignal::Working;
-    }
     // Blink phases toggle "!" and "." but keep the prefix text stable.
     if payload.starts_with(b"[ ! ] Action Required")
         || payload.starts_with(b"[ . ] Action Required")
     {
         return TerminalTitleAgentSignal::Waiting;
+    }
+    // A braille spinner frame (U+2800–U+28FF, encoded E2 A0..A3 xx) anywhere in
+    // the title counts as busy: the spinner item's position is user-configurable
+    // and E2 never appears as a continuation byte, so the pair is unambiguous.
+    if payload
+        .windows(2)
+        .any(|pair| pair[0] == 0xE2 && (0xA0..=0xA3).contains(&pair[1]))
+    {
+        return TerminalTitleAgentSignal::Working;
     }
     TerminalTitleAgentSignal::Plain
 }

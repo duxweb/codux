@@ -323,6 +323,10 @@ fn terminal_title_spinner_drives_turn_level_status() {
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Completed);
     assert_eq!(status.source, "terminal-title-osc");
 
+    // Reordered title items: the spinner counts anywhere, not just leading.
+    send("\x1b]0;Data | ⠼\x07");
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+
     let _ = std::fs::remove_dir_all(dir);
 }
 
