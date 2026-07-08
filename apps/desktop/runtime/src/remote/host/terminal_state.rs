@@ -63,11 +63,28 @@ impl RemoteHostRuntime {
             .get("rows")
             .and_then(Value::as_u64)
             .map(|value| value as u16);
-        let mut config =
-            remote_terminal_pty_config(&scope, terminal_id, &title, command, cwd, cols, rows);
+        let mut config = remote_terminal_pty_config(
+            &scope,
+            terminal_id,
+            &title,
+            command,
+            cwd,
+            cols,
+            rows,
+            self.support_dir.clone(),
+        );
         apply_terminal_osc_color_env(&mut config, &envelope.payload);
-        // Lazy respawns (subscribe/input envelopes) carry no viewer colors;
-        // fall back to the host theme so ConPTY still answers light correctly.
+        self.apply_host_osc_color_fallback(&mut config);
+        Ok(RemoteTerminalPlan {
+            config,
+            scope,
+            title,
+        })
+    }
+
+    // Spawn paths whose envelope carries no viewer colors fall back to the
+    // host theme so ConPTY still answers light correctly.
+    pub(super) fn apply_host_osc_color_fallback(&self, config: &mut TerminalPtyConfig) {
         if let Ok(colors) = self.terminal_osc_colors.lock()
             && let Some((foreground, background)) = colors.as_ref()
         {
@@ -77,11 +94,6 @@ impl RemoteHostRuntime {
             env.entry("DMUX_TERMINAL_OSC_BG".to_string())
                 .or_insert_with(|| background.clone());
         }
-        Ok(RemoteTerminalPlan {
-            config,
-            scope,
-            title,
-        })
     }
 
     pub(super) fn ensure_remote_terminal_started(
@@ -147,8 +159,18 @@ impl RemoteHostRuntime {
             .saved_remote_terminal_id(&scope.layout_key)
             .or_else(|| Some(remote_terminal_id_for_scope(scope)));
         let title = "Terminal".to_string();
-        let config =
-            remote_terminal_pty_config(scope, terminal_id.clone(), &title, None, None, None, None);
+        let mut config = remote_terminal_pty_config(
+            scope,
+            terminal_id.clone(),
+            &title,
+            None,
+            None,
+            None,
+            None,
+            self.support_dir.clone(),
+        );
+        self.apply_host_osc_color_fallback(&mut config);
+        let config = config;
         let runtime = Arc::clone(self);
         let emit = move |event| {
             runtime.handle_terminal_event(event);
@@ -1004,6 +1026,7 @@ pub(super) fn remote_terminal_pty_config(
     cwd: Option<String>,
     cols: Option<u16>,
     rows: Option<u16>,
+    support_dir: PathBuf,
 ) -> TerminalPtyConfig {
     let cwd = cwd
         .filter(|value| !value.trim().is_empty())
@@ -1027,6 +1050,11 @@ pub(super) fn remote_terminal_pty_config(
         session_key,
         session_instance_id,
         title: Some(title.to_string()),
+        // Same env injection as local spawns (wrapper PATH, shell hooks,
+        // ssh/db profiles); without these a remote terminal launches the bare
+        // CLI and none of the wrapper features work.
+        support_dir: Some(support_dir),
+        runtime_root: Some(codux_runtime_live::runtime_paths::runtime_root_dir()),
         ..Default::default()
     }
 }
