@@ -66,7 +66,7 @@ impl AIRuntimeTerminalOutputWatcher {
             match progress {
                 TerminalOscEvent::Progress(state) => self.submit_terminal_status(
                     terminal_status_state_for_progress(state),
-                    "terminal-progress-osc",
+                    crate::ai_runtime::terminal_status::TERMINAL_PROGRESS_OSC_SOURCE,
                 ),
                 TerminalOscEvent::Notification(TerminalNotificationKind::ApprovalRequested)
                 | TerminalOscEvent::Notification(TerminalNotificationKind::PlanModePrompt) => {

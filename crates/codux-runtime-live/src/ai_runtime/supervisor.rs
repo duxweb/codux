@@ -16,7 +16,7 @@ use crate::ai_runtime::{
     state::canonical_tool_name,
     store::{AIRuntimeStateMutation, AIRuntimeStateStore},
     store::{probe_request_for_session, should_poll_runtime_session},
-    terminal_status::TerminalStatusEvent,
+    terminal_status::{ProbeStatusFallback, TerminalStatusEvent},
     tool_driver::{runtime_screen_patterns, screen_starts_idle_tool},
 };
 use serde::Serialize;
@@ -188,6 +188,7 @@ fn supervisor_loop(
     binding_dir: PathBuf,
 ) {
     let mut claude_cache = ClaudeProbeCache::default();
+    let mut probe_fallback = ProbeStatusFallback::default();
     while let Ok(message) = rx.recv() {
         match message {
             AIRuntimeSupervisorMessage::HookFrame(frame) => {
@@ -197,6 +198,7 @@ fn supervisor_loop(
                     &transcript_monitors,
                     &events,
                     &mut claude_cache,
+                    &mut probe_fallback,
                 );
             }
             AIRuntimeSupervisorMessage::DrainEventDir => {
@@ -210,27 +212,53 @@ fn supervisor_loop(
                         &transcript_monitors,
                         &events,
                         &mut claude_cache,
+                        &mut probe_fallback,
                     );
                 }
             }
             AIRuntimeSupervisorMessage::ScanBindings => {
                 let mutation = handle_binding_scan(&state, &binding_scan, &binding_dir);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(
+                    &state,
+                    &transcript_monitors,
+                    &events,
+                    mutation,
+                    &mut probe_fallback,
+                );
             }
             AIRuntimeSupervisorMessage::ScanBindingFile(file_event) => {
                 let mutation = handle_binding_file_event(&state, &binding_scan, file_event);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(
+                    &state,
+                    &transcript_monitors,
+                    &events,
+                    mutation,
+                    &mut probe_fallback,
+                );
             }
             AIRuntimeSupervisorMessage::Poll => {
                 let mutation =
                     poll_runtime_sessions(&state, &registry, "interval", None, &mut claude_cache);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(
+                    &state,
+                    &transcript_monitors,
+                    &events,
+                    mutation,
+                    &mut probe_fallback,
+                );
             }
             AIRuntimeSupervisorMessage::ScreenSignal(terminal_id) => {
                 let mutation = apply_screen_signal_for_terminal(&state, &registry, &terminal_id);
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(
+                    &state,
+                    &transcript_monitors,
+                    &events,
+                    mutation,
+                    &mut probe_fallback,
+                );
             }
             AIRuntimeSupervisorMessage::TerminalStatus(status) => {
+                probe_fallback.note_status_event(&status);
                 push_event(&events, AIRuntimeSupervisorEvent::TerminalStatus { status });
             }
             AIRuntimeSupervisorMessage::TranscriptTail(terminal_ids) => {
@@ -245,7 +273,13 @@ fn supervisor_loop(
                     Some(&terminal_ids),
                     &mut claude_cache,
                 );
-                after_mutation(&state, &transcript_monitors, &events, mutation);
+                after_mutation(
+                    &state,
+                    &transcript_monitors,
+                    &events,
+                    mutation,
+                    &mut probe_fallback,
+                );
             }
         }
     }
@@ -309,6 +343,7 @@ fn handle_hook_frame(
     transcript_monitors: &TranscriptMonitorMap,
     events: &Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
     claude_cache: &mut ClaudeProbeCache,
+    probe_fallback: &mut ProbeStatusFallback,
 ) {
     let Some(payload) = runtime_frame_to_hook(frame) else {
         runtime_log_line(
@@ -351,7 +386,7 @@ fn handle_hook_frame(
             "apply hook result=no-change"
         },
     );
-    after_mutation(state, transcript_monitors, events, mutation);
+    after_mutation(state, transcript_monitors, events, mutation, probe_fallback);
 }
 
 fn after_mutation(
@@ -359,17 +394,17 @@ fn after_mutation(
     transcript_monitors: &TranscriptMonitorMap,
     events: &Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
     mutation: AIRuntimeStateMutation,
+    probe_fallback: &mut ProbeStatusFallback,
 ) {
     // The monitored-session set only shifts when the state changed, so skip the
     // lock + full codex-session clone on the (common) no-op message.
     if mutation.did_change {
         refresh_transcript_monitors(transcript_monitors, &state.transcript_monitored_sessions());
-        push_event(
-            events,
-            AIRuntimeSupervisorEvent::State {
-                snapshot: state.snapshot(),
-            },
-        );
+        let snapshot = state.snapshot();
+        for status in probe_fallback.sync(&snapshot, now_seconds()) {
+            push_event(events, AIRuntimeSupervisorEvent::TerminalStatus { status });
+        }
+        push_event(events, AIRuntimeSupervisorEvent::State { snapshot });
     }
     let completions = if mutation.completions.is_empty() {
         mutation.completion.into_iter().collect::<Vec<_>>()
@@ -737,6 +772,69 @@ mod tests {
             events
                 .iter()
                 .any(|event| matches!(event, AIRuntimeSupervisorEvent::State { .. }))
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn supervisor_synthesizes_probe_status_for_osc_less_terminals() {
+        let supervisor = AIRuntimeSupervisor::new();
+        let registry = AIRuntimeRegistry::shared();
+        let dir = std::env::temp_dir().join(format!(
+            "codux-supervisor-probe-status-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let binding_dir = dir.join("bindings");
+        supervisor
+            .start(Arc::clone(&registry), dir.clone(), binding_dir)
+            .unwrap();
+        // term-osc emitted real progress OSC first, so the probe must stay out
+        // of its Working transitions; term-codex has no OSC source at all.
+        supervisor
+            .submit_terminal_status(TerminalStatusEvent {
+                terminal_id: "term-osc".to_string(),
+                terminal_instance_id: None,
+                state: crate::ai_runtime::TerminalStatusState::Working,
+                updated_at: now_seconds(),
+                source: crate::ai_runtime::terminal_status::TERMINAL_PROGRESS_OSC_SOURCE
+                    .to_string(),
+            })
+            .unwrap();
+        for terminal in ["term-codex", "term-osc"] {
+            supervisor
+                .submit_frame(
+                    format!(
+                        r#"{{"kind":"ai-hook","payload":{{"kind":"promptSubmitted","terminalID":"{terminal}","projectID":"project-1","projectName":"Codux","projectPath":"/tmp/project","sessionTitle":"Task","tool":"codex","updatedAt":10}}}}"#
+                    )
+                    .into_bytes(),
+                )
+                .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        let probe_statuses: Vec<TerminalStatusEvent> = supervisor
+            .drain_events()
+            .into_iter()
+            .filter_map(|event| match event {
+                AIRuntimeSupervisorEvent::TerminalStatus { status }
+                    if status.source
+                        == crate::ai_runtime::terminal_status::RUNTIME_PROBE_STATUS_SOURCE =>
+                {
+                    Some(status)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            probe_statuses
+                .iter()
+                .map(|status| status.terminal_id.as_str())
+                .collect::<Vec<_>>(),
+            ["term-codex"]
+        );
+        assert_eq!(
+            probe_statuses[0].state,
+            crate::ai_runtime::TerminalStatusState::Working
         );
         let _ = std::fs::remove_dir_all(dir);
     }
