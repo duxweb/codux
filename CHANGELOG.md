@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-rc.6] - 2026-07-08
+
+### Changed
+
+- Switched terminal, worktree, and project agent lifecycle indicators to a single OSC-driven status path, with terminal events carrying explicit project and worktree scope for clean aggregation.
+
+### Fixed
+
+- Fixed remote terminal recovery after a host restart. When a Windows or remote host comes back online without the old PTY session, Codux now recreates the stable remote terminal from its saved launch configuration instead of leaving the pane bound to a dead session.
+- Fixed remote worktree and project status indicators so they aggregate from the same terminal status events as the terminal list.
+
 ## [2.0.0-rc.5] - 2026-07-07
 
 ### Added

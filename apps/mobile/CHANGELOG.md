@@ -4,6 +4,16 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.0-rc.6] - 2026-07-08
+
+### Changed
+
+- Aligned the Flutter mobile release with Codux 2.0.0-rc.6. No mobile pairing protocol changes are required for this release candidate.
+
+### Fixed
+
+- Improved compatibility with desktop and agent remote terminal status aggregation after host reconnects and restarts.
+
 ## [2.0.0-rc.5] - 2026-07-07
 
 ### Changed
