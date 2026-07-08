@@ -24,8 +24,20 @@ function Global:CoduxCommandIsAiTool([string]$CommandLine) {
 }
 
 # PSReadLine hands back the accepted line; C marks the command as running.
+# Chain the existing reader: the direct 2-arg ReadLine API is gone in newer
+# PSReadLine (pwsh), and a throwing reader makes the host loop the prompt.
+$global:CoduxPreviousReadLine = $function:PSConsoleHostReadLine
 function Global:PSConsoleHostReadLine {
-  $line = [Microsoft.PowerShell.PSConsoleReadLine]::ReadLine($Host.Runspace, $ExecutionContext)
+  $line = $null
+  try {
+    if ($global:CoduxPreviousReadLine) {
+      $line = & $global:CoduxPreviousReadLine
+    } else {
+      $line = [Microsoft.PowerShell.PSConsoleReadLine]::ReadLine($Host.Runspace, $ExecutionContext)
+    }
+  } catch {
+    $line = [Console]::In.ReadLine()
+  }
   if (-not [string]::IsNullOrWhiteSpace($line)) {
     $global:CoduxOsc133Running = $true
     if (-not (CoduxCommandIsAiTool $line)) {
