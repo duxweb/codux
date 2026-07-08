@@ -248,6 +248,7 @@ pub(in crate::ai_runtime::store) fn apply_hook_unlocked(
             None
         },
         completed_turn_started_at,
+        session_origin: base.and_then(|session| session.session_origin.clone()),
         has_completed_turn,
         was_interrupted,
         transcript_path: event

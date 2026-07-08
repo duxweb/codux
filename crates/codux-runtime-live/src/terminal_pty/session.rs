@@ -116,10 +116,16 @@ impl TerminalPtySession {
             .filter(|value| !value.trim().is_empty())
             .or_else(|| context.map(|context| context.project_id.clone()))
             .unwrap_or_else(|| project_name.clone());
+        let root_project_id = config
+            .root_project_id
+            .clone()
+            .or_else(|| context.map(|context| context.root_project_id.clone()))
+            .filter(|value| !value.trim().is_empty());
         let worktree_id = config
             .worktree_id
             .clone()
             .filter(|value| !value.trim().is_empty());
+        let binding_worktree_id = worktree_id.clone();
         let slot_id = config
             .slot_id
             .clone()
@@ -175,6 +181,8 @@ impl TerminalPtySession {
         }));
         let ai_runtime_binding = AIRuntimeTerminalBinding {
             terminal_id: id.clone(),
+            root_project_id,
+            worktree_id: binding_worktree_id,
             project_id,
             slot_id,
             title,

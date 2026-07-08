@@ -345,7 +345,9 @@ fn terminal_manager_registers_ai_runtime_terminal_lifecycle() {
     let terminal_id = format!("test-ai-terminal-{}", Uuid::new_v4());
     let config = TerminalPtyConfig {
         terminal_id: Some(terminal_id.clone()),
-        project_id: Some("project-1".to_string()),
+        root_project_id: Some("project-1".to_string()),
+        project_id: Some("worktree-1".to_string()),
+        worktree_id: Some("worktree-1".to_string()),
         slot_id: Some("slot-1".to_string()),
         session_key: Some("session-key-1".to_string()),
         title: Some("Codex".to_string()),
@@ -365,7 +367,7 @@ fn terminal_manager_registers_ai_runtime_terminal_lifecycle() {
     let terminals = bridge.registry().snapshot();
     assert_eq!(terminals.len(), 1);
     assert_eq!(terminals[0].terminal_id, terminal_id);
-    assert_eq!(terminals[0].project_id, "project-1");
+    assert_eq!(terminals[0].project_id, "worktree-1");
     assert_eq!(terminals[0].slot_id, "slot-1");
     assert_eq!(terminals[0].tool.as_deref(), Some("codex"));
 

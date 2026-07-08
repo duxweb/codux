@@ -17,8 +17,10 @@ fn watcher_fixture(
     bridge.ensure_started().expect("runtime should start");
     let terminal_id = format!("test-{tag}-{}", Uuid::new_v4());
     let binding = AIRuntimeTerminalBinding {
+        root_project_id: Some("project-1".to_string()),
+        worktree_id: Some("worktree-1".to_string()),
         terminal_id: terminal_id.clone(),
-        project_id: "project-1".to_string(),
+        project_id: "worktree-1".to_string(),
         slot_id: "slot-1".to_string(),
         title: "Terminal".to_string(),
         cwd: "/tmp/project".to_string(),
@@ -47,6 +49,8 @@ fn terminal_progress_osc_emits_working_status_without_session_mutation() {
 
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
     assert_eq!(status.source, "terminal-progress-osc");
+    assert_eq!(status.project_id.as_deref(), Some("project-1"));
+    assert_eq!(status.worktree_id.as_deref(), Some("worktree-1"));
     assert!(bridge.runtime_state_snapshot().sessions.is_empty());
 
     let _ = std::fs::remove_dir_all(dir);
@@ -121,7 +125,11 @@ fn terminal_command_osc_drives_working_then_clears() {
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
     assert_eq!(status.source, "terminal-command-osc");
 
-    push_output(&mut watcher, &terminal_id, b"\x1b]133;D;0\x07\x1b]133;A\x07");
+    push_output(
+        &mut watcher,
+        &terminal_id,
+        b"\x1b]133;D;0\x07\x1b]133;A\x07",
+    );
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
     assert_eq!(status.source, "terminal-command-osc");
 
@@ -161,8 +169,7 @@ fn terminal_title_spinner_drives_turn_level_status() {
     push_output(
         &mut watcher,
         &terminal_id,
-        "\x1b]0;[ ! ] Action Required | Data\x07\x1b]0;[ . ] Action Required | Data\x07"
-            .as_bytes(),
+        "\x1b]0;[ ! ] Action Required | Data\x07\x1b]0;[ . ] Action Required | Data\x07".as_bytes(),
     );
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Waiting);
     assert_eq!(status.source, "terminal-title-osc");
@@ -214,6 +221,8 @@ fn terminal_output_refreshes_kiro_screen_signal_without_poll() {
     bridge.ensure_started().expect("runtime should start");
     let terminal_id = format!("test-kiro-terminal-{}", Uuid::new_v4());
     let binding = AIRuntimeTerminalBinding {
+        root_project_id: Some("project-1".to_string()),
+        worktree_id: Some("project-1".to_string()),
         terminal_id: terminal_id.clone(),
         project_id: "project-1".to_string(),
         slot_id: "slot-1".to_string(),

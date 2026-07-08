@@ -561,6 +561,11 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             .get("projectId")
             .and_then(Value::as_str)
             .map(str::to_string);
+        let worktree_id = payload
+            .get("worktreeId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| project_id.clone());
         let mut config = TerminalPtyConfig {
             cwd: payload
                 .get("cwd")
@@ -579,12 +584,9 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                 .get("rows")
                 .and_then(Value::as_u64)
                 .map(|v| v as u16),
-            project_id: project_id.clone(),
-            worktree_id: payload
-                .get("worktreeId")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .or_else(|| project_id.clone()),
+            root_project_id: project_id.clone(),
+            project_id: worktree_id.clone(),
+            worktree_id,
             project_name: payload
                 .get("projectName")
                 .and_then(Value::as_str)

@@ -239,6 +239,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
             true,
         )
     } else if snapshot.session_origin == "restored"
+        || binding_marks_restored_session(&session, &snapshot)
         || first_snapshot_is_prelaunch_history(&session, &snapshot)
     {
         (
@@ -277,6 +278,7 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
         usage_amounts: max_usage_amounts(&session.usage_amounts, &snapshot.usage_amounts),
         baseline_usage_amounts,
         baseline_resolved,
+        session_origin: None,
         updated_at: snapshot_updated_at,
         active_turn_started_at,
         runtime_turn_started_at,
@@ -390,4 +392,19 @@ fn first_snapshot_is_prelaunch_history(
     snapshot_last_activity_at
         .or(snapshot.started_at)
         .is_some_and(|activity_at| activity_at + 1.0 < session_started_at)
+}
+
+fn binding_marks_restored_session(
+    session: &AISessionSnapshot,
+    snapshot: &AIRuntimeContextSnapshot,
+) -> bool {
+    if session.session_origin.as_deref() != Some("restored") {
+        return false;
+    }
+    let Some(session_id) = normalized_string(session.ai_session_id.as_deref()) else {
+        return false;
+    };
+    normalized_string(snapshot.external_session_id.as_deref())
+        .as_deref()
+        .is_some_and(|snapshot_id| snapshot_id == session_id)
 }

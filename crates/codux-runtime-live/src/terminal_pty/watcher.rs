@@ -142,6 +142,12 @@ impl AIRuntimeTerminalOutputWatcher {
         let status = TerminalStatusEvent {
             terminal_id: self.binding.terminal_id.clone(),
             terminal_instance_id: self.binding.terminal_instance_id.clone(),
+            project_id: self
+                .binding
+                .root_project_id
+                .clone()
+                .or_else(|| Some(self.binding.project_id.clone())),
+            worktree_id: self.binding.worktree_id.clone(),
             state,
             updated_at: now_seconds(),
             source: source.to_string(),

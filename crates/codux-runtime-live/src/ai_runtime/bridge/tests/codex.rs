@@ -391,6 +391,7 @@ fn codex_wrapper_writes_resume_session_id_to_runtime_binding() {
         binding["externalSessionId"].as_str(),
         Some("019f0c1b-f835-7c33-a4f4-3e737d2fbf90")
     );
+    assert_eq!(binding["sessionOrigin"].as_str(), Some("restored"));
     assert!(binding["launchStartedAt"].as_f64().is_some());
     fs::remove_dir_all(dir).unwrap();
 }

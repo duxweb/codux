@@ -1043,6 +1043,7 @@ pub(super) fn remote_terminal_pty_config(
         command,
         cols,
         rows,
+        root_project_id: Some(scope.project_id.clone()),
         project_id: Some(scope.worktree_id.clone()),
         worktree_id: Some(scope.worktree_id.clone()),
         project_name: Some(scope.project_name.clone()),

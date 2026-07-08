@@ -104,7 +104,9 @@ impl TerminalOscParser {
                     }
                 }
                 OscPrefixKind::Title => {
-                    events.push(TerminalOscEvent::Title(terminal_title_agent_signal(payload)));
+                    events.push(TerminalOscEvent::Title(terminal_title_agent_signal(
+                        payload,
+                    )));
                 }
                 OscPrefixKind::Progress => {
                     if let Some(state) = terminal_progress_osc_state(payload) {

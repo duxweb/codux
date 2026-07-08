@@ -439,7 +439,7 @@ function Emit-Wrapper-SessionEnd {
   }
 }
 
-function Write-Runtime-Binding([string]$ExternalSessionId, [string]$Model, [string]$TranscriptPath) {
+function Write-Runtime-Binding([string]$ExternalSessionId, [string]$Model, [string]$TranscriptPath, [string]$SessionOrigin) {
   if ([string]::IsNullOrWhiteSpace($env:DMUX_AI_RUNTIME_BINDING_DIR) -or
       [string]::IsNullOrWhiteSpace($env:DMUX_SESSION_ID) -or
       [string]::IsNullOrWhiteSpace($env:DMUX_PROJECT_ID) -or
@@ -462,6 +462,7 @@ function Write-Runtime-Binding([string]$ExternalSessionId, [string]$Model, [stri
       externalSessionId = if ([string]::IsNullOrWhiteSpace($ExternalSessionId)) { $null } else { $ExternalSessionId }
       transcriptPath = if ([string]::IsNullOrWhiteSpace($TranscriptPath)) { $null } else { $TranscriptPath }
       model = if ([string]::IsNullOrWhiteSpace($Model)) { $null } else { $Model }
+      sessionOrigin = if ([string]::IsNullOrWhiteSpace($SessionOrigin)) { $null } else { $SessionOrigin }
       updatedAt = ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0)
     }
     $path = Join-Path $env:DMUX_AI_RUNTIME_BINDING_DIR "$($env:DMUX_SESSION_ID)-$Tool.json"
@@ -707,6 +708,7 @@ if ($memoryInjectionStrategy -eq "claudeAppendSystemPrompt" -and
 $launchModel = if ($Tool -eq "kiro-cli") { $configuredModel } else { Extract-Model $launchArgs }
 $resumeTarget = Extract-Resume-Target $launchArgs
 $bindingExternalSessionId = if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) { $resumeTarget } else { $env:DMUX_EXTERNAL_SESSION_ID }
+$bindingSessionOrigin = if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) { "restored" } else { "" }
 $env:DMUX_ACTIVE_AI_MODEL = $launchModel
 if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) {
   $env:DMUX_EXTERNAL_SESSION_ID = $resumeTarget
@@ -725,7 +727,7 @@ if ($Tool -eq "opencode" -or $Tool -eq "mimo") {
 Apply-Managed-Lifecycle-Env $Tool
 
 $launchDir = ""
-Write-Runtime-Binding $bindingExternalSessionId $launchModel ""
+Write-Runtime-Binding $bindingExternalSessionId $launchModel "" $bindingSessionOrigin
 Invoke-Real-Binary $realBin $launchArgs $runtimePath $launchDir
 $exitCode = if ($null -eq $script:DMUX_WRAPPER_EXIT_CODE) { 0 } else { $script:DMUX_WRAPPER_EXIT_CODE }
 Emit-Wrapper-SessionEnd

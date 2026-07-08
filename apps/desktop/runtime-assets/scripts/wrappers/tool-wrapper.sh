@@ -716,6 +716,7 @@ write_runtime_binding() {
   local external_session_id="${1:-}"
   local model_value="${2:-}"
   local transcript_path="${3:-}"
+  local session_origin="${4:-}"
   local binding_id="${DMUX_SESSION_INSTANCE_ID:-${DMUX_SESSION_ID}}-${tool_name}"
   local path="${DMUX_AI_RUNTIME_BINDING_DIR}/${DMUX_SESSION_ID}-${tool_name}.json"
   local tmp="${path}.tmp"
@@ -752,9 +753,19 @@ write_runtime_binding() {
     else
       print -rn -- "\"model\":null,"
     fi
+    if [[ -n "${session_origin}" ]]; then
+      print -rn -- "\"sessionOrigin\":\"$(json_escape "${session_origin}")\","
+    else
+      print -rn -- "\"sessionOrigin\":null,"
+    fi
     print -rn -- "\"updatedAt\":${timestamp}"
     print -r -- '}'
   } >| "${tmp}" && /bin/mv -f -- "${tmp}" "${path}" || /bin/rm -f -- "${tmp}" 2>/dev/null || true
+}
+
+runtime_session_origin_for_resume() {
+  [[ -n "${1:-}" ]] || return 0
+  print -r -- "restored"
 }
 
 apply_managed_lifecycle_env() {
@@ -814,13 +825,13 @@ if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" || "$tool_name" 
 
     if [[ "$skip_session_id" == true ]]; then
       resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-      write_runtime_binding "${resume_target}" "${launch_model}" ""
+      write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
       run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$claude_launch_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
       exit $?
     else
       claude_external_session_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
       write_claude_session_map "${claude_external_session_id}"
-      write_runtime_binding "${claude_external_session_id}" "${launch_model}" ""
+      write_runtime_binding "${claude_external_session_id}" "${launch_model}" "" ""
       run_wrapped_ai_command "${claude_external_session_id}" "${launch_model}" "" env PATH="$claude_launch_path" DMUX_EXTERNAL_SESSION_ID="${claude_external_session_id}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --session-id "${claude_external_session_id}" "${launch_args[@]}"
       exit $?
     fi
@@ -851,7 +862,7 @@ if [[ "$tool_name" == "codex" ]]; then
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
     resume_target=""
     resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-    write_runtime_binding "${resume_target}" "${launch_model}" ""
+    write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
     run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" --enable hooks "${launch_args[@]}"
     exit $?
   fi
@@ -871,7 +882,7 @@ if [[ "$tool_name" == "agy" ]]; then
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-  write_runtime_binding "${resume_target}" "${launch_model}" ""
+  write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
   run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
@@ -883,7 +894,7 @@ if [[ "$tool_name" == "kimi" || "$tool_name" == "kimi-code" ]]; then
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-  write_runtime_binding "${resume_target}" "${launch_model}" ""
+  write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
   run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
@@ -893,7 +904,7 @@ if [[ "$tool_name" == "kiro-cli" ]]; then
   launch_model="$(configured_tool_model || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-  write_runtime_binding "${resume_target}" "${launch_model}" ""
+  write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
   run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
@@ -910,7 +921,7 @@ if [[ "$tool_name" == "opencode" || "$tool_name" == "mimo" ]]; then
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   opencode_config_dir="${wrapper_dir}/opencode-config"
-  write_runtime_binding "${resume_target}" "${launch_model}" ""
+  write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
   if [[ "$tool_name" == "mimo" ]]; then
     run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" XDG_CONFIG_HOME="${opencode_config_dir}/xdg" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" DMUX_ACTIVE_AI_TOOL="${tool_name}" "$real_bin" "${launch_args[@]}"
   else
@@ -930,7 +941,7 @@ if [[ "$tool_name" == "codewhale" ]]; then
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
-  write_runtime_binding "${resume_target}" "${launch_model}" ""
+  write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
   apply_managed_lifecycle_env
   run_wrapped_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit_code=$?

@@ -174,6 +174,7 @@ fn codewhale_wrapper_applies_configured_model_and_resume_session() {
         serde_json::from_slice(&fs::read(binding_dir.join("terminal-1-codewhale.json")).unwrap())
             .unwrap();
     assert_eq!(binding["externalSessionId"].as_str(), Some("session-1"));
+    assert_eq!(binding["sessionOrigin"].as_str(), Some("restored"));
     fs::remove_dir_all(dir).unwrap();
 }
 

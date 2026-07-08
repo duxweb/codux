@@ -167,14 +167,19 @@ impl CoduxApp {
                 }
             }
         }
+        let mut lifecycle_removed = false;
         for terminal_id in removed_terminal_ids {
-            self.remove_registered_terminal_pane(&terminal_id);
+            lifecycle_removed |= self.remove_registered_terminal_pane(&terminal_id);
         }
         if removed_stale {
             let active_id = self.active_terminal_runtime_id();
             if active_id.trim().is_empty() || !layout_ids.contains(&active_id) {
                 self.activate_first_terminal();
             }
+        }
+        if lifecycle_removed {
+            self.sync_project_lifecycle_state(cx);
+            self.invalidate_task_column(cx);
         }
 
         let shown_ids: std::collections::HashSet<String> = self
@@ -818,9 +823,10 @@ impl CoduxApp {
             })
         });
         let kill_result = if still_referenced {
-            Ok(())
+            Ok(None)
         } else {
             self.kill_terminal_session_if_present(&terminal_id)
+                .map(Some)
         };
         let next_active_terminal_id = self.terminals[tab_index]
             .panes
@@ -830,8 +836,15 @@ impl CoduxApp {
         self.select_active_terminal_runtime_id(next_active_terminal_id.as_deref());
         self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
-        if let Err(error) = kill_result {
-            self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
+        match kill_result {
+            Ok(Some(cleanup)) if cleanup.lifecycle_removed => {
+                self.sync_project_lifecycle_state(cx);
+                self.invalidate_task_column(cx);
+            }
+            Ok(_) => {}
+            Err(error) => {
+                self.status_message = format!("terminal split closed; PTY cleanup failed: {error}");
+            }
         }
         self.invalidate_terminal_workspace(cx);
     }
@@ -870,12 +883,21 @@ impl CoduxApp {
         self.refresh_terminal_slot_snapshots();
         self.focus_active_terminal(window, cx);
         self.sync_terminal_state_after_layout_change(cx);
-        if let Err(error) = kill_result {
-            self.status_message = format!("terminal reset; PTY cleanup failed: {error}");
-        } else if let Err(error) = mount_result {
-            self.status_message = format!("terminal reset; mount failed: {error}");
-        } else {
-            self.status_message = "terminal reset".to_string();
+        match kill_result {
+            Ok(cleanup) => {
+                if cleanup.lifecycle_removed {
+                    self.sync_project_lifecycle_state(cx);
+                    self.invalidate_task_column(cx);
+                }
+                if let Err(error) = mount_result {
+                    self.status_message = format!("terminal reset; mount failed: {error}");
+                } else {
+                    self.status_message = "terminal reset".to_string();
+                }
+            }
+            Err(error) => {
+                self.status_message = format!("terminal reset; PTY cleanup failed: {error}");
+            }
         }
         self.invalidate_terminal_workspace(cx);
     }

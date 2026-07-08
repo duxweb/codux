@@ -1,6 +1,10 @@
 use super::terminal_layout::normalized_terminal_osc_title;
 use super::*;
 
+pub(in crate::app) struct TerminalCleanupResult {
+    pub(in crate::app) lifecycle_removed: bool,
+}
+
 impl CoduxApp {
     pub(in crate::app) fn ensure_active_terminal_mounted(
         &mut self,
@@ -161,7 +165,7 @@ impl CoduxApp {
     pub(in crate::app) fn kill_terminal_session_if_present(
         &mut self,
         terminal_id: &str,
-    ) -> Result<(), String> {
+    ) -> Result<TerminalCleanupResult, String> {
         // A remote terminal lives on the host; the local manager doesn't own it,
         // so the kill below won't reap it. Close the host PTY here on a
         // user-initiated close — otherwise persistent remote terminals accumulate
@@ -170,25 +174,22 @@ impl CoduxApp {
         if let Some(pane) = self.terminal_pane_registry.get(terminal_id) {
             pane.close_remote_session();
         }
-        self.remove_registered_terminal_pane(terminal_id);
+        let lifecycle_removed = self.remove_registered_terminal_pane(terminal_id);
         let exists = self
             .terminal_manager
             .list()
             .iter()
             .any(|session| session.id == terminal_id);
         if exists {
-            let result = self
-                .terminal_manager
+            self.terminal_manager
                 .kill(terminal_id)
-                .map_err(|error| error.to_string());
+                .map_err(|error| error.to_string())?;
             // Tell connected mobile clients the terminal set changed so they
             // reconcile their view instead of showing the closed session's
             // stale content. (A no-op when no device is connected.)
             self.runtime_service.broadcast_remote_terminal_list();
-            result
-        } else {
-            Ok(())
         }
+        Ok(TerminalCleanupResult { lifecycle_removed })
     }
 
     pub(in crate::app) fn register_terminal_panes(&mut self, cx: &mut Context<Self>) {
@@ -227,10 +228,11 @@ impl CoduxApp {
         registrations
     }
 
-    pub(in crate::app) fn remove_registered_terminal_pane(&mut self, terminal_id: &str) {
+    pub(in crate::app) fn remove_registered_terminal_pane(&mut self, terminal_id: &str) -> bool {
         self.terminal_pane_registry.remove(terminal_id);
         self.terminal_osc_titles.remove(terminal_id);
         self.terminal_search_open.remove(terminal_id);
+        self.clear_pane_agent_lifecycle(terminal_id)
     }
 
     pub(in crate::app) fn register_terminal_pane(

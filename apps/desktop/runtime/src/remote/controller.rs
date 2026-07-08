@@ -23,9 +23,8 @@ use codux_protocol::{
     REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSE, REMOTE_TERMINAL_CLOSED,
     REMOTE_TERMINAL_CREATE, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT, REMOTE_TERMINAL_OUTPUT,
     REMOTE_TERMINAL_STATUS, REMOTE_TERMINAL_VIEWPORT_RESIZE, REMOTE_TRANSPORT_IROH,
-    REMOTE_WORKTREE_CREATE,
-    REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_UPDATED,
-    RemoteHostMetrics,
+    REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE,
+    REMOTE_WORKTREE_UPDATED, RemoteHostMetrics,
 };
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportCandidate,
@@ -935,6 +934,7 @@ impl RemoteController {
         cols: Option<u16>,
         rows: Option<u16>,
         project_id: Option<&str>,
+        worktree_id: Option<&str>,
         title: Option<&str>,
         terminal_id: Option<&str>,
         osc_fg: Option<&str>,
@@ -949,6 +949,7 @@ impl RemoteController {
             "cols": cols,
             "rows": rows,
             "projectId": project_id,
+            "worktreeId": worktree_id,
             "title": title,
             "terminalId": terminal_id,
             "oscFg": osc_fg,
@@ -1625,6 +1626,23 @@ mod tests {
     use codux_protocol::RemoteTransportKind;
 
     struct NoopTransport;
+    struct CapturingReplyTransport {
+        inner: Arc<ControllerInner>,
+        sent: Mutex<Vec<Value>>,
+    }
+
+    impl CapturingReplyTransport {
+        fn new(inner: Arc<ControllerInner>) -> Self {
+            Self {
+                inner,
+                sent: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn sent(&self) -> Vec<Value> {
+            self.sent.lock().unwrap().clone()
+        }
+    }
 
     #[async_trait]
     impl RemoteTransport for NoopTransport {
@@ -1634,6 +1652,27 @@ mod tests {
 
         fn send(&self, _data: Vec<u8>, _device_id: Option<&str>) -> bool {
             false
+        }
+
+        async fn shutdown(&self) {}
+    }
+
+    #[async_trait]
+    impl RemoteTransport for CapturingReplyTransport {
+        fn kind(&self) -> RemoteTransportKind {
+            RemoteTransportKind::Iroh
+        }
+
+        fn send(&self, data: Vec<u8>, _device_id: Option<&str>) -> bool {
+            let Ok(envelope) = serde_json::from_slice::<Value>(&data) else {
+                return false;
+            };
+            self.sent.lock().unwrap().push(envelope.clone());
+            if envelope.get("type").and_then(Value::as_str) == Some(REMOTE_TERMINAL_CREATE) {
+                self.inner
+                    .route(br#"{"type":"terminal.created","payload":{"sessionId":"session-1"}}"#);
+            }
+            true
         }
 
         async fn shutdown(&self) {}
@@ -1762,6 +1801,49 @@ mod tests {
         assert_eq!(
             rx.recv_timeout(Duration::from_secs(1)).unwrap(),
             b"history\n"
+        );
+    }
+
+    #[test]
+    fn open_terminal_sends_project_and_worktree_scope() {
+        let inner = Arc::new(ControllerInner::default());
+        let transport = Arc::new(CapturingReplyTransport::new(Arc::clone(&inner)));
+        let controller = RemoteController {
+            transport: transport.clone(),
+            device_id: "device-1".to_string(),
+            inner,
+            next_id: AtomicU64::new(1),
+        };
+
+        let session_id = controller
+            .open_terminal(
+                Some("/repo/worktree"),
+                None,
+                Some(120),
+                Some(32),
+                Some("project-1"),
+                Some("worktree-1"),
+                Some("Shell"),
+                Some("terminal-1"),
+                None,
+                None,
+            )
+            .expect("terminal created");
+
+        assert_eq!(session_id, "session-1");
+        let sent = transport.sent();
+        let payload = sent[0].get("payload").expect("payload");
+        assert_eq!(
+            sent[0].get("type").and_then(Value::as_str),
+            Some(REMOTE_TERMINAL_CREATE)
+        );
+        assert_eq!(
+            payload.get("projectId").and_then(Value::as_str),
+            Some("project-1")
+        );
+        assert_eq!(
+            payload.get("worktreeId").and_then(Value::as_str),
+            Some("worktree-1")
         );
     }
 

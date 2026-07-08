@@ -1,31 +1,30 @@
 use super::ai_runtime_status::AgentLifecycleState;
 use super::{CoduxApp, ProjectInfo, WorktreeInfo};
 use codux_runtime::ai_runtime::{TerminalStatusEvent, TerminalStatusState};
-use std::collections::HashSet;
-use std::time::{Duration, Instant};
-
-// A crashed/killed CLI never sends its closing OSC; give the runtime probes
-// this long to confirm a live turn before garbage-collecting Working/Waiting.
-const STALE_ACTIVE_GRACE: Duration = Duration::from_secs(30);
 
 pub(in crate::app) struct PaneAgentLifecycle {
     pub state: AgentLifecycleState,
-    updated_at: Instant,
-    from_command_osc: bool,
+    project_id: Option<String>,
+    worktree_id: Option<String>,
 }
 
 impl PaneAgentLifecycle {
     pub(in crate::app) fn new() -> Self {
         Self {
             state: AgentLifecycleState::Idle,
-            updated_at: Instant::now(),
-            from_command_osc: false,
+            project_id: None,
+            worktree_id: None,
         }
     }
 
-    pub(in crate::app) fn apply_status(&mut self, state: AgentLifecycleState, from_command_osc: bool) {
-        self.updated_at = Instant::now();
-        self.from_command_osc = from_command_osc;
+    pub(in crate::app) fn apply_status(
+        &mut self,
+        state: AgentLifecycleState,
+        project_id: Option<String>,
+        worktree_id: Option<String>,
+    ) {
+        self.project_id = project_id;
+        self.worktree_id = worktree_id;
         if self.state == state {
             return;
         }
@@ -37,25 +36,11 @@ impl PaneAgentLifecycle {
             return false;
         }
         self.state = AgentLifecycleState::Idle;
-        self.updated_at = Instant::now();
         true
-    }
-
-    fn is_stale_active(&self, has_live_turn: bool, now: Instant) -> bool {
-        // Command-level (OSC 133) busy has no AI turn to cross-check; its
-        // lifecycle ends with the shell's D mark or the terminal pruning.
-        if self.from_command_osc {
-            return false;
-        }
-        matches!(
-            self.state,
-            AgentLifecycleState::Working | AgentLifecycleState::Waiting
-        ) && !has_live_turn
-            && now.duration_since(self.updated_at) >= STALE_ACTIVE_GRACE
     }
 }
 
-fn pane_lifecycle_sync_entry_changed(
+fn pane_lifecycle_entry_changed(
     existed_before: bool,
     state_before_tick: AgentLifecycleState,
     state_after_tick: AgentLifecycleState,
@@ -67,7 +52,7 @@ fn pane_lifecycle_sync_entry_changed(
     }
 }
 
-fn pane_lifecycle_prune_changed(state: AgentLifecycleState) -> bool {
+fn pane_lifecycle_removal_changed(state: AgentLifecycleState) -> bool {
     state != AgentLifecycleState::Idle
 }
 
@@ -114,8 +99,7 @@ impl CoduxApp {
         changed
     }
 
-    // Status pushed by a viewed remote host; same apply path as local events,
-    // and the shared prune keeps only terminals the current view still shows.
+    // Status pushed by a viewed remote host; same apply path as local events.
     pub(in crate::app) fn apply_remote_terminal_status_payloads(
         &mut self,
         payloads: &[serde_json::Value],
@@ -145,25 +129,31 @@ impl CoduxApp {
         let previous = entry.state;
         entry.apply_status(
             next,
-            status.source == codux_runtime::ai_runtime::TERMINAL_COMMAND_OSC_SOURCE,
+            normalized_status_id(status.project_id.as_deref()),
+            normalized_status_id(status.worktree_id.as_deref()),
         );
-        let changed = pane_lifecycle_sync_entry_changed(existed_before, previous, entry.state);
+        let changed = pane_lifecycle_entry_changed(existed_before, previous, entry.state);
         if changed {
             codux_runtime::runtime_trace::runtime_trace(
                 "agent-lifecycle",
                 &format!(
-                    "terminal={} {:?}->{:?} status_source={}",
-                    status.terminal_id, previous, entry.state, status.source
+                    "terminal={} {:?}->{:?} status_source={} project={:?} worktree={:?}",
+                    status.terminal_id,
+                    previous,
+                    entry.state,
+                    status.source,
+                    entry.project_id,
+                    entry.worktree_id
                 ),
             );
         }
         changed
     }
 
-    fn clear_pane_agent_lifecycle(&mut self, terminal_id: &str) -> bool {
+    pub(in crate::app) fn clear_pane_agent_lifecycle(&mut self, terminal_id: &str) -> bool {
         self.pane_agent_lifecycle
             .remove(terminal_id)
-            .map(|entry| pane_lifecycle_prune_changed(entry.state))
+            .map(|entry| pane_lifecycle_removal_changed(entry.state))
             .unwrap_or(false)
     }
 
@@ -200,14 +190,24 @@ impl CoduxApp {
         &self,
         worktree: &WorktreeInfo,
     ) -> Option<AgentLifecycleState> {
-        self.aggregate_terminal_lifecycle(self.terminal_ids_for_worktree(worktree))
+        aggregate_agent_lifecycle(
+            self.pane_agent_lifecycle
+                .values()
+                .filter(|lifecycle| lifecycle_belongs_to_worktree(lifecycle, worktree))
+                .map(|lifecycle| lifecycle.state),
+        )
     }
 
     pub(in crate::app) fn project_agent_lifecycle(
         &self,
         project: &ProjectInfo,
     ) -> Option<AgentLifecycleState> {
-        self.aggregate_terminal_lifecycle(self.terminal_ids_for_project(project))
+        aggregate_agent_lifecycle(
+            self.pane_agent_lifecycle
+                .values()
+                .filter(|lifecycle| lifecycle.project_id.as_deref() == Some(project.id.as_str()))
+                .map(|lifecycle| lifecycle.state),
+        )
     }
 
     pub(in crate::app) fn any_pane_agent_working(&self) -> bool {
@@ -231,143 +231,32 @@ impl CoduxApp {
         }
     }
 
-    pub(in crate::app) fn sync_pane_agent_lifecycle(&mut self) -> bool {
-        let mut changed = false;
-        // OSC status is one-shot, so entries must survive layout switches: keep
-        // every live host terminal, not just the visible layout, or background
-        // projects lose their dots the tick after switching away.
-        let mut retained_terminal_ids = self.active_terminal_lifecycle_ids();
-        for session in &self.state.terminal_runtime.sessions {
-            let terminal_id = session.terminal_id.trim();
-            if !terminal_id.is_empty() {
-                retained_terminal_ids.insert(terminal_id.to_string());
-            }
-        }
-        let live_turn_terminal_ids: HashSet<&str> = self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .filter(|session| {
-                matches!(
-                    session.state.as_str(),
-                    "running" | "responding" | "needs-input" | "needsInput"
-                )
-            })
-            .map(|session| session.terminal_id.as_str())
-            .collect();
-        let now = Instant::now();
-        self.pane_agent_lifecycle.retain(|terminal_id, entry| {
-            if !retained_terminal_ids.contains(terminal_id) {
-                if pane_lifecycle_prune_changed(entry.state) {
-                    codux_runtime::runtime_trace::runtime_trace(
-                        "agent-lifecycle",
-                        &format!("terminal={terminal_id} pruned was={:?}", entry.state),
-                    );
-                    changed = true;
-                }
-                return false;
-            }
-            if entry.is_stale_active(live_turn_terminal_ids.contains(terminal_id.as_str()), now) {
-                codux_runtime::runtime_trace::runtime_trace(
-                    "agent-lifecycle",
-                    &format!("terminal={terminal_id} stale {:?} cleared", entry.state),
-                );
-                changed = true;
-                return false;
-            }
-            true
-        });
-        changed
-    }
-
-    fn active_terminal_lifecycle_ids(&self) -> HashSet<String> {
-        let mut ids = HashSet::new();
-        if let Some(tab) = self.main_terminal() {
-            for (index, slot) in tab.panes.iter().enumerate() {
-                if let Some(id) = Self::terminal_slot_terminal_id(tab, index, slot) {
-                    ids.insert(id);
-                }
-            }
-        }
-        for slot in &self.collapsed_terminal_panes {
-            if let Some(id) = slot.terminal_id.as_ref().filter(|id| !id.trim().is_empty()) {
-                ids.insert(id.clone());
-            }
-        }
-        ids
-    }
-
-    fn aggregate_terminal_lifecycle(
-        &self,
-        terminal_ids: impl IntoIterator<Item = String>,
-    ) -> Option<AgentLifecycleState> {
-        aggregate_agent_lifecycle(terminal_ids.into_iter().filter_map(|terminal_id| {
-            self.pane_agent_lifecycle
-                .get(&terminal_id)
-                .map(|lifecycle| lifecycle.state)
-        }))
-    }
-
-    fn terminal_ids_for_project(&self, project: &ProjectInfo) -> Vec<String> {
-        let mut ids = Vec::new();
-        for session in &self.state.terminal_runtime.sessions {
-            if session.project_id == project.id {
-                push_unique_terminal_id(&mut ids, &session.terminal_id);
-            }
-        }
-        for worktree in self
-            .state
-            .worktrees
-            .worktrees
-            .iter()
-            .filter(|worktree| worktree.project_id == project.id)
-        {
-            for terminal_id in self.terminal_ids_for_worktree(worktree) {
-                push_unique_terminal_id(&mut ids, &terminal_id);
-            }
-        }
-        ids
-    }
-
     fn terminal_ids_for_worktree_id(&self, worktree_id: &str) -> Vec<String> {
         self.state
             .worktrees
             .worktrees
             .iter()
             .find(|worktree| worktree.id == worktree_id)
-            .map(|worktree| self.terminal_ids_for_worktree(worktree))
+            .map(|worktree| {
+                self.pane_agent_lifecycle
+                    .iter()
+                    .filter(|(_, lifecycle)| lifecycle_belongs_to_worktree(lifecycle, worktree))
+                    .map(|(terminal_id, _)| terminal_id.clone())
+                    .collect()
+            })
             .unwrap_or_default()
     }
-
-    fn terminal_ids_for_worktree(&self, worktree: &WorktreeInfo) -> Vec<String> {
-        let mut ids = Vec::new();
-        for session in &self.state.terminal_runtime.sessions {
-            if terminal_runtime_session_belongs_to_worktree(session.project_id.as_str(), worktree) {
-                push_unique_terminal_id(&mut ids, &session.terminal_id);
-            }
-        }
-        if super::ai_runtime_status::terminal_layout_owner_id(&self.state).as_deref()
-            == Some(worktree.id.as_str())
-        {
-            for terminal_id in self.active_terminal_lifecycle_ids() {
-                push_unique_terminal_id(&mut ids, &terminal_id);
-            }
-        }
-        ids
-    }
 }
 
-fn terminal_runtime_session_belongs_to_worktree(project_id: &str, worktree: &WorktreeInfo) -> bool {
-    project_id == worktree.id || (worktree.is_default && project_id == worktree.project_id)
+fn lifecycle_belongs_to_worktree(lifecycle: &PaneAgentLifecycle, worktree: &WorktreeInfo) -> bool {
+    lifecycle.worktree_id.as_deref() == Some(worktree.id.as_str())
 }
 
-fn push_unique_terminal_id(ids: &mut Vec<String>, terminal_id: &str) {
-    let terminal_id = terminal_id.trim();
-    if terminal_id.is_empty() || ids.iter().any(|id| id == terminal_id) {
-        return;
-    }
-    ids.push(terminal_id.to_string());
+fn normalized_status_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn agent_lifecycle_state_for_terminal_status(
@@ -391,17 +280,27 @@ mod tests {
     fn pane_lifecycle_applies_status_directly() {
         let mut lifecycle = PaneAgentLifecycle::new();
 
-        lifecycle.apply_status(AgentLifecycleState::Working, false);
+        lifecycle.apply_status(
+            AgentLifecycleState::Working,
+            Some("project-a".to_string()),
+            Some("worktree-a".to_string()),
+        );
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
+        assert_eq!(lifecycle.project_id.as_deref(), Some("project-a"));
+        assert_eq!(lifecycle.worktree_id.as_deref(), Some("worktree-a"));
 
-        lifecycle.apply_status(AgentLifecycleState::Completed, false);
+        lifecycle.apply_status(
+            AgentLifecycleState::Completed,
+            Some("project-a".to_string()),
+            Some("worktree-a".to_string()),
+        );
         assert_eq!(lifecycle.state, AgentLifecycleState::Completed);
     }
 
     #[test]
     fn completed_status_stays_until_dismissed() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed, false);
+        lifecycle.apply_status(AgentLifecycleState::Completed, None, None);
 
         assert!(lifecycle.dismiss_completed());
         assert_eq!(lifecycle.state, AgentLifecycleState::Idle);
@@ -410,7 +309,7 @@ mod tests {
     #[test]
     fn dismiss_completed_ignores_non_completed_state() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Working, false);
+        lifecycle.apply_status(AgentLifecycleState::Working, None, None);
 
         assert!(!lifecycle.dismiss_completed());
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
@@ -419,51 +318,16 @@ mod tests {
     #[test]
     fn completed_status_is_overwritten_by_following_loading() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed, false);
-        lifecycle.apply_status(AgentLifecycleState::Working, false);
+        lifecycle.apply_status(AgentLifecycleState::Completed, None, None);
+        lifecycle.apply_status(AgentLifecycleState::Working, None, None);
 
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
     }
 
     #[test]
-    fn sync_prune_changed_for_non_idle() {
-        assert!(pane_lifecycle_prune_changed(AgentLifecycleState::Working));
-        assert!(!pane_lifecycle_prune_changed(AgentLifecycleState::Idle));
-    }
-
-    #[test]
-    fn stale_working_is_collected_only_without_live_turn_after_grace() {
-        let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Working, false);
-        let after_grace = lifecycle.updated_at + STALE_ACTIVE_GRACE;
-
-        assert!(!lifecycle.is_stale_active(false, lifecycle.updated_at));
-        assert!(!lifecycle.is_stale_active(true, after_grace));
-        assert!(lifecycle.is_stale_active(false, after_grace));
-    }
-
-    #[test]
-    fn command_osc_working_is_exempt_from_stale_collection() {
-        let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Working, true);
-
-        assert!(!lifecycle.is_stale_active(false, lifecycle.updated_at + STALE_ACTIVE_GRACE));
-
-        // A later AI-sourced event re-enters the normal stale rules.
-        lifecycle.apply_status(AgentLifecycleState::Working, false);
-        assert!(lifecycle.is_stale_active(false, lifecycle.updated_at + STALE_ACTIVE_GRACE));
-    }
-
-    #[test]
-    fn stale_collection_skips_terminal_states() {
-        let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed, false);
-        let after_grace = lifecycle.updated_at + STALE_ACTIVE_GRACE;
-
-        assert!(!lifecycle.is_stale_active(false, after_grace));
-
-        lifecycle.apply_status(AgentLifecycleState::Waiting, false);
-        assert!(lifecycle.is_stale_active(false, lifecycle.updated_at + STALE_ACTIVE_GRACE));
+    fn removal_changed_for_non_idle() {
+        assert!(pane_lifecycle_removal_changed(AgentLifecycleState::Working));
+        assert!(!pane_lifecycle_removal_changed(AgentLifecycleState::Idle));
     }
 
     #[test]
@@ -511,27 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn default_worktree_accepts_root_project_terminal_runtime_sessions() {
-        let worktree = WorktreeInfo {
-            id: "project-a".to_string(),
-            project_id: "project-a".to_string(),
-            name: "main".to_string(),
-            branch: "main".to_string(),
-            path: "/tmp/project-a".to_string(),
-            status: "active".to_string(),
-            is_default: true,
-            exists: true,
-            git_summary: Default::default(),
-        };
-
-        assert!(terminal_runtime_session_belongs_to_worktree(
-            "project-a",
-            &worktree
-        ));
-    }
-
-    #[test]
-    fn linked_worktree_accepts_own_terminal_runtime_sessions() {
+    fn worktree_requires_matching_worktree_lifecycle() {
         let worktree = WorktreeInfo {
             id: "worktree-a".to_string(),
             project_id: "project-a".to_string(),
@@ -543,14 +387,94 @@ mod tests {
             exists: true,
             git_summary: Default::default(),
         };
+        let linked_lifecycle = PaneAgentLifecycle {
+            state: AgentLifecycleState::Working,
+            project_id: Some("project-a".to_string()),
+            worktree_id: Some("worktree-a".to_string()),
+        };
+        let other_lifecycle = PaneAgentLifecycle {
+            state: AgentLifecycleState::Working,
+            project_id: Some("project-a".to_string()),
+            worktree_id: Some("project-a".to_string()),
+        };
+        let unscoped_lifecycle = PaneAgentLifecycle {
+            state: AgentLifecycleState::Working,
+            project_id: Some("project-a".to_string()),
+            worktree_id: None,
+        };
 
-        assert!(terminal_runtime_session_belongs_to_worktree(
-            "worktree-a",
+        assert!(lifecycle_belongs_to_worktree(&linked_lifecycle, &worktree));
+        assert!(!lifecycle_belongs_to_worktree(&other_lifecycle, &worktree));
+        assert!(!lifecycle_belongs_to_worktree(
+            &unscoped_lifecycle,
             &worktree
         ));
-        assert!(!terminal_runtime_session_belongs_to_worktree(
-            "project-a",
-            &worktree
-        ));
+    }
+
+    #[test]
+    fn project_lifecycle_aggregates_terminal_entries_from_all_worktrees() {
+        let project_id = "project-a";
+        let entries = [
+            PaneAgentLifecycle {
+                state: AgentLifecycleState::Completed,
+                project_id: Some(project_id.to_string()),
+                worktree_id: Some(project_id.to_string()),
+            },
+            PaneAgentLifecycle {
+                state: AgentLifecycleState::Working,
+                project_id: Some(project_id.to_string()),
+                worktree_id: Some("worktree-a".to_string()),
+            },
+            PaneAgentLifecycle {
+                state: AgentLifecycleState::Waiting,
+                project_id: Some("project-b".to_string()),
+                worktree_id: Some("project-b".to_string()),
+            },
+        ];
+
+        let lifecycle = aggregate_agent_lifecycle(
+            entries
+                .iter()
+                .filter(|entry| entry.project_id.as_deref() == Some(project_id))
+                .map(|entry| entry.state),
+        );
+
+        assert_eq!(lifecycle, Some(AgentLifecycleState::Working));
+    }
+
+    #[test]
+    fn worktree_lifecycle_aggregates_only_its_terminal_entries() {
+        let worktree = WorktreeInfo {
+            id: "worktree-a".to_string(),
+            project_id: "project-a".to_string(),
+            name: "feature".to_string(),
+            branch: "feature".to_string(),
+            path: "/tmp/project-a-feature".to_string(),
+            status: "active".to_string(),
+            is_default: false,
+            exists: true,
+            git_summary: Default::default(),
+        };
+        let entries = [
+            PaneAgentLifecycle {
+                state: AgentLifecycleState::Working,
+                project_id: Some("project-a".to_string()),
+                worktree_id: Some("project-a".to_string()),
+            },
+            PaneAgentLifecycle {
+                state: AgentLifecycleState::Completed,
+                project_id: Some("project-a".to_string()),
+                worktree_id: Some("worktree-a".to_string()),
+            },
+        ];
+
+        let lifecycle = aggregate_agent_lifecycle(
+            entries
+                .iter()
+                .filter(|entry| lifecycle_belongs_to_worktree(entry, &worktree))
+                .map(|entry| entry.state),
+        );
+
+        assert_eq!(lifecycle, Some(AgentLifecycleState::Completed));
     }
 }

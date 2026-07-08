@@ -617,6 +617,7 @@ mod tests {
             active_turn_started_at: None,
             runtime_turn_started_at: None,
             completed_turn_started_at: None,
+            session_origin: None,
             has_completed_turn: false,
             was_interrupted: false,
             transcript_path: Some(format!("/tmp/{tool}-transcript.jsonl")),

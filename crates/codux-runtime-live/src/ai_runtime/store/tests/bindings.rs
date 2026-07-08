@@ -367,3 +367,50 @@ fn probe_backfills_logical_session_identity_on_existing_terminal_binding() {
         0
     );
 }
+
+#[test]
+fn restored_binding_first_probe_becomes_baseline_even_when_probe_origin_is_unknown() {
+    let mut core = AIRuntimeStateCore::default();
+    let mut binding = test_binding("binding-1", "terminal-1", "instance-1", 1000.0);
+    binding.external_session_id = Some("restored-session".to_string());
+    binding.session_origin = Some("restored".to_string());
+    core.sessions
+        .insert("terminal-1".to_string(), binding_terminal_session(&binding));
+
+    assert!(apply_runtime_snapshot_unlocked(
+        &mut core,
+        "terminal-1",
+        AIRuntimeContextSnapshot {
+            tool: "codex".to_string(),
+            external_session_id: Some("restored-session".to_string()),
+            transcript_path: Some("/tmp/restored-codex.jsonl".to_string()),
+            model: Some("gpt-5.5".to_string()),
+            assistant_preview: None,
+            input_tokens: 18_000_000,
+            output_tokens: 5_400_000,
+            cached_input_tokens: 0,
+            total_tokens: 23_400_000,
+            usage_amounts: Vec::new(),
+            baseline_usage_amounts: Vec::new(),
+            updated_at: 1001.0,
+            started_at: Some(1001.0),
+            completed_at: None,
+            response_state: Some("responding".to_string()),
+            was_interrupted: false,
+            has_completed_turn: false,
+            session_origin: "unknown".to_string(),
+            source: "probe".to_string(),
+            plan: None,
+        }
+    ));
+
+    let session = core.sessions.get("terminal-1").unwrap();
+    assert_eq!(session.total_tokens, 23_400_000);
+    assert_eq!(session.baseline_total_tokens, 23_400_000);
+    assert!(session.baseline_resolved);
+    assert_eq!(session.session_origin, None);
+    assert_eq!(
+        summary::project_totals_unlocked(&core, Some("project-1"), now_seconds()).total_tokens,
+        0
+    );
+}

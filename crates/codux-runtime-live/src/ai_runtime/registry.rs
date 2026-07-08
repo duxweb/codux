@@ -23,6 +23,8 @@ pub struct AIRuntimeTerminalState {
 #[derive(Debug, Clone, Default)]
 pub struct AIRuntimeTerminalBinding {
     pub terminal_id: String,
+    pub root_project_id: Option<String>,
+    pub worktree_id: Option<String>,
     pub project_id: String,
     pub slot_id: String,
     pub title: String,
@@ -141,6 +143,8 @@ mod tests {
         let registry = AIRuntimeRegistry::default();
         registry.upsert(AIRuntimeTerminalBinding {
             terminal_id: "term-1".to_string(),
+            root_project_id: Some("project-1".to_string()),
+            worktree_id: Some("project-1".to_string()),
             project_id: "project-1".to_string(),
             slot_id: "slot-1".to_string(),
             title: "Codex".to_string(),
