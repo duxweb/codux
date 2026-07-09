@@ -192,6 +192,14 @@ impl CoduxApp {
         Ok(TerminalCleanupResult { lifecycle_removed })
     }
 
+    pub(in crate::app) fn detach_terminal_session_if_present(
+        &mut self,
+        terminal_id: &str,
+    ) -> TerminalCleanupResult {
+        let lifecycle_removed = self.remove_registered_terminal_pane(terminal_id);
+        TerminalCleanupResult { lifecycle_removed }
+    }
+
     pub(in crate::app) fn register_terminal_panes(&mut self, cx: &mut Context<Self>) {
         let registrations = self.terminal_pane_registrations();
         for (terminal_id, pane) in registrations {

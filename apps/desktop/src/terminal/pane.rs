@@ -4,6 +4,20 @@ pub struct TerminalPane {
     session: TerminalSessionBinding,
 }
 
+#[derive(Clone)]
+pub struct RemoteTerminalCloseTarget {
+    controller: Arc<RemoteController>,
+    session_id: String,
+}
+
+impl RemoteTerminalCloseTarget {
+    pub fn close(self) -> Result<(), String> {
+        self.controller.close_terminal(&self.session_id).map(|_| ())?;
+        self.controller.unregister_terminal_output(&self.session_id);
+        Ok(())
+    }
+}
+
 fn terminal_ui_event_sink(
     session_event_tx: flume::Sender<TerminalUiEvent>,
     session_event_wake_tx: flume::Sender<()>,
@@ -359,6 +373,10 @@ impl TerminalPane {
     /// is kept alive so a switch-back re-attaches it (persistent remote terminals).
     pub fn close_remote_session(&self) -> bool {
         self.session.close_remote()
+    }
+
+    pub fn remote_close_target(&self) -> Option<RemoteTerminalCloseTarget> {
+        self.session.remote_close_target()
     }
 }
 
@@ -729,6 +747,17 @@ impl TerminalSessionBinding {
             .controller
             .unregister_terminal_output(&remote.session_id);
         true
+    }
+
+    fn remote_close_target(&self) -> Option<RemoteTerminalCloseTarget> {
+        self.inner
+            .lock()
+            .remote
+            .as_ref()
+            .map(|remote| RemoteTerminalCloseTarget {
+                controller: remote.controller.clone(),
+                session_id: remote.session_id.clone(),
+            })
     }
 
     fn write(&self, bytes: &[u8]) -> Result<()> {

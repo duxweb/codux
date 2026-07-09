@@ -46,6 +46,7 @@ pub fn create_worktree(
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
+    ensure_managed_worktrees_excluded(&root)?;
     let base = base
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -115,6 +116,32 @@ fn managed_worktree_path(root_path: &str, branch: &str) -> PathBuf {
         .join(".codux")
         .join("worktrees")
         .join(worktree_slug(branch))
+}
+
+pub fn ensure_managed_worktrees_excluded(root_path: &str) -> Result<(), String> {
+    let repository =
+        crate::discover_repository(root_path).map_err(|error| error.message().to_string())?;
+    let exclude_path = repository.path().join("info").join("exclude");
+    let Some(parent) = exclude_path.parent() else {
+        return Ok(());
+    };
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let entry = ".codux/worktrees/";
+    let existing = match fs::read_to_string(&exclude_path) {
+        Ok(existing) => existing,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.to_string()),
+    };
+    if existing.lines().map(str::trim).any(|line| line == entry) {
+        return Ok(());
+    }
+    let mut content = existing;
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(entry);
+    content.push('\n');
+    fs::write(exclude_path, content).map_err(|error| error.to_string())
 }
 
 fn worktree_slug(branch_name: &str) -> String {

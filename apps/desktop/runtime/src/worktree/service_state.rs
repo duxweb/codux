@@ -30,6 +30,12 @@ impl WorktreeService {
         project_id: &str,
         project_path: &str,
     ) -> Result<WorktreeSummary, String> {
+        if let Err(error) = codux_git::worktree::ensure_managed_worktrees_excluded(project_path) {
+            crate::runtime_trace::runtime_trace(
+                "worktree",
+                &format!("failed to update managed worktree exclude: {error}"),
+            );
+        }
         let snapshot = scan_git_worktrees(project_id, project_path)?;
         let mut raw = raw_snapshot(&self.state_file);
         merge_worktree_snapshot(&mut raw, project_id, snapshot)?;

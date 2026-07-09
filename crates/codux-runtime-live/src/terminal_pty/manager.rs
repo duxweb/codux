@@ -339,6 +339,38 @@ impl TerminalManager {
         session.kill()
     }
 
+    pub fn kill_and_wait(&self, session_id: &str, timeout: Duration) -> Result<()> {
+        if !self.kill_and_wait_if_present(session_id, timeout)? {
+            return Err(anyhow!("terminal session not found: {session_id}"));
+        }
+        Ok(())
+    }
+
+    pub fn kill_and_wait_if_present(&self, session_id: &str, timeout: Duration) -> Result<bool> {
+        let Some(session) = self.sessions.lock().get(session_id).cloned() else {
+            return Ok(false);
+        };
+        let kill_error = if session.has_exited() {
+            None
+        } else {
+            session.kill().err()
+        };
+        if session.wait_for_exit(timeout) {
+            self.sessions.lock().remove(session_id);
+            self.remove_ai_runtime_terminal(&session);
+            return Ok(true);
+        }
+        if let Some(error) = kill_error {
+            return Err(error.context(format!(
+                "terminal session did not exit after kill request: {session_id}"
+            )));
+        }
+        Err(anyhow!(
+            "terminal session did not exit within {} ms: {session_id}",
+            timeout.as_millis()
+        ))
+    }
+
     pub fn snapshot(&self, session_id: &str) -> Result<String> {
         Ok(self.session(session_id)?.snapshot())
     }

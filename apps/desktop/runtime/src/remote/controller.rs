@@ -469,7 +469,7 @@ impl RemoteController {
             expect: expect.to_string(),
             tx,
         });
-        let envelope = json!({ "type": kind, "deviceId": self.device_id, "payload": payload });
+        let envelope = self.envelope(kind, payload);
         let bytes = match serde_json::to_vec(&envelope) {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -1025,24 +1025,23 @@ impl RemoteController {
 
     /// Send an envelope without awaiting a reply.
     fn fire(&self, kind: &str, payload: Value) -> bool {
-        let mut envelope = json!({ "type": kind, "deviceId": self.device_id, "payload": payload });
-        // The host reads the session id from the envelope top level (`sessionId`,
-        // see RemoteEnvelope), NOT from the payload. Lift it so session-keyed ops
-        // (terminal.input / terminal.resize) actually target their session instead
-        // of being rejected with "Terminal session is required" — this is what
-        // blocked the shell's reply to its own `\e[6n` cursor query (and typing,
-        // and resize).
-        if let Some(session_id) = envelope
-            .get("payload")
-            .and_then(|payload| payload.get("sessionId"))
-            .cloned()
-        {
-            envelope["sessionId"] = session_id;
-        }
+        let envelope = self.envelope(kind, payload);
         match serde_json::to_vec(&envelope) {
             Ok(bytes) => self.transport.send(bytes, None),
             Err(_) => false,
         }
+    }
+
+    fn envelope(&self, kind: &str, payload: Value) -> Value {
+        let session_id = payload.get("sessionId").cloned();
+        let mut envelope = json!({ "type": kind, "deviceId": self.device_id, "payload": payload });
+        // The host reads sessionId from the envelope top level (`RemoteEnvelope`),
+        // not from payload. Request and fire must stay identical for all
+        // session-keyed terminal operations.
+        if let Some(session_id) = session_id {
+            envelope["sessionId"] = session_id;
+        }
+        envelope
     }
 }
 
@@ -1683,6 +1682,11 @@ mod tests {
                         br#"{"type":"terminal.list","payload":{"terminals":[{"id":"session-1"}]}}"#,
                     );
                 }
+                Some(REMOTE_TERMINAL_CLOSE) => {
+                    self.inner.route(
+                        br#"{"type":"terminal.closed","sessionId":"session-1","payload":{"id":"session-1"}}"#,
+                    );
+                }
                 _ => {}
             }
             true
@@ -1886,6 +1890,39 @@ mod tests {
         assert_eq!(
             sent[0].get("type").and_then(Value::as_str),
             Some(REMOTE_TERMINAL_LIST)
+        );
+    }
+
+    #[test]
+    fn close_terminal_lifts_session_id_to_envelope() {
+        let inner = Arc::new(ControllerInner::default());
+        let transport = Arc::new(CapturingReplyTransport::new(Arc::clone(&inner)));
+        let controller = RemoteController {
+            transport: transport.clone(),
+            device_id: "device-1".to_string(),
+            inner,
+            next_id: AtomicU64::new(1),
+        };
+
+        controller
+            .close_terminal("session-1")
+            .expect("terminal closed");
+
+        let sent = transport.sent();
+        assert_eq!(
+            sent[0].get("type").and_then(Value::as_str),
+            Some(REMOTE_TERMINAL_CLOSE)
+        );
+        assert_eq!(
+            sent[0].get("sessionId").and_then(Value::as_str),
+            Some("session-1")
+        );
+        assert_eq!(
+            sent[0]
+                .get("payload")
+                .and_then(|payload| payload.get("sessionId"))
+                .and_then(Value::as_str),
+            Some("session-1")
         );
     }
 

@@ -10,11 +10,17 @@ pub struct TerminalPtySession {
     pub(super) output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
     pub(super) event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
     pub(super) info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
+    pub(super) exit_signal: Arc<TerminalExitSignal>,
     pub(super) ai_runtime_binding: AIRuntimeTerminalBinding,
     pub(super) pty_control: LocalPtyProcessHandle,
     pub(super) viewport: Arc<parking_lot::Mutex<TerminalViewportLease>>,
     pub(super) remote_screen_scrollback: usize,
     pub(super) remote_screen_current_scrollback: parking_lot::Mutex<usize>,
+}
+
+pub(super) struct TerminalExitSignal {
+    exit_code: StdMutex<Option<Option<i32>>>,
+    ready: Condvar,
 }
 
 #[derive(Clone)]
@@ -169,6 +175,7 @@ impl TerminalPtySession {
             has_buffer: false,
             tool: config.tool.clone(),
         }));
+        let exit_signal = Arc::new(TerminalExitSignal::new());
         let viewport = Arc::new(parking_lot::Mutex::new(TerminalViewportLease {
             state: TerminalViewportState {
                 owner: terminal_viewport_local_owner().to_string(),
@@ -197,6 +204,7 @@ impl TerminalPtySession {
             process.control.clone(),
             info.clone(),
             event_subscribers.clone(),
+            exit_signal.clone(),
         );
 
         let terminal_writer = CaptureWriter::new(stdin_writer.clone(), input_capture.clone());
@@ -221,6 +229,7 @@ impl TerminalPtySession {
                 output_subscribers,
                 event_subscribers,
                 info,
+                exit_signal,
                 ai_runtime_binding,
                 pty_control: process.control,
                 viewport,
@@ -323,6 +332,14 @@ impl TerminalPtySession {
 
     pub fn kill(&self) -> Result<()> {
         self.pty_control.kill().map_err(anyhow::Error::msg)
+    }
+
+    pub fn has_exited(&self) -> bool {
+        self.exit_signal.has_exited()
+    }
+
+    pub fn wait_for_exit(&self, timeout: Duration) -> bool {
+        self.exit_signal.wait(timeout).is_some()
     }
 
     pub fn snapshot(&self) -> String {
@@ -474,6 +491,46 @@ impl TerminalPtySession {
 
     pub fn output_snapshot(&self) -> TerminalOutputSnapshot {
         self.output_capture.lock().snapshot()
+    }
+}
+
+impl TerminalExitSignal {
+    fn new() -> Self {
+        Self {
+            exit_code: StdMutex::new(None),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn mark_exited(&self, exit_code: Option<i32>) {
+        let mut guard = self
+            .exit_code
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard = Some(exit_code);
+        self.ready.notify_all();
+    }
+
+    fn has_exited(&self) -> bool {
+        self.exit_code
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .is_some()
+    }
+
+    fn wait(&self, timeout: Duration) -> Option<Option<i32>> {
+        let guard = self
+            .exit_code
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard.is_some() {
+            return *guard;
+        }
+        let (guard, _) = self
+            .ready
+            .wait_timeout_while(guard, timeout, |exit_code| exit_code.is_none())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard
     }
 }
 
@@ -664,11 +721,13 @@ pub(super) fn spawn_waiter(
     control: LocalPtyProcessHandle,
     info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
+    exit_signal: Arc<TerminalExitSignal>,
 ) {
     std::thread::Builder::new()
         .name(format!("codux-terminal-waiter-{id}"))
         .spawn(move || {
             let exit_code = control.wait_exit_code();
+            exit_signal.mark_exited(exit_code);
             emit_terminal_event(
                 &event_subscribers,
                 TerminalEvent::Exit {

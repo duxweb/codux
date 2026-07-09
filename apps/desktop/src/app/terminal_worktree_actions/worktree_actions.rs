@@ -1,5 +1,33 @@
 use super::*;
 
+const WORKTREE_TERMINAL_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
+
+struct WorktreeTerminalCleanup {
+    terminal_manager: Arc<TerminalManager>,
+    local_terminal_ids: Vec<String>,
+    remote_targets: Vec<crate::terminal::RemoteTerminalCloseTarget>,
+}
+
+impl WorktreeTerminalCleanup {
+    fn close(self) -> Result<bool, String> {
+        for target in self.remote_targets {
+            target.close()?;
+        }
+        let mut closed_local = false;
+        for terminal_id in self.local_terminal_ids {
+            closed_local |= self
+                .terminal_manager
+                .kill_and_wait_if_present(&terminal_id, WORKTREE_TERMINAL_CLOSE_TIMEOUT)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(closed_local)
+    }
+}
+
+struct DetachedWorktreeTerminals {
+    lifecycle_removed: bool,
+}
+
 impl CoduxApp {
     pub(in crate::app) fn open_worktree_creator_window(
         &mut self,
@@ -293,6 +321,7 @@ impl CoduxApp {
 
         let project_id = project.id.clone();
         let project_path = project.path.clone();
+        let cleanup = self.terminal_cleanup_for_worktree(worktree_id.as_str());
         let service = self.runtime_service.clone();
         self.status_message = self.text("worktree.remove.running", "Removing worktree.");
         self.invalidate_worktree_context(cx);
@@ -304,7 +333,29 @@ impl CoduxApp {
                 let project_path = project_path.clone();
                 let worktree_id = worktree_id.clone();
                 move || {
-                    service.remove_worktree(&project_id, &project_path, &worktree_id, remove_branch)
+                    let closed_local_terminal = cleanup.close()?;
+                    if closed_local_terminal {
+                        service.broadcast_remote_terminal_list();
+                    }
+                    let summary = service.remove_worktree(
+                        &project_id,
+                        &project_path,
+                        &worktree_id,
+                        remove_branch,
+                    )?;
+                    let storage_key = worktree_terminal_storage_key(&WorktreeScopeKey {
+                        project_id: project_id.clone(),
+                        worktree_id: worktree_id.clone(),
+                    });
+                    if let Err(error) = service.delete_terminal_layout(&storage_key) {
+                        codux_runtime::runtime_trace::runtime_trace(
+                            "worktree-remove",
+                            &format!(
+                                "delete_terminal_layout_failed key={storage_key} error={error}"
+                            ),
+                        );
+                    }
+                    Ok(summary)
                 }
             })
             .await
@@ -314,12 +365,29 @@ impl CoduxApp {
             let _ = this.update(cx, |app, cx| {
                 match result {
                     Ok(summary) => {
+                        let previous_selected_worktree_id =
+                            app.state.worktrees.selected_worktree_id.clone();
                         let selected_matches =
                             app.state.selected_project.as_ref().is_some_and(|project| {
                                 project.id == project_id && project.path == project_path
                             });
                         if selected_matches {
                             app.state.worktrees = summary;
+                            let detached = app
+                                .detach_managed_terminals_for_worktree(&project_id, &worktree_id);
+                            if detached.lifecycle_removed {
+                                app.sync_project_lifecycle_state(cx);
+                                app.invalidate_task_column(cx);
+                            }
+                            let next_selected_worktree_id =
+                                app.state.worktrees.selected_worktree_id.clone();
+                            if previous_selected_worktree_id.as_deref()
+                                == Some(worktree_id.as_str())
+                                && let Some(next_worktree_id) = next_selected_worktree_id
+                                && next_worktree_id != worktree_id
+                            {
+                                app.load_selected_worktree_context(next_worktree_id, None, cx);
+                            }
                         }
                         app.status_message =
                             app.text("worktree.remove.success", "Removed worktree.");
@@ -334,6 +402,183 @@ impl CoduxApp {
             });
         })
         .detach();
+    }
+
+    fn load_selected_worktree_context(
+        &mut self,
+        worktree_id: String,
+        status_message: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self.state.selected_project.clone() else {
+            return;
+        };
+        self.terminal_layout_loading = true;
+        self.selected_ai_session_id = None;
+        self.state.ai_history = AIHistorySummary {
+            is_loading: true,
+            detail: "loading".to_string(),
+            ..AIHistorySummary::default()
+        };
+        self.state.refresh_ai_history_stats();
+        self.state.ai_session_detail = None;
+        self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
+        let generation = self.project_switch_generation;
+        if let Some(status_message) = status_message {
+            self.status_message = status_message;
+        }
+        let Some(key) = current_worktree_scope_key(&self.state) else {
+            return;
+        };
+        let storage_key = worktree_terminal_storage_key(&key);
+        let terminal_layout = self
+            .runtime_service
+            .reload_terminal_layout(Some(&storage_key));
+        self.runtime_trace(
+            "terminal-layout",
+            &format!(
+                "select_sync_layout key={} bottom_ratio={} top={} legacy_tabs={}",
+                storage_key,
+                terminal_layout.bottom_ratio,
+                terminal_layout.top_panes.len(),
+                terminal_layout.tabs.len()
+            ),
+        );
+        self.state.terminal_layout = terminal_layout;
+        self.state.terminal_runtime = TerminalRuntimeSummary::default();
+        let selected_worktree = self
+            .state
+            .worktrees
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.id == worktree_id)
+            .cloned();
+        self.trace_workspace_state("select_scope", &key.worktree_id, "loading runtime state");
+        self.spawn_worktree_switch_load(
+            project,
+            worktree_id,
+            selected_worktree,
+            key,
+            generation,
+            cx,
+        );
+    }
+
+    fn terminal_cleanup_for_worktree(&self, worktree_id: &str) -> WorktreeTerminalCleanup {
+        let terminal_ids = self.managed_terminal_ids_for_worktree(worktree_id);
+        let local_session_ids = self
+            .terminal_manager
+            .list()
+            .into_iter()
+            .map(|session| session.id)
+            .collect::<HashSet<_>>();
+        let mut local_terminal_ids = Vec::new();
+        let mut remote_targets = Vec::new();
+        for terminal_id in terminal_ids {
+            if local_session_ids.contains(&terminal_id) {
+                local_terminal_ids.push(terminal_id.clone());
+            }
+            if let Some(target) = self.remote_close_target_for_terminal(&terminal_id) {
+                remote_targets.push(target);
+            }
+        }
+        WorktreeTerminalCleanup {
+            terminal_manager: self.terminal_manager.clone(),
+            local_terminal_ids,
+            remote_targets,
+        }
+    }
+
+    fn detach_managed_terminals_for_worktree(
+        &mut self,
+        project_id: &str,
+        worktree_id: &str,
+    ) -> DetachedWorktreeTerminals {
+        let scope_key = WorktreeScopeKey {
+            project_id: project_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+        };
+        let terminal_ids = self.managed_terminal_ids_for_worktree(worktree_id);
+        let mut lifecycle_removed = false;
+        for terminal_id in terminal_ids {
+            let cleanup = self.detach_terminal_session_if_present(&terminal_id);
+            lifecycle_removed |= cleanup.lifecycle_removed;
+            self.terminal_attach_in_flight.remove(&terminal_id);
+        }
+        self.terminals.retain_mut(|tab| {
+            tab.panes.retain(|slot| {
+                terminal_slot_id_for_owner(tab.terminal_id.as_deref(), slot, worktree_id).is_none()
+            });
+            !tab.panes.is_empty()
+        });
+        self.collapsed_terminal_panes.retain(|slot| {
+            slot.terminal_id
+                .as_deref()
+                .is_none_or(|terminal_id| !terminal_id_belongs_to_owner(terminal_id, worktree_id))
+        });
+        self.active_terminal_runtime_ids.remove(&scope_key);
+        self.terminal_layout_cache.remove(&scope_key);
+        self.file_panel_cache.remove(&scope_key);
+        DetachedWorktreeTerminals { lifecycle_removed }
+    }
+
+    fn managed_terminal_ids_for_worktree(&self, worktree_id: &str) -> Vec<String> {
+        let mut terminal_ids = HashSet::new();
+        for tab in &self.terminals {
+            for slot in &tab.panes {
+                if let Some(terminal_id) =
+                    terminal_slot_id_for_owner(tab.terminal_id.as_deref(), slot, worktree_id)
+                {
+                    terminal_ids.insert(terminal_id.to_string());
+                }
+            }
+        }
+        for slot in &self.collapsed_terminal_panes {
+            if let Some(terminal_id) = slot
+                .terminal_id
+                .as_deref()
+                .filter(|terminal_id| terminal_id_belongs_to_owner(terminal_id, worktree_id))
+            {
+                terminal_ids.insert(terminal_id.to_string());
+            }
+        }
+        for terminal_id in self.terminal_pane_registry.keys() {
+            if terminal_id_belongs_to_owner(terminal_id, worktree_id) {
+                terminal_ids.insert(terminal_id.clone());
+            }
+        }
+        terminal_ids.into_iter().collect()
+    }
+
+    fn remote_close_target_for_terminal(
+        &self,
+        terminal_id: &str,
+    ) -> Option<crate::terminal::RemoteTerminalCloseTarget> {
+        self.terminal_pane_registry
+            .get(terminal_id)
+            .and_then(TerminalPane::remote_close_target)
+            .or_else(|| {
+                self.terminals.iter().find_map(|tab| {
+                    let tab_terminal_id = tab.terminal_id.as_deref();
+                    tab.panes.iter().find_map(|slot| {
+                        let slot_terminal_id = slot.terminal_id.as_deref().or(tab_terminal_id)?;
+                        if slot_terminal_id == terminal_id {
+                            slot.pane.as_ref()?.remote_close_target()
+                        } else {
+                            None
+                        }
+                    })
+                })
+            })
+            .or_else(|| {
+                self.collapsed_terminal_panes.iter().find_map(|slot| {
+                    if slot.terminal_id.as_deref() == Some(terminal_id) {
+                        slot.pane.as_ref()?.remote_close_target()
+                    } else {
+                        None
+                    }
+                })
+            })
     }
 
     pub(in crate::app) fn request_remove_worktree_by_id(
@@ -623,11 +868,11 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(project) = self.state.selected_project.clone() else {
+        if self.state.selected_project.is_none() {
             self.status_message = "no selected project for worktree selection".to_string();
             self.invalidate_status_bar(cx);
             return;
-        };
+        }
         if self.state.worktrees.selected_worktree_id.as_deref() == Some(worktree_id.as_str()) {
             return;
         }
@@ -646,52 +891,11 @@ impl CoduxApp {
         self.remember_focused_terminal_for_current_scope(window, cx);
         self.sync_terminal_state_for_project_switch();
         self.state.worktrees.selected_worktree_id = Some(worktree_id.clone());
-        self.terminal_layout_loading = true;
-        self.selected_ai_session_id = None;
-        self.state.ai_history = AIHistorySummary {
-            is_loading: true,
-            detail: "loading".to_string(),
-            ..AIHistorySummary::default()
-        };
-        self.state.refresh_ai_history_stats();
-        self.state.ai_session_detail = None;
-        self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
-        let generation = self.project_switch_generation;
-        self.status_message = format!("selected worktree: {worktree_id}");
-        if let Some(key) = current_worktree_scope_key(&self.state) {
-            let storage_key = super::app_state::worktree_terminal_storage_key(&key);
-            let terminal_layout = self
-                .runtime_service
-                .reload_terminal_layout(Some(&storage_key));
-            self.runtime_trace(
-                "terminal-layout",
-                &format!(
-                    "select_sync_layout key={} bottom_ratio={} top={} legacy_tabs={}",
-                    storage_key,
-                    terminal_layout.bottom_ratio,
-                    terminal_layout.top_panes.len(),
-                    terminal_layout.tabs.len()
-                ),
-            );
-            self.state.terminal_layout = terminal_layout;
-            self.state.terminal_runtime = TerminalRuntimeSummary::default();
-            let selected_worktree = self
-                .state
-                .worktrees
-                .worktrees
-                .iter()
-                .find(|worktree| worktree.id == worktree_id)
-                .cloned();
-            self.trace_workspace_state("select_scope", &key.worktree_id, "loading runtime state");
-            self.spawn_worktree_switch_load(
-                project,
-                worktree_id,
-                selected_worktree,
-                key,
-                generation,
-                cx,
-            );
-        }
+        self.load_selected_worktree_context(
+            worktree_id.clone(),
+            Some(format!("selected worktree: {worktree_id}")),
+            cx,
+        );
         self.invalidate_worktree_context(cx);
     }
 
@@ -837,6 +1041,17 @@ impl CoduxApp {
         );
         self.invalidate_worktree_context(cx);
     }
+}
+
+fn terminal_slot_id_for_owner<'a>(
+    tab_terminal_id: Option<&'a str>,
+    slot: &'a TerminalPaneSlot,
+    owner_id: &str,
+) -> Option<&'a str> {
+    slot.terminal_id
+        .as_deref()
+        .or(tab_terminal_id)
+        .filter(|terminal_id| terminal_id_belongs_to_owner(terminal_id, owner_id))
 }
 
 fn worktree_confirm_display_name(worktree: &WorktreeInfo) -> String {

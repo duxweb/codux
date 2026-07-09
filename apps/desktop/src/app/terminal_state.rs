@@ -852,6 +852,11 @@ fn terminal_id_is_foreign_to_owner(terminal_id: &str, owner_id: &str) -> bool {
         && !terminal_id.starts_with(&format!("gpui-term-{owner_id}-"))
 }
 
+pub(in crate::app) fn terminal_id_belongs_to_owner(terminal_id: &str, owner_id: &str) -> bool {
+    let owner_id = owner_id.trim();
+    !owner_id.is_empty() && terminal_id.starts_with(&format!("gpui-term-{owner_id}-"))
+}
+
 /// Whether `layout` carries any pane terminal id minted for a DIFFERENT
 /// owner than `owner_id` — i.e. this layout doesn't belong to that workspace.
 pub(in crate::app) fn terminal_layout_is_foreign_to_owner(

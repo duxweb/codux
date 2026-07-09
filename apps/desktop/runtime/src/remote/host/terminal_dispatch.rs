@@ -511,17 +511,25 @@ impl RemoteHostRuntime {
         let Some(session_id) = envelope.session_id.as_deref() else {
             return;
         };
-        if !self.remove_remote_terminal_from_layout(session_id) {
-            self.send_terminal_list(envelope.device_id.as_deref());
-            return;
+        match self
+            .terminals
+            .kill_and_wait_if_present(session_id, Duration::from_secs(10))
+        {
+            Ok(_) => {}
+            Err(error) => {
+                crate::runtime_trace::runtime_trace(
+                    "remote",
+                    &format!("terminal close failed session={session_id} error={error}"),
+                );
+                self.send_error(envelope, &error.to_string());
+                self.send_terminal_list(envelope.device_id.as_deref());
+                return;
+            }
         }
+        let layout_removed = self.remove_remote_terminal_from_layout(session_id);
         self.clear_terminal_output_seq(session_id);
-        self.publish_remote_terminal_layout_changed();
-        if let Err(error) = self.terminals.kill(session_id) {
-            crate::runtime_trace::runtime_trace(
-                "remote",
-                &format!("terminal close kill skipped session={session_id} error={error}"),
-            );
+        if layout_removed {
+            self.publish_remote_terminal_layout_changed();
         }
         self.send_terminal_data(
             REMOTE_TERMINAL_CLOSED,

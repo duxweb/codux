@@ -137,6 +137,59 @@ fn terminal_manager_ensures_session_before_ui_attach() {
 
 #[cfg(unix)]
 #[test]
+fn terminal_manager_kill_and_wait_waits_for_exit() {
+    let manager = TerminalManager::new();
+    let terminal_id = format!("test-kill-wait-terminal-{}", Uuid::new_v4());
+    let config = TerminalPtyConfig {
+        terminal_id: Some(terminal_id.clone()),
+        shell: Some("/bin/cat".to_string()),
+        cols: Some(80),
+        rows: Some(24),
+        scrollback_lines: Some(100),
+        ..Default::default()
+    };
+
+    manager
+        .ensure_session_with_context(config, None)
+        .expect("terminal should start");
+    manager
+        .kill_and_wait(&terminal_id, Duration::from_secs(2))
+        .expect("terminal should exit after kill");
+
+    assert!(
+        manager.session(&terminal_id).is_err(),
+        "killed session should be removed from the manager"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn terminal_manager_kill_and_wait_releases_spawn_cwd() {
+    let manager = TerminalManager::new();
+    let terminal_id = format!("test-kill-cwd-terminal-{}", Uuid::new_v4());
+    let cwd = std::env::temp_dir().join(format!("codux-pty-cwd-{}", Uuid::new_v4()));
+    fs::create_dir_all(&cwd).expect("create cwd");
+    let config = TerminalPtyConfig {
+        terminal_id: Some(terminal_id.clone()),
+        cwd: Some(cwd.display().to_string()),
+        cols: Some(80),
+        rows: Some(24),
+        scrollback_lines: Some(100),
+        ..Default::default()
+    };
+
+    manager
+        .ensure_session_with_context(config, None)
+        .expect("terminal should start in cwd");
+    manager
+        .kill_and_wait(&terminal_id, Duration::from_secs(5))
+        .expect("terminal should exit after kill");
+
+    fs::remove_dir_all(&cwd).expect("spawn cwd should be removable after terminal exit");
+}
+
+#[cfg(unix)]
+#[test]
 fn terminal_manager_replaces_same_terminal_id_when_identity_changes() {
     let manager = TerminalManager::new();
     let emit: EventSink = Arc::new(|_| true);

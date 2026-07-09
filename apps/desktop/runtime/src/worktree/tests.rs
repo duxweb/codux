@@ -504,6 +504,66 @@ fn tauri_create_request_uses_requested_branch_and_task_title() {
 }
 
 #[test]
+fn create_worktree_excludes_managed_worktree_directory_from_git_status() {
+    let repo = temp_dir("worktree-create-exclude");
+    create_repo_with_commit(&repo);
+    let support_dir = temp_dir("worktree-create-exclude-support");
+    fs::create_dir_all(&support_dir).unwrap();
+    let service = WorktreeService::new(support_dir.clone());
+
+    service
+        .create_from_request(WorktreeCreateRequest {
+            project_id: "project".to_string(),
+            project_path: repo.to_string_lossy().to_string(),
+            base_branch: None,
+            branch_name: "feature/exclude".to_string(),
+            task_title: None,
+        })
+        .expect("create worktree");
+
+    let exclude = fs::read_to_string(repo.join(".git").join("info").join("exclude"))
+        .expect("read info exclude");
+    assert!(
+        exclude
+            .lines()
+            .any(|line| line.trim() == ".codux/worktrees/")
+    );
+
+    let status = crate::git::GitService::status(repo.to_str().expect("repo"));
+    assert_eq!(status.untracked, 0, "managed worktree must be ignored");
+
+    fs::remove_dir_all(repo).ok();
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn sync_worktrees_excludes_existing_managed_worktree_directory_from_git_status() {
+    let repo = temp_dir("worktree-sync-exclude");
+    create_repo_with_commit(&repo);
+    fs::create_dir_all(repo.join(".codux").join("worktrees").join("existing")).unwrap();
+    fs::write(
+        repo.join(".codux")
+            .join("worktrees")
+            .join("existing")
+            .join("file.txt"),
+        "generated",
+    )
+    .unwrap();
+    let support_dir = temp_dir("worktree-sync-exclude-support");
+    fs::create_dir_all(&support_dir).unwrap();
+
+    WorktreeService::new(support_dir.clone())
+        .sync_from_git("project", repo.to_str().expect("repo"))
+        .expect("sync worktrees");
+
+    let status = crate::git::GitService::status(repo.to_str().expect("repo"));
+    assert_eq!(status.untracked, 0, "managed worktree must be ignored");
+
+    fs::remove_dir_all(repo).ok();
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn generates_stable_worktree_ids() {
     assert_eq!(
         worktree_uuid("project", "/repo/.codux/worktrees/feature-one"),
