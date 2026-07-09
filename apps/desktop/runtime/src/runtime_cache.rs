@@ -5,11 +5,12 @@ const GIT_SUMMARY_NAMESPACE: &str = "git-summary";
 const GIT_REVIEW_NAMESPACE: &str = "git-review";
 
 pub fn cached_git_summary(support_dir: &Path, project_path: &str) -> Option<git::GitSummary> {
-    cache(support_dir)
+    let summary = cache(support_dir)
         .ok()?
         .get_json::<git::GitSummary>(GIT_SUMMARY_NAMESPACE, project_path)
         .ok()
-        .flatten()
+        .flatten()?;
+    summary.is_repository.then_some(summary)
 }
 
 pub fn save_git_summary(support_dir: &Path, project_path: &str, summary: &git::GitSummary) {
