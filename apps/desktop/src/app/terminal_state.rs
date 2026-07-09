@@ -858,10 +858,18 @@ pub(in crate::app) fn terminal_layout_is_foreign_to_owner(
     layout: &TerminalLayoutSummary,
     owner_id: &str,
 ) -> bool {
-    layout
-        .top_panes
-        .iter()
-        .chain(layout.collapsed_panes.iter())
+    terminal_panes_are_foreign_to_owner(
+        layout.top_panes.iter().chain(layout.collapsed_panes.iter()),
+        owner_id,
+    )
+}
+
+pub(in crate::app) fn terminal_panes_are_foreign_to_owner<'a>(
+    panes: impl IntoIterator<Item = &'a TerminalPaneSummary>,
+    owner_id: &str,
+) -> bool {
+    panes
+        .into_iter()
         .map(|pane| pane.terminal_id.as_str())
         .any(|terminal_id| terminal_id_is_foreign_to_owner(terminal_id, owner_id))
 }

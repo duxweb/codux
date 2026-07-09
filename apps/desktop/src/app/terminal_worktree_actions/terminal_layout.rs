@@ -55,6 +55,21 @@ impl CoduxApp {
             );
             return;
         }
+        if let Some(owner_id) = owner_id.as_deref()
+            && terminal_panes_are_foreign_to_owner(
+                layout_snapshot
+                    .top_panes
+                    .iter()
+                    .chain(layout_snapshot.collapsed_panes.iter()),
+                owner_id,
+            )
+        {
+            self.runtime_trace(
+                "terminal-layout",
+                &format!("skip {reason} layout sync because snapshot owner changed"),
+            );
+            return;
+        }
         let layout = TerminalLayoutSummary {
             active_terminal_id: String::new(),
             top_panes: layout_snapshot.top_panes.clone(),

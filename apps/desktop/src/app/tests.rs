@@ -12,7 +12,8 @@ mod tests {
             shortcuts::{normalized_shortcut_text, shortcut_matches},
             terminal_state::{
                 TerminalSplitDirection, normalize_terminal_restore_state,
-                structural_terminal_layout, terminal_pane_terminal_id, terminal_restore_plan,
+                structural_terminal_layout, terminal_pane_terminal_id,
+                terminal_panes_are_foreign_to_owner, terminal_restore_plan,
                 terminal_restore_plan_for_language, terminal_split_tree_insert_pane,
                 terminal_split_tree_insert_pane_root, terminal_split_tree_remove_pane,
                 terminal_split_tree_update_ratios,
@@ -247,6 +248,23 @@ mod tests {
         assert!(layout.tabs.is_empty());
         assert_eq!(layout.top_panes[0].title, "终端 1");
         assert_eq!(layout.active_terminal_id, "");
+    }
+
+    #[test]
+    fn terminal_layout_snapshot_detects_foreign_worktree_owner() {
+        let panes = [
+            TerminalPaneSummary {
+                title: "A".to_string(),
+                terminal_id: "gpui-term-worktree-a-top".to_string(),
+            },
+            TerminalPaneSummary {
+                title: "plain".to_string(),
+                terminal_id: "custom-terminal".to_string(),
+            },
+        ];
+
+        assert!(terminal_panes_are_foreign_to_owner(&panes, "worktree-b"));
+        assert!(!terminal_panes_are_foreign_to_owner(&panes, "worktree-a"));
     }
 
     #[test]

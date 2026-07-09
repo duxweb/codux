@@ -646,6 +646,7 @@ impl CoduxApp {
         self.remember_focused_terminal_for_current_scope(window, cx);
         self.sync_terminal_state_for_project_switch();
         self.state.worktrees.selected_worktree_id = Some(worktree_id.clone());
+        self.terminal_layout_loading = true;
         self.selected_ai_session_id = None;
         self.state.ai_history = AIHistorySummary {
             is_loading: true,
@@ -759,10 +760,14 @@ impl CoduxApp {
                 if let Some(load) = load {
                     app.apply_worktree_switch_load(load, window, cx);
                 } else {
+                    if app.project_switch_generation == generation {
+                        app.terminal_layout_loading = false;
+                    }
                     app.runtime_trace(
                         "workspace-switch",
                         "load_failed_or_cancelled project=unknown worktree=unknown",
                     );
+                    app.invalidate_worktree_context(cx);
                 }
             });
         })
