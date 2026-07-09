@@ -176,6 +176,38 @@ fn default_colors_use_current_palette_values() {
         palette.foreground()
     );
 }
+
+#[test]
+fn dim_light_text_stays_readable_on_light_background() {
+    let renderer = TerminalRenderer::new(
+        default_terminal_font_family().to_string(),
+        px(14.0),
+        DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
+        ColorPalette::builder()
+            .background(0xfa, 0xfb, 0xfc)
+            .foreground(0x2a, 0x31, 0x40)
+            .build(),
+    );
+    let mut cell = test_cell(
+        TerminalScreenColor::Rgb {
+            r: 0xff,
+            g: 0xff,
+            b: 0xff,
+        },
+        TerminalScreenColor::Default,
+        false,
+        false,
+    );
+    cell.dim = true;
+
+    let (foreground, background) = renderer.cell_render_colors(&cell);
+
+    assert!(
+        contrast_ratio(hsla_to_rgb(foreground), hsla_to_rgb(background)) >= 3.0,
+        "dim truecolor text should remain readable on light terminal themes"
+    );
+}
+
 #[test]
 fn inverse_bold_only_brightens_final_foreground() {
     let renderer = TerminalRenderer::new(

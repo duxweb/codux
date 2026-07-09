@@ -356,27 +356,67 @@ fn relative_luminance(rgb: TerminalRgb) -> f32 {
     0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b)
 }
 
+fn contrast_ratio(foreground: TerminalRgb, background: TerminalRgb) -> f32 {
+    let foreground = relative_luminance(foreground);
+    let background = relative_luminance(background);
+    let (lighter, darker) = if foreground >= background {
+        (foreground, background)
+    } else {
+        (background, foreground)
+    };
+    (lighter + 0.05) / (darker + 0.05)
+}
+
 fn gpui_rgb(r: u8, g: u8, b: u8) -> Hsla {
     rgb(((r as u32) << 16) | ((g as u32) << 8) | b as u32).into()
+}
+
+fn mix_rgb(from: TerminalRgb, to: TerminalRgb, to_ratio: f32) -> TerminalRgb {
+    let to_ratio = to_ratio.clamp(0.0, 1.0);
+    let from_ratio = 1.0 - to_ratio;
+    let mix = |from: u8, to: u8| -> u8 {
+        (from as f32 * from_ratio + to as f32 * to_ratio)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    TerminalRgb {
+        r: mix(from.r, to.r),
+        g: mix(from.g, to.g),
+        b: mix(from.b, to.b),
+    }
 }
 
 fn dim_color(color: Hsla, background: Hsla) -> Hsla {
     // "Dim" means lower contrast against the background, not "darker". Blending
     // a fixed fraction toward the actual background fades the text on both dark
-    // themes (toward black) and light themes (toward white). The previous
-    // `l *= 0.7` only darkened, which on a light background pushed dim text
-    // toward the background and made it look washed out / too pale.
+    // themes (toward black) and light themes (toward white), then clamps to a
+    // readable floor so TUIs that mark bright/white text as faint do not vanish
+    // on light terminal themes.
     const DIM_BLEND: f32 = 0.4;
-    let fg = hsla_to_rgb(color);
-    let bg = hsla_to_rgb(background);
-    let mix = |f: u8, b: u8| -> u8 {
-        (f as f32 * (1.0 - DIM_BLEND) + b as f32 * DIM_BLEND).round() as u8
+    const MIN_DIM_CONTRAST: f32 = 3.0;
+    let foreground = hsla_to_rgb(color);
+    let background = hsla_to_rgb(background);
+    let dimmed = mix_rgb(foreground, background, DIM_BLEND);
+    if contrast_ratio(dimmed, background) >= MIN_DIM_CONTRAST {
+        return rgb_to_hsla(dimmed);
+    }
+
+    let target = if relative_luminance(background) > 0.5 {
+        TerminalRgb { r: 0, g: 0, b: 0 }
+    } else {
+        TerminalRgb {
+            r: 255,
+            g: 255,
+            b: 255,
+        }
     };
-    rgb_to_hsla(TerminalRgb {
-        r: mix(fg.r, bg.r),
-        g: mix(fg.g, bg.g),
-        b: mix(fg.b, bg.b),
-    })
+    for step in 1..=20 {
+        let candidate = mix_rgb(dimmed, target, step as f32 / 20.0);
+        if contrast_ratio(candidate, background) >= MIN_DIM_CONTRAST {
+            return rgb_to_hsla(candidate);
+        }
+    }
+    rgb_to_hsla(target)
 }
 
 fn brighten_color(mut color: Hsla) -> Hsla {
