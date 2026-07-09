@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-rc.7] - 2026-07-09
+
+### Fixed
+
+- Fixed Git repository detection on Windows when trusted-directory prompts or stale repository caches prevented the Git sidebar from loading.
+- Fixed rapid worktree switching so terminal panes keep their existing sessions instead of being reinitialized during layout changes.
+- Improved terminal text contrast on light themes.
+- Fixed release download links and update metadata so latest public assets remain stable across releases.
+
 ## [2.0.0-rc.6] - 2026-07-08
 
 ### Changed
