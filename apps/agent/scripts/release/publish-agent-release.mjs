@@ -54,15 +54,7 @@ function walk(dir) {
 }
 
 function isAgentAsset(name) {
-  return (
-    new RegExp(`^codux-agent-${escapeRegExp(version)}-(macos|linux|windows)-(aarch64|x86_64)(?:\\.exe)?$`).test(
-      name,
-    ) || /^codux-(macos|linux|windows)-(aarch64|x86_64)(?:\.exe)?$/.test(name)
-  );
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return /^codux-(macos|linux|windows)-(aarch64|x86_64)(?:\.exe)?$/.test(name);
 }
 
 function assertReleaseExists() {

@@ -160,8 +160,19 @@ function shouldUploadPublicAsset(asset) {
   const lower = asset.name.toLowerCase();
   if (lower.endsWith(".sha256") || lower.endsWith(".sig")) return false;
   if (lower.endsWith(".app.zip") || lower.endsWith(".zip")) return false;
+  if (lower.includes("-debug")) return false;
+  if (isVersionedUserInstallerAsset(lower)) return false;
   if (asset.ext === ".exe" && !lower.endsWith("-setup.exe")) return false;
   return [".dmg", ".app.tar.gz", ".exe", ".msi"].includes(asset.ext);
+}
+
+function isVersionedUserInstallerAsset(lowerName) {
+  return (
+    /^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-macos-(?:aarch64|x86_64|universal)\.dmg$/.test(
+      lowerName,
+    ) ||
+    /^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-windows-x86_64-setup\.exe$/.test(lowerName)
+  );
 }
 
 function buildLatestJson(assets) {

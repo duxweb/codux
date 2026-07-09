@@ -118,7 +118,8 @@ impl GitWatchManager {
     }
 
     pub fn unwatch(&self, project_path: String) -> Result<(), String> {
-        let requested_key = normalized_path_key(Path::new(project_path.trim()));
+    let requested_path = git_path(&project_path);
+    let requested_key = normalized_path_key(&requested_path);
         let repository_key = resolve_watch_target(&project_path)
             .map(|target| target.repository_key)
             .unwrap_or_else(|_| requested_key.clone());
@@ -209,7 +210,7 @@ struct GitWatchTarget {
 }
 
 fn resolve_watch_target(project_path: &str) -> Result<GitWatchTarget, String> {
-    let project = PathBuf::from(project_path.trim());
+    let project = git_path(project_path);
     if project.as_os_str().is_empty() {
         return Err("Project path cannot be empty.".to_string());
     }
@@ -256,7 +257,7 @@ fn resolve_watch_target(project_path: &str) -> Result<GitWatchTarget, String> {
 
 fn repository_git_dirs(root: &Path) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Ok(repo) = GitRepository::discover(root) {
+    if let Ok(repo) = discover_git_repository(&root.to_string_lossy()) {
         push_unique_path(&mut dirs, repo.path().to_path_buf());
         push_unique_path(&mut dirs, repo.commondir().to_path_buf());
     }

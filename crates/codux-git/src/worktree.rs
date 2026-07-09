@@ -96,7 +96,7 @@ pub fn merge_worktree(
     if branch == base_branch {
         return Err("The worktree branch is already the base branch.".to_string());
     }
-    let repo = GitRepository::discover(&root).map_err(|error| error.message().to_string())?;
+    let repo = crate::discover_repository(&root).map_err(|error| error.message().to_string())?;
     if current_branch_from_repo(&repo).as_deref() != Some(base_branch.as_str()) {
         checkout_branch_git2(&repo, &base_branch)?;
     }
@@ -111,7 +111,7 @@ pub fn merge_worktree(
 // ---- managed path convention ----
 
 fn managed_worktree_path(root_path: &str, branch: &str) -> PathBuf {
-    PathBuf::from(root_path)
+    crate::git_path(root_path)
         .join(".codux")
         .join("worktrees")
         .join(worktree_slug(branch))
@@ -145,7 +145,8 @@ fn create_worktree_with_git2(
     destination: &Path,
     base: Option<&str>,
 ) -> Result<(), String> {
-    let repo = GitRepository::discover(root_path).map_err(|error| error.message().to_string())?;
+    let repo =
+        crate::discover_repository(root_path).map_err(|error| error.message().to_string())?;
     let base_commit = match base {
         Some(base) => repo
             .revparse_single(base)
@@ -186,7 +187,8 @@ fn create_worktree_with_git2(
 }
 
 fn remove_worktree_with_git2(root_path: &str, worktree_path: &str) -> Result<(), String> {
-    let repo = GitRepository::discover(root_path).map_err(|error| error.message().to_string())?;
+    let repo =
+        crate::discover_repository(root_path).map_err(|error| error.message().to_string())?;
     let target_path = normalize_path(worktree_path);
     let names = repo
         .worktrees()
@@ -343,7 +345,8 @@ fn delete_local_branch(root_path: &str, branch: &str) -> Result<(), String> {
     if branch.is_empty() {
         return Ok(());
     }
-    let repo = GitRepository::discover(root_path).map_err(|error| error.message().to_string())?;
+    let repo =
+        crate::discover_repository(root_path).map_err(|error| error.message().to_string())?;
     if current_branch_from_repo(&repo).as_deref() == Some(branch) {
         return Err(format!("Cannot delete the checked out branch: {branch}"));
     }
@@ -359,7 +362,7 @@ fn delete_local_branch(root_path: &str, branch: &str) -> Result<(), String> {
 // ---- discovery helpers ----
 
 fn repository_root(project_path: &str) -> Option<String> {
-    GitRepository::discover(project_path)
+    crate::discover_repository(project_path)
         .ok()
         .and_then(|repo| repo_root(&repo).map(|path| normalize_path(&path.to_string_lossy())))
 }
@@ -369,7 +372,7 @@ fn repo_root(repo: &GitRepository) -> Option<&Path> {
 }
 
 fn current_branch(project_path: &str) -> Option<String> {
-    GitRepository::discover(project_path)
+    crate::discover_repository(project_path)
         .ok()
         .as_ref()
         .and_then(current_branch_from_repo)
@@ -389,7 +392,7 @@ fn current_branch_from_repo(repo: &GitRepository) -> Option<String> {
 }
 
 fn has_head_commit(root_path: &str) -> bool {
-    GitRepository::discover(root_path)
+    crate::discover_repository(root_path)
         .ok()
         .map(|repo| {
             repo.head()
@@ -401,11 +404,7 @@ fn has_head_commit(root_path: &str) -> bool {
 }
 
 fn normalize_path(path: &str) -> String {
-    let path = Path::new(path);
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .display()
-        .to_string()
+    crate::normalize_repository_path(path)
 }
 
 fn now_seconds() -> i64 {

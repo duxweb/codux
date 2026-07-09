@@ -14,11 +14,11 @@ impl GitService {
     }
 
     pub fn init(project_path: &str) -> Result<(), String> {
-        let path = Path::new(project_path.trim());
+        let path = git_path(project_path);
         if !path.exists() {
             return Err(format!("Project path does not exist: {}", path.display()));
         }
-        if GitRepository::discover(path).is_ok() {
+        if discover_git_repository(project_path).is_ok() {
             return Ok(());
         }
         GitRepository::init(path)

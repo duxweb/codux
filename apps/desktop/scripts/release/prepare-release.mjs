@@ -135,52 +135,42 @@ function buildReleaseNotes(nextVersion) {
 function buildDownloadGuide() {
   const assets = [
     {
-      name: `codux-${version}-macos-aarch64.dmg`,
+      name: `codux-macos-aarch64.dmg`,
       usageEn: `Apple Silicon Mac stable release`,
       usageZh: `Apple Silicon Mac 正式版本`,
     },
     {
-      name: `codux-${version}-macos-x86_64.dmg`,
+      name: `codux-macos-x86_64.dmg`,
       usageEn: `Intel Mac stable release`,
       usageZh: `Intel Mac 正式版本`,
     },
     {
-      name: `codux-${version}-macos-aarch64-debug.dmg`,
-      usageEn: `Apple Silicon Mac debug build`,
-      usageZh: `Apple Silicon Mac 测试版本`,
-    },
-    {
-      name: `codux-${version}-macos-x86_64-debug.dmg`,
-      usageEn: `Intel Mac debug build`,
-      usageZh: `Intel Mac 测试版本`,
-    },
-    {
-      name: `codux-${version}-windows-x86_64-setup.exe`,
+      name: `codux-windows-x86_64-setup.exe`,
       usageEn: `Windows 64-bit installer`,
       usageZh: `Windows 64 位安装包`,
     },
     {
-      name: `codux-agent-${version}-macos-aarch64`,
+      name: `codux-macos-aarch64`,
       usageEn: `Apple Silicon Mac headless agent`,
       usageZh: `Apple Silicon Mac 主机端`,
     },
     {
-      name: `codux-agent-${version}-macos-x86_64`,
+      name: `codux-macos-x86_64`,
       usageEn: `Intel Mac headless agent`,
       usageZh: `Intel Mac 主机端`,
     },
     {
-      name: `codux-agent-${version}-linux-x86_64`,
+      name: `codux-linux-x86_64`,
       usageEn: `Linux x86_64 headless agent`,
       usageZh: `Linux x86_64 主机端`,
     },
     {
-      name: `codux-agent-${version}-linux-aarch64`,
+      name: `codux-linux-aarch64`,
       usageEn: `Linux ARM64 headless agent`,
       usageZh: `Linux ARM64 主机端`,
     },
     {
-      name: `codux-agent-${version}-windows-x86_64.exe`,
+      name: `codux-windows-x86_64.exe`,
       usageEn: `Windows 64-bit headless agent`,
       usageZh: `Windows 64 位主机端`,
     },
@@ -198,5 +188,5 @@ function buildDownloadGuide() {
 
 function releaseAssetUrl(assetName) {
   const repo = process.env.GITHUB_REPOSITORY || "duxweb/codux";
-  return `https://github.com/${repo}/releases/download/${encodeURIComponent(tagName)}/${encodeURIComponent(assetName)}`;
+  return `https://github.com/${repo}/releases/latest/download/${encodeURIComponent(assetName)}`;
 }

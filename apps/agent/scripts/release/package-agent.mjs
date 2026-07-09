@@ -6,19 +6,15 @@ import os from "node:os";
 import path from "node:path";
 
 const root = process.cwd();
-const agentRoot = path.join(root, "apps", "agent");
 const buildId = process.env.RELEASE_BUILD_ID || `${targetPlatformLabel()}-${targetArchLabel()}`;
 const target = process.env.CARGO_BUILD_TARGET || "";
 const profile = process.env.CARGO_PROFILE || "release";
 const stageRoot = process.env.RELEASE_STAGE_DIR || "release-artifacts";
-const version = process.env.RELEASE_VERSION?.trim() || readCargoVersion();
 const platform = targetPlatformLabel();
 const arch = targetArchLabel();
 const extension = platform === "windows" ? ".exe" : "";
 const outputDir = path.join(root, stageRoot, buildId);
-const assetName = `codux-agent-${version}-${platform}-${arch}${extension}`;
-const legacyAssetName = `codux-${platform}-${arch}${extension}`;
-const writeLegacyAlias = process.env.RELEASE_WRITE_LEGACY_AGENT_ALIAS !== "false";
+const assetName = `codux-${platform}-${arch}${extension}`;
 
 fs.rmSync(outputDir, { recursive: true, force: true });
 fs.mkdirSync(outputDir, { recursive: true });
@@ -28,14 +24,6 @@ const assetPath = path.join(outputDir, assetName);
 fs.copyFileSync(binaryPath, assetPath);
 if (platform !== "windows") {
   fs.chmodSync(assetPath, 0o755);
-}
-
-if (writeLegacyAlias) {
-  const legacyAssetPath = path.join(outputDir, legacyAssetName);
-  fs.copyFileSync(binaryPath, legacyAssetPath);
-  if (platform !== "windows") {
-    fs.chmodSync(legacyAssetPath, 0o755);
-  }
 }
 
 console.log(`Packaged ${assetName}`);
@@ -67,9 +55,4 @@ function targetArchLabel() {
   if (process.arch === "arm64") return "aarch64";
   if (process.arch === "x64") return "x86_64";
   throw new Error(`Unsupported agent release architecture: ${process.arch || os.arch()}`);
-}
-
-function readCargoVersion() {
-  const content = fs.readFileSync(path.join(agentRoot, "Cargo.toml"), "utf8");
-  return content.match(/^version = "(.+)"$/m)?.[1] || "0.0.0";
 }

@@ -4,11 +4,7 @@ pub(super) fn normalized_string(value: &str) -> Option<String> {
 }
 
 pub(super) fn normalize_path(path: &str) -> String {
-    let path = Path::new(path);
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .display()
-        .to_string()
+    crate::git::normalize_repository_path(path)
 }
 
 pub(super) fn short_hash(value: &str) -> String {

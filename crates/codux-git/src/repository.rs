@@ -1,9 +1,8 @@
 fn open_git_repository(path: &str) -> Result<GitRepository, String> {
-    let path = Path::new(path.trim());
-    if path.as_os_str().is_empty() {
+    if path.trim().is_empty() {
         return Err("Project path cannot be empty.".to_string());
     }
-    GitRepository::discover(path).map_err(|error| error.message().to_string())
+    discover_git_repository(path).map_err(|error| error.message().to_string())
 }
 
 fn repo_root(repo: &GitRepository) -> &Path {

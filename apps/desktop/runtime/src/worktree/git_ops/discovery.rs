@@ -1,19 +1,19 @@
 pub(super) fn current_branch(project_path: &str) -> Option<String> {
-    GitRepository::discover(project_path)
+    crate::git::discover_repository(project_path)
         .ok()
         .as_ref()
         .and_then(current_branch_from_repo)
 }
 
 pub(super) fn repository_root(project_path: &str) -> Option<String> {
-    GitRepository::discover(project_path)
+    crate::git::discover_repository(project_path)
         .ok()
         .and_then(|repo| repo_root(&repo).map(|path| normalize_path(&path.to_string_lossy())))
 }
 
 pub(super) fn list_git_worktrees(root_path: &str) -> Result<Vec<GitWorktreeEntry>, String> {
     let mut entries = Vec::new();
-    let repo = GitRepository::discover(root_path).map_err(|error| error.message().to_string())?;
+    let repo = crate::git::discover_repository(root_path).map_err(|error| error.message().to_string())?;
     let names = repo
         .worktrees()
         .map_err(|error| error.message().to_string())?;
@@ -25,7 +25,8 @@ pub(super) fn list_git_worktrees(root_path: &str) -> Result<Vec<GitWorktreeEntry
             continue;
         }
         let path = normalize_path(&worktree.path().to_string_lossy());
-        let worktree_repo = GitRepository::open(worktree.path()).ok();
+        let worktree_repo =
+            crate::git::discover_repository(&worktree.path().to_string_lossy()).ok();
         let branch = worktree_repo
             .as_ref()
             .and_then(current_branch_from_repo)
@@ -58,7 +59,7 @@ pub(super) fn commit_hash(root_path: &str, ref_name: &str) -> Option<String> {
     if ref_name.is_empty() {
         return None;
     }
-    GitRepository::discover(root_path).ok().and_then(|repo| {
+    crate::git::discover_repository(root_path).ok().and_then(|repo| {
         repo.revparse_single(ref_name)
             .ok()?
             .peel_to_commit()

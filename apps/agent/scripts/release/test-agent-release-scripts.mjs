@@ -28,10 +28,10 @@ try {
     },
   });
 
-  const expected = path.join(tempDir, "release-artifacts", "macos-aarch64", `codux-agent-${version}-macos-aarch64`);
-  const legacy = path.join(tempDir, "release-artifacts", "macos-aarch64", "codux-macos-aarch64");
-  assert.ok(fs.existsSync(expected), "versioned agent asset should exist");
-  assert.ok(fs.existsSync(legacy), "legacy update alias should exist");
+  const expected = path.join(tempDir, "release-artifacts", "macos-aarch64", "codux-macos-aarch64");
+  const versioned = path.join(tempDir, "release-artifacts", "macos-aarch64", `codux-agent-${version}-macos-aarch64`);
+  assert.ok(fs.existsSync(expected), "stable agent asset should exist");
+  assert.ok(!fs.existsSync(versioned), "versioned agent asset should not be produced");
   fs.writeFileSync(path.join(tempDir, "release-artifacts", "codux-1.9.1-macos-aarch64.dmg"), "");
   fs.writeFileSync(path.join(tempDir, "release-artifacts", "latest.json"), "{}\n");
 
@@ -49,7 +49,7 @@ try {
       encoding: "utf8",
     },
   );
-  assert.match(dryRun.stdout, /Prepared 2 agent assets/);
+  assert.match(dryRun.stdout, /Prepared 1 agent assets/);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

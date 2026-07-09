@@ -40,7 +40,7 @@ Uninstall — stops the host, removes its OS service, deletes the binary (add
 curl -fsSL https://raw.githubusercontent.com/duxweb/codux/main/apps/agent/scripts/install.sh | sh -s -- --uninstall
 ```
 
-Or do it by hand — download the `codux-agent-<version>-<os>-<arch>` binary from
+Or do it by hand — download the `codux-<os>-<arch>` binary from
 [Releases](https://github.com/duxweb/codux/releases), put it on your `PATH`, then:
 
 ```bash

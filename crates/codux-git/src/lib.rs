@@ -37,6 +37,7 @@ type GitRepository = git2::Repository;
 pub type GitCancelToken = Arc<AtomicBool>;
 
 include!("types.rs");
+include!("repo_open.rs");
 include!("watch.rs");
 include!("service.rs");
 include!("commands.rs");
