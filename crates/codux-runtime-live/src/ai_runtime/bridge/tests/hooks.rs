@@ -43,6 +43,159 @@ fn claude_wrapper_applies_driver_memory_prompt_injection() {
     fs::remove_dir_all(dir).unwrap();
 }
 
+#[cfg(not(windows))]
+#[test]
+fn claude_wrapper_passthroughs_login_without_runtime_injection() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-reclaude-wrapper-login-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_reclaude = real_bin.join("reclaude");
+    fs::write(&fake_reclaude, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+    let mut permissions = fs::metadata(&fake_reclaude).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_reclaude, permissions).unwrap();
+
+    let permissions_file = dir.join("tool-permissions.json");
+    fs::write(
+        &permissions_file,
+        serde_json::json!({
+            "claudeCode": "fullAccess",
+            "claudeCodeModel": "claude-sonnet"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let prompt_file = dir.join("memory-prompt.txt");
+    fs::write(&prompt_file, "Use Claude memory.").unwrap();
+    let binding_dir = dir.join("bindings");
+
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let output = Command::new(bridge.wrapper_bin_dir().join("reclaude"))
+        .arg("login")
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", &binding_dir)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env_remove("DMUX_EXTERNAL_SESSION_ID")
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake reclaude, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(args.lines().collect::<Vec<_>>(), vec!["login"]);
+    assert!(!binding_dir.join("terminal-1-reclaude.json").exists());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn claude_wrapper_keeps_runtime_injection_for_resume() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir =
+        std::env::temp_dir().join(format!("codux-reclaude-wrapper-resume-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_reclaude = real_bin.join("reclaude");
+    fs::write(
+        &fake_reclaude,
+        "#!/bin/sh\nprintf 'external=%s\\n' \"$DMUX_EXTERNAL_SESSION_ID\"\nprintf 'model=%s\\n' \"$DMUX_ACTIVE_AI_MODEL\"\nprintf '%s\\n' \"$@\"\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_reclaude).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_reclaude, permissions).unwrap();
+
+    let permissions_file = dir.join("tool-permissions.json");
+    fs::write(
+        &permissions_file,
+        serde_json::json!({
+            "claudeCode": "fullAccess",
+            "claudeCodeModel": "claude-sonnet"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let prompt_file = dir.join("memory-prompt.txt");
+    fs::write(&prompt_file, "Use Claude memory.").unwrap();
+    let binding_dir = dir.join("bindings");
+
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let output = Command::new(bridge.wrapper_bin_dir().join("reclaude"))
+        .args(["--resume", "session-1"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_SESSION_INSTANCE_ID", "instance-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_PROJECT_NAME", "Project")
+        .env("DMUX_PROJECT_PATH", dir.join("project"))
+        .env("DMUX_SESSION_TITLE", "ReClaude")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", &binding_dir)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake reclaude, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        args.lines().any(|arg| arg == "model=claude-sonnet"),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "--model"), "{args}");
+    assert!(args.lines().any(|arg| arg == "claude-sonnet"), "{args}");
+    assert!(
+        args.lines()
+            .any(|arg| arg == "--dangerously-skip-permissions"),
+        "{args}"
+    );
+    assert!(
+        args.lines().any(|arg| arg == "--append-system-prompt"),
+        "{args}"
+    );
+    assert!(
+        args.lines().any(|arg| arg == "Use Claude memory."),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "--resume"), "{args}");
+    assert!(args.lines().any(|arg| arg == "session-1"), "{args}");
+    assert!(!args.lines().any(|arg| arg == "--session-id"), "{args}");
+
+    let binding: serde_json::Value =
+        serde_json::from_slice(&fs::read(binding_dir.join("terminal-1-reclaude.json")).unwrap())
+            .unwrap();
+    assert_eq!(binding["externalSessionId"].as_str(), Some("session-1"));
+    assert_eq!(binding["sessionOrigin"].as_str(), Some("restored"));
+    assert_eq!(binding["model"].as_str(), Some("claude-sonnet"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn bridge_prepare_strips_codux_hooks_and_keeps_user_hooks() {
     let dir = std::env::temp_dir().join(format!("codux-ai-bridge-file-{}", Uuid::new_v4()));

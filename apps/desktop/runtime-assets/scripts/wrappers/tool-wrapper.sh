@@ -170,6 +170,16 @@ log_line() {
   print -r -- "[$(/bin/date '+%Y-%m-%dT%H:%M:%S%z')] [wrapper] $1" >> "${DMUX_LOG_FILE}"
 }
 
+is_passthrough_invocation() {
+  local first="${1:-}"
+  case "${first}" in
+    --help|-h|help|--version|-V|version|features|--features|auth|login|logout|doctor|update|upgrade|config|info|export|mcp|plugin|vis|web|term|acp|app-server|__background-task-worker|__web-worker)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 wrapper_helper_available() {
   if [[ -x "${wrapper_helper}" ]]; then
     return 0
@@ -774,6 +784,10 @@ apply_managed_lifecycle_env() {
   source "${env_path}"
   log_line "managed lifecycle env tool=${tool_name} path=${env_path}"
 }
+
+if is_passthrough_invocation "$@"; then
+  exec env PATH="$runtime_path" "$real_bin" "$@"
+fi
 
 memory_injection_strategy="$(tool_memory_injection_strategy || true)"
 

@@ -272,6 +272,14 @@ function Is-Metadata-Invocation([string[]]$CommandArgs) {
   return $false
 }
 
+function Is-Passthrough-Invocation([string[]]$CommandArgs) {
+  if ($CommandArgs.Count -eq 0) { return $false }
+  switch -Regex ($CommandArgs[0]) {
+    '^(--help|-h|help|--version|-V|version|features|--features|auth|login|logout|doctor|update|upgrade|config|info|export|mcp|plugin|vis|web|term|acp|app-server|__background-task-worker|__web-worker)$' { return $true }
+  }
+  return $false
+}
+
 function Codex-Profile-Name([string]$Seed) {
   if ([string]::IsNullOrWhiteSpace($Seed)) {
     $Seed = [Guid]::NewGuid().ToString("N")
@@ -564,6 +572,12 @@ if (-not [Console]::IsOutputRedirected) {
   if ($null -ne $oscFgRef -and $null -ne $oscBgRef) {
     Seed-Console-Color-Table $oscFgRef $oscBgRef
   }
+}
+
+if (Is-Passthrough-Invocation $ToolArgs) {
+  Invoke-Real-Binary $realBin $ToolArgs $runtimePath ""
+  $exitCode = if ($null -eq $script:DMUX_WRAPPER_EXIT_CODE) { 0 } else { $script:DMUX_WRAPPER_EXIT_CODE }
+  exit $exitCode
 }
 
 $settings = Read-Tool-Settings
