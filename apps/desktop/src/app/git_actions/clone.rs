@@ -330,6 +330,71 @@ impl CoduxApp {
         self.invalidate_git_panel(cx);
     }
 
+    pub(in crate::app) fn trust_project_git_directory(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(project) = self.state.selected_project.clone() else {
+            self.status_message = self.text(
+                "git.trust.no_selected_project",
+                "No selected project for Git trust.",
+            );
+            self.invalidate_git_panel(cx);
+            return;
+        };
+        if self.git_running_operation.is_some() {
+            self.status_message = self.text(
+                "git.error.operation_running",
+                "Git operation is already running.",
+            );
+            self.invalidate_git_panel(cx);
+            return;
+        }
+        let title = self.text("git.trust.title", "Trust Project Directory");
+        let message = self
+            .text(
+                "git.trust.confirm_format",
+                "Trust %@ for Git operations? This writes the project directory to Git safe.directory.",
+            )
+            .replace("%@", &project.path);
+        let confirm_label = self.text("git.trust.action", "Trust Directory");
+        let project_id = project.id;
+        let project_path = project.path;
+        self.confirm_git_action(
+            title,
+            message,
+            confirm_label,
+            move |app, cx| app.trust_project_git_directory_confirmed(project_id, project_path, cx),
+            cx,
+        );
+    }
+
+    fn trust_project_git_directory_confirmed(
+        &mut self,
+        project_id: String,
+        project_path: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.start_project_git_operation(
+            project_id.clone(),
+            project_path.clone(),
+            GitRunningOperation {
+                label: "trust-directory".to_string(),
+                cancellable: false,
+            },
+            move |service, path| service.trust_project_git_directory(&path),
+            GitOperationCompletion {
+                success_message: self.text("git.trust.success", "Project directory trusted."),
+                failure_prefix: self.text("git.trust.failed", "Trust project directory failed"),
+                refresh_review: true,
+                clear_git_tree_state: true,
+                ..Default::default()
+            },
+            cx,
+        );
+    }
+
     fn prepare_git_credentials_retry(
         &mut self,
         project_id: String,

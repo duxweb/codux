@@ -53,6 +53,17 @@ impl GitService {
         clone_repository_git2_with_credentials(remote_url, project_path, credentials)
     }
 
+    pub fn trust_project_directory(project_path: &str) -> Result<(), String> {
+        let safe_directory = safe_directory_path(project_path);
+        let mut config = git2::Config::open_default().map_err(|error| error.message().to_string())?;
+        if safe_directory_is_configured(&config, &safe_directory)? {
+            return Ok(());
+        }
+        config
+            .set_multivar("safe.directory", "^$", &safe_directory)
+            .map_err(|error| error.message().to_string())
+    }
+
     pub fn path_status(
         project_path: &str,
         directory_path: &str,
@@ -137,6 +148,23 @@ impl GitService {
         let repo = open_git_repository(project_path)?;
         discard_paths_git2(&repo, &safe_git_paths(file_paths)?)
     }
+}
+
+fn safe_directory_is_configured(config: &git2::Config, safe_directory: &str) -> Result<bool, String> {
+    let mut found = false;
+    let mut entries = match config.entries(Some("safe.directory")) {
+        Ok(entries) => entries,
+        Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(false),
+        Err(error) => return Err(error.message().to_string()),
+    };
+    while let Some(entry) = entries.next() {
+        let entry = entry.map_err(|error| error.message().to_string())?;
+        if entry.value().unwrap_or_default() == safe_directory {
+            found = true;
+            break;
+        }
+    }
+    Ok(found)
 }
 
 fn safe_git_paths(file_paths: &[String]) -> Result<Vec<String>, String> {

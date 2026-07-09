@@ -105,6 +105,7 @@ pub fn invoke(repo: &str, op: &str, args: &Value) -> Result<(), String> {
         "commit_sync" => GitService::commit_action(path, s("message"), "commitAndSync"),
         "commit_merge" => GitService::commit_merge(path, s("message"), s("target")),
         "init" => GitService::init(path),
+        "trust_directory" => GitService::trust_project_directory(path),
         "clone" => {
             let credentials = args
                 .get("credentials")

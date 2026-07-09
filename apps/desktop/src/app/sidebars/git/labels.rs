@@ -21,6 +21,9 @@ pub(in crate::app) struct GitSidebarLabels {
     pub(super) no_repository: String,
     pub(super) no_repository_description: String,
     pub(super) init_repository: String,
+    pub(super) trust_directory_title: String,
+    pub(super) trust_directory_description: String,
+    pub(super) trust_directory_action: String,
     pub(in crate::app) clone_repository: String,
     pub(super) clone_preparing: String,
     pub(super) staged: String,
@@ -95,6 +98,12 @@ impl GitSidebarLabels {
                 "Initialize Git or clone from a remote URL.",
             ),
             init_repository: tr("git.empty.initialize_repository", "Initialize Repository"),
+            trust_directory_title: tr("git.trust.title", "Trust Project Directory"),
+            trust_directory_description: tr(
+                "git.trust.description",
+                "Git blocked this repository because the directory owner is different. Trust this project directory to enable Git features.",
+            ),
+            trust_directory_action: tr("git.trust.action", "Trust Directory"),
             clone_repository: tr(
                 "git.empty.clone_remote_repository",
                 "Clone Remote Repository",
@@ -196,7 +205,7 @@ pub(in crate::app) fn git_section(
             )
             .into_any_element()
         } else {
-            git_empty_repository_panel(labels, running_operation, cx).into_any_element()
+            git_empty_repository_panel(git, labels, running_operation, cx).into_any_element()
         })
         .into_any_element()
 }

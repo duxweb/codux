@@ -1,11 +1,16 @@
 use super::*;
 
 pub(super) fn git_empty_repository_panel(
+    git: &GitSummary,
     labels: Rc<GitSidebarLabels>,
     running_operation: Option<&GitRunningOperation>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let cloning = running_operation.is_some_and(|operation| operation.label == "clone");
+    let trust_required = git
+        .error
+        .as_deref()
+        .is_some_and(codux_runtime::git::git_repository_owner_mismatch);
     div()
         .relative()
         .flex_1()
@@ -29,7 +34,14 @@ pub(super) fn git_empty_repository_panel(
                         .justify_center()
                         .bg(color(theme::ORANGE).opacity(0.12))
                         .text_color(color(theme::ORANGE))
-                        .child(Icon::new(HeroIconName::Folder).size_5()),
+                        .child(
+                            Icon::new(if trust_required {
+                                HeroIconName::ShieldExclamation
+                            } else {
+                                HeroIconName::Folder
+                            })
+                            .size_5(),
+                        ),
                 )
                 .child(
                     div()
@@ -37,7 +49,11 @@ pub(super) fn git_empty_repository_panel(
                         .text_size(rems(0.875))
                         .line_height(rems(1.125))
                         .text_color(color(theme::TEXT))
-                        .child(labels.no_repository.clone()),
+                        .child(if trust_required {
+                            labels.trust_directory_title.clone()
+                        } else {
+                            labels.no_repository.clone()
+                        }),
                 )
                 .child(
                     div()
@@ -46,7 +62,9 @@ pub(super) fn git_empty_repository_panel(
                         .text_size(rems(0.75))
                         .line_height(rems(1.0625))
                         .text_color(color(theme::TEXT_MUTED))
-                        .child(if cloning {
+                        .child(if trust_required {
+                            labels.trust_directory_description.clone()
+                        } else if cloning {
                             labels.clone_preparing.clone()
                         } else {
                             labels.no_repository_description.clone()
@@ -55,24 +73,40 @@ pub(super) fn git_empty_repository_panel(
                 .when(cloning, |this| {
                     this.child(git_clone_indeterminate_progress())
                 })
-                .child(div().mt(px(14.0)).flex().items_center().gap(px(8.0)).when(
-                    !cloning,
-                    |this| {
-                        this.child(
-                            git_empty_action_button(labels.init_repository.clone(), true).on_click(
-                                cx.listener(|app, _event, window, cx| {
-                                    app.init_project_git(window, cx)
-                                }),
-                            ),
-                        )
-                        .child(
-                            git_empty_action_button(labels.clone_repository.clone(), false)
-                                .on_click(cx.listener(|app, _event, window, cx| {
-                                    app.open_git_clone_dialog(window, cx)
-                                })),
-                        )
-                    },
-                )),
+                .child(
+                    div()
+                        .mt(px(14.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.0))
+                        .when(trust_required, |this| {
+                            this.child(
+                                git_empty_action_button(
+                                    labels.trust_directory_action.clone(),
+                                    true,
+                                )
+                                .on_click(cx.listener(
+                                    |app, _event, window, cx| {
+                                        app.trust_project_git_directory(window, cx)
+                                    },
+                                )),
+                            )
+                        })
+                        .when(!trust_required && !cloning, |this| {
+                            this.child(
+                                git_empty_action_button(labels.init_repository.clone(), true)
+                                    .on_click(cx.listener(|app, _event, window, cx| {
+                                        app.init_project_git(window, cx)
+                                    })),
+                            )
+                            .child(
+                                git_empty_action_button(labels.clone_repository.clone(), false)
+                                    .on_click(cx.listener(|app, _event, window, cx| {
+                                        app.open_git_clone_dialog(window, cx)
+                                    })),
+                            )
+                        }),
+                ),
         )
 }
 

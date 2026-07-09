@@ -42,6 +42,16 @@ impl RuntimeService {
         Ok(refresh_git_summary(&self.support_dir, project_path))
     }
 
+    pub fn trust_project_git_directory(&self, project_path: &str) -> Result<git::GitSummary, String> {
+        if let Some(result) =
+            self.remote_git_invoke_blocking(project_path, "trust_directory", serde_json::json!({}))
+        {
+            return result;
+        }
+        git::GitService::trust_project_directory(project_path)?;
+        Ok(refresh_git_summary(&self.support_dir, project_path))
+    }
+
     pub fn read_project_git_diff(
         &self,
         project_path: &str,
