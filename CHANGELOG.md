@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-rc.8] - 2026-07-10
+
+### Changed
+
+- AI CLI management commands such as login now pass through directly, while resume and restore commands continue to receive Codux launch context.
+- Unified terminal, worktree, and project lifecycle aggregation across local and remote sessions with deterministic status priority.
+
+### Fixed
+
+- Fixed remote terminal recovery after host restarts, device reconnects, worktree changes, and stale session cleanup so panes no longer remain bound to dead terminals.
+- Fixed worktree terminal cleanup and rapid switching so existing terminal layouts are preserved without duplicate initialization or stale mappings.
+- Fixed mobile terminal creation transactions so send failures, host errors, immediate process exits, authorization changes, and transport disconnects cannot leave the UI stuck in a creating state.
+- Fixed headless Agent disconnect cleanup by removing stale terminal subscriptions, output acknowledgements, and AI statistics watchers for offline devices.
+- Fixed terminal lifecycle summaries when working and error states coexist, removing nondeterministic project and worktree indicators.
+
 ## [2.0.0-rc.7] - 2026-07-09
 
 ### Fixed

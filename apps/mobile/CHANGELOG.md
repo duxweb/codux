@@ -4,6 +4,18 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.0-rc.8] - 2026-07-10
+
+### Changed
+
+- Aligned Codux Mobile with the shared remote terminal lifecycle and ownership model used by Codux Desktop and the headless Agent.
+
+### Fixed
+
+- Fixed terminal creation getting stuck after send failures, host errors, immediate terminal exits, authorization changes, device removal, or transport disconnects.
+- Fixed terminal and worktree selection after remote host restarts and reconnects, including automatically selecting a newly created terminal.
+- Improved viewport takeover and session recovery consistency when switching projects, worktrees, terminals, and controller devices.
+
 ## [2.0.0-rc.6] - 2026-07-08
 
 ### Changed
