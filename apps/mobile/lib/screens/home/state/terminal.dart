@@ -680,9 +680,10 @@ extension _HomePageTerminal on HomeController {
     // host short-circuits it (no redraw).
     final spawnCols = _terminalViewportController.pendingCols;
     final spawnRows = _terminalViewportController.pendingRows;
-    _send(
+    final sent = _send(
       RelayEnvelope(
         type: RemoteMessageType.terminalCreate,
+        sessionId: terminalId,
         payload: {
           'terminalId': terminalId,
           'projectId': target,
@@ -701,7 +702,18 @@ extension _HomePageTerminal on HomeController {
           },
         },
       ),
+      onResult: (_, result) {
+        if (result == RemoteEnvelopeSendResult.delivered) return;
+        if (_remoteRuntime.cancelTerminalCreate(terminalId) &&
+            mounted &&
+            !_disposing) {
+          _applyState(_syncRuntimeViewState);
+        }
+      },
     );
+    if (!sent && _remoteRuntime.cancelTerminalCreate(terminalId)) {
+      _applyState(_syncRuntimeViewState);
+    }
   }
 
   bool _isAccessibleTerminal(TerminalInfo terminal) {

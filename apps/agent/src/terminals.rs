@@ -168,6 +168,13 @@ impl TerminalFanout {
         }
     }
 
+    pub(crate) fn remove_device(&self, device_id: &str) {
+        self.subscriptions.remove_device(device_id);
+        if let Ok(mut acks) = self.output_ack.lock() {
+            acks.retain(|(_, device), _| device != device_id);
+        }
+    }
+
     fn clear_session(&self, session_id: &str) {
         self.subscriptions.remove_session(session_id);
         if let Ok(mut projects) = self.project_id_by_session.lock() {
@@ -272,10 +279,19 @@ fn send_to_viewers(
     }
 }
 
-fn reply(transport: &TransportSlot, device_id: Option<&str>, kind: &str, payload: Value) {
+fn reply(
+    transport: &TransportSlot,
+    device_id: Option<&str>,
+    session_id: Option<&str>,
+    kind: &str,
+    payload: Value,
+) {
     let mut envelope = json!({ "type": kind, "payload": payload });
     if let Some(device_id) = device_id {
         envelope["deviceId"] = json!(device_id);
+    }
+    if let Some(session_id) = session_id {
+        envelope["sessionId"] = json!(session_id);
     }
     send(transport, device_id, envelope, false);
 }
@@ -709,20 +725,18 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
     fn reply_terminal(
         &self,
         device_id: Option<&str>,
-        _session_id: Option<&str>,
+        session_id: Option<&str>,
         kind: &str,
         payload: Value,
     ) {
-        // The agent envelope is {type, payload, deviceId}; the shared replies
-        // embed sessionId in the payload, so the session id is already carried
-        // and the explicit envelope-level arg is not needed here.
-        reply(self.transport, device_id, kind, payload);
+        reply(self.transport, device_id, session_id, kind, payload);
     }
 
     fn handle_terminal_list_msg(&self, msg: &TerminalMessage) {
         reply(
             self.transport,
             msg.device_id,
+            None,
             REMOTE_TERMINAL_LIST,
             list_payload(self.driver, self.fanout),
         );
@@ -891,8 +905,9 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                     reply(
                         self.transport,
                         device_id,
-                        REMOTE_TERMINAL_LIST,
-                        list_payload(self.driver, self.fanout),
+                        Some(&session_id),
+                        REMOTE_TERMINAL_CLOSED,
+                        json!({ "sessionId": session_id }),
                     );
                     return;
                 };
@@ -951,13 +966,22 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             Err(error) => {
                 if let Some(session_id) = lifecycle.requested_terminal_id.as_deref() {
                     self.fanout.clear_session(session_id);
+                    reply(
+                        self.transport,
+                        device_id,
+                        Some(session_id),
+                        REMOTE_ERROR,
+                        json!({ "message": error.to_string() }),
+                    );
+                } else {
+                    reply(
+                        self.transport,
+                        device_id,
+                        None,
+                        REMOTE_ERROR,
+                        json!({ "message": error.to_string() }),
+                    );
                 }
-                reply(
-                    self.transport,
-                    device_id,
-                    REMOTE_ERROR,
-                    json!({ "message": error.to_string() }),
-                );
             }
         }
     }
@@ -985,6 +1009,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                         reply(
                             self.transport,
                             msg.device_id,
+                            Some(id),
                             REMOTE_TERMINAL_INPUT_ACK,
                             json!({
                                 "sessionId": id,
@@ -1008,6 +1033,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                         reply(
                             self.transport,
                             msg.device_id,
+                            Some(id),
                             REMOTE_TERMINAL_INPUT_ACK,
                             payload,
                         );
@@ -1016,6 +1042,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                         reply(
                             self.transport,
                             msg.device_id,
+                            Some(id),
                             REMOTE_ERROR,
                             json!({ "message": error.to_string() }),
                         );
@@ -1025,6 +1052,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             None => reply(
                 self.transport,
                 msg.device_id,
+                None,
                 REMOTE_ERROR,
                 json!({ "message": "sessionId is required." }),
             ),
@@ -1042,6 +1070,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             reply(
                 self.transport,
                 msg.device_id,
+                msg.session_id,
                 REMOTE_ERROR,
                 json!({ "message": "terminal.resize requires positive cols." }),
             );
@@ -1057,6 +1086,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             reply(
                 self.transport,
                 msg.device_id,
+                msg.session_id,
                 REMOTE_ERROR,
                 json!({ "message": "terminal.resize requires positive rows." }),
             );
@@ -1084,6 +1114,7 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                 reply(
                     self.transport,
                     msg.device_id,
+                    Some(id),
                     REMOTE_ERROR,
                     json!({ "message": error.to_string() }),
                 );
@@ -1309,6 +1340,30 @@ mod tests {
     }
 
     #[test]
+    fn session_reply_carries_terminal_id_at_envelope_level() {
+        let (transport, received) = test_transport(&["phone-a"]);
+
+        reply(
+            &transport,
+            Some("phone-a"),
+            Some("session-1"),
+            REMOTE_ERROR,
+            json!({ "message": "failed" }),
+        );
+
+        let messages = received.lock().unwrap();
+        let message = messages.get("phone-a").unwrap().first().unwrap();
+        assert_eq!(
+            message.get("type").and_then(Value::as_str),
+            Some(REMOTE_ERROR)
+        );
+        assert_eq!(
+            message.get("sessionId").and_then(Value::as_str),
+            Some("session-1")
+        );
+    }
+
+    #[test]
     fn natural_exit_notifies_all_viewers_and_clears_session() {
         let (transport, received) = test_transport(&["phone-a", "phone-b"]);
         let fanout = TerminalFanout::new();
@@ -1357,6 +1412,23 @@ mod tests {
         fanout.set_session_project("session-1", "project-1");
 
         assert_eq!(fanout.viewers("session-1"), vec!["phone-a"]);
+    }
+
+    #[test]
+    fn remove_device_clears_all_subscriptions_and_output_ack() {
+        let fanout = TerminalFanout::new();
+        fanout.set_session_project("session-1", "project-1");
+        fanout.add_project_subscriber("project-1", "phone-a");
+        fanout.add_viewer("session-1", "phone-a");
+        fanout.add_viewer("session-1", "phone-b");
+        fanout.record_ack("session-1", Some("phone-a"), Some(9));
+        fanout.record_ack("session-1", Some("phone-b"), Some(7));
+
+        fanout.remove_device("phone-a");
+
+        assert_eq!(fanout.viewers("session-1"), vec!["phone-b"]);
+        assert_eq!(fanout.ack_seq("session-1", Some("phone-a")), 0);
+        assert_eq!(fanout.ack_seq("session-1", Some("phone-b")), 7);
     }
 
     #[test]

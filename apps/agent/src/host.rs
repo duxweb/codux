@@ -68,6 +68,45 @@ type CandidateSlot = Arc<Mutex<Option<(String, String)>>>;
 /// when the live AI runtime changes, so remote views tick like the desktop's.
 type AIStatsWatchers = Arc<Mutex<HashMap<String, HashSet<String>>>>;
 
+fn remove_ai_stats_watcher_device(device_id: &str, watchers: &AIStatsWatchers) {
+    if let Ok(mut watchers) = watchers.lock() {
+        for devices in watchers.values_mut() {
+            devices.remove(device_id);
+        }
+        watchers.retain(|_, devices| !devices.is_empty());
+    }
+}
+
+fn remove_device_state(
+    device_id: &str,
+    driver: &TerminalManager,
+    fanout: &crate::terminals::TerminalFanout,
+    ai_stats_watchers: &AIStatsWatchers,
+) {
+    let device_id = device_id.trim();
+    if device_id.is_empty() {
+        return;
+    }
+    let affected_sessions = driver
+        .list()
+        .into_iter()
+        .filter(|terminal| {
+            fanout
+                .viewers(&terminal.id)
+                .iter()
+                .any(|viewer| viewer == device_id)
+        })
+        .map(|terminal| terminal.id)
+        .collect::<Vec<_>>();
+    fanout.remove_device(device_id);
+    remove_ai_stats_watcher_device(device_id, ai_stats_watchers);
+    for session_id in affected_sessions {
+        if fanout.viewers(&session_id).is_empty() {
+            driver.shrink_remote_screen_scrollback(&session_id);
+        }
+    }
+}
+
 /// Build the message handler that dispatches incoming envelopes to the served
 /// domains and replies through the (post-connect) transport handle.
 fn make_handler(
@@ -82,7 +121,7 @@ fn make_handler(
     name: String,
     relay_authentication: String,
 ) -> codux_remote_transport::RemoteTransportMessageHandler {
-    Arc::new(move |_source: String, data: Vec<u8>| {
+    Arc::new(move |source: String, data: Vec<u8>| {
         let Ok(envelope) = serde_json::from_slice::<Value>(&data) else {
             return;
         };
@@ -271,6 +310,15 @@ fn make_handler(
         // (reply_kind, reply_payload). `None` => nothing to send back.
         let reply: Option<(&str, Value)> = match kind {
             REMOTE_TRANSPORT_PING => Some((REMOTE_TRANSPORT_PONG, json!({}))),
+            codux_protocol::REMOTE_DEVICE_DISCONNECTED => {
+                let source = source.trim();
+                if let Some(device_id) =
+                    device_id.or_else(|| (!source.is_empty()).then_some(source))
+                {
+                    remove_device_state(device_id, &driver, &fanout, &ai_stats_watchers);
+                }
+                None
+            }
             // Headless pairing: reaching us means the controller already holds
             // the iroh ticket (the real access gate), so auto-confirm and hand
             // back our reconnect candidate. No operator, no code validation.
@@ -858,8 +906,8 @@ async fn connect_serving_host(
         &config,
         make_handler(
             Arc::clone(&slot),
-            driver,
-            fanout,
+            Arc::clone(&driver),
+            fanout.clone(),
             indexer.clone(),
             Arc::clone(&ai_current_sessions),
             Arc::clone(&ai_stats_watchers),
@@ -869,7 +917,16 @@ async fn connect_serving_host(
             cfg.relay_authentication.clone(),
         ),
         Arc::new(|_| Ok(())),
-        Arc::new(|_, _| {}),
+        {
+            let driver = Arc::clone(&driver);
+            let fanout = fanout.clone();
+            let ai_stats_watchers = Arc::clone(&ai_stats_watchers);
+            Arc::new(move |device_id, state| {
+                if matches!(state.as_str(), "closed" | "failed" | "disconnected") {
+                    remove_device_state(&device_id, &driver, &fanout, &ai_stats_watchers);
+                }
+            })
+        },
         Arc::new(|_| {}),
         Some(Arc::new(authorize_web_tunnel_tcp_connect)),
         None,
@@ -1545,4 +1602,31 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     let _ = std::fs::remove_dir_all(&data_dir);
     result?;
     Ok("codux-agent-serve-ok\npairing + file (+blob) + project + terminal + git + ai + memory (read+extract) + ai-session domains verified".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remove_ai_stats_watcher_device_clears_every_project() {
+        let watchers: AIStatsWatchers = Arc::new(Mutex::new(HashMap::from([
+            (
+                "project-1".to_string(),
+                HashSet::from(["phone-a".to_string(), "phone-b".to_string()]),
+            ),
+            (
+                "project-2".to_string(),
+                HashSet::from(["phone-a".to_string()]),
+            ),
+        ])));
+
+        remove_ai_stats_watcher_device("phone-a", &watchers);
+
+        assert_eq!(
+            watchers.lock().unwrap().get("project-1").cloned(),
+            Some(HashSet::from(["phone-b".to_string()]))
+        );
+        assert!(!watchers.lock().unwrap().contains_key("project-2"));
+    }
 }

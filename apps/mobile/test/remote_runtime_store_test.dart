@@ -1102,6 +1102,44 @@ void main() {
     expect(plan.resetTerminalBuffer, isTrue);
     expect(store.activeSessionId, 'session-2');
   });
+
+  test(
+    'pending terminal create cancellation matches request id through FFI',
+    () {
+      final store = RemoteRuntimeStore();
+      store.applyProjectList(
+        projects: _projects,
+        remoteSelectedProjectId: 'project-1',
+        remoteSelectedWorktreeId: null,
+        terminalVisible: true,
+        terminalListLoaded: false,
+      );
+      store.beginTerminalCreate(
+        terminalId: 'session-2',
+        projectId: 'project-1',
+      );
+
+      expect(store.cancelTerminalCreate('other-session'), isFalse);
+      expect(store.creatingTerminalProjectId, 'project-1');
+      expect(store.cancelTerminalCreate('session-2'), isTrue);
+      expect(store.creatingTerminalProjectId, isNull);
+    },
+  );
+
+  test('disconnect cancels pending terminal create through FFI', () {
+    final store = RemoteRuntimeStore();
+    store.applyProjectList(
+      projects: _projects,
+      remoteSelectedProjectId: 'project-1',
+      remoteSelectedWorktreeId: null,
+      terminalVisible: true,
+      terminalListLoaded: false,
+    );
+    store.beginTerminalCreate(terminalId: 'session-2', projectId: 'project-1');
+
+    expect(store.cancelTerminalCreate(), isTrue);
+    expect(store.creatingTerminalProjectId, isNull);
+  });
 }
 
 const _projects = [

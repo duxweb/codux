@@ -79,19 +79,25 @@ fn pane_lifecycle_removal_changed(state: AgentLifecycleState) -> bool {
 pub(in crate::app) fn aggregate_agent_lifecycle(
     states: impl Iterator<Item = AgentLifecycleState>,
 ) -> Option<AgentLifecycleState> {
+    let mut has_error = false;
+    let mut has_working = false;
     let mut has_waiting = false;
     let mut has_completed = false;
     for state in states {
         match state {
-            AgentLifecycleState::Working => return Some(AgentLifecycleState::Working),
-            AgentLifecycleState::Error => return Some(AgentLifecycleState::Error),
+            AgentLifecycleState::Error => has_error = true,
+            AgentLifecycleState::Working => has_working = true,
             AgentLifecycleState::Waiting => has_waiting = true,
             AgentLifecycleState::Warning => has_waiting = true,
             AgentLifecycleState::Completed => has_completed = true,
             AgentLifecycleState::Idle => {}
         }
     }
-    if has_waiting {
+    if has_error {
+        Some(AgentLifecycleState::Error)
+    } else if has_working {
+        Some(AgentLifecycleState::Working)
+    } else if has_waiting {
         Some(AgentLifecycleState::Waiting)
     } else if has_completed {
         Some(AgentLifecycleState::Completed)
@@ -520,6 +526,19 @@ mod tests {
             aggregate_agent_lifecycle(states.into_iter()),
             Some(AgentLifecycleState::Working)
         );
+    }
+
+    #[test]
+    fn aggregate_agent_lifecycle_prefers_error_regardless_of_order() {
+        for states in [
+            [AgentLifecycleState::Working, AgentLifecycleState::Error],
+            [AgentLifecycleState::Error, AgentLifecycleState::Working],
+        ] {
+            assert_eq!(
+                aggregate_agent_lifecycle(states.into_iter()),
+                Some(AgentLifecycleState::Error)
+            );
+        }
     }
 
     #[test]

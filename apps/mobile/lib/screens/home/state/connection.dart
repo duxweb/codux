@@ -216,6 +216,9 @@ extension _HomePageConnection on HomeController {
     _terminalOutputAckSeqBySession.clear();
     _terminalOutputAckAtBySession.clear();
     _terminalBufferRetry.reset();
+    if (_remoteRuntime.cancelTerminalCreate()) {
+      _syncRuntimeViewState();
+    }
   }
 
   void _requireRepairPairing(Object? payload) {
@@ -489,6 +492,7 @@ extension _HomePageConnection on HomeController {
     unawaited(_closeActiveTransport());
     _terminalInputBatcher.reset();
     _terminalInputSender.clear();
+    final terminalCreateCancelled = _remoteRuntime.cancelTerminalCreate();
     if (resetRuntime) {
       _terminalOutputController.resetAll();
       _terminalRepaint.tick();
@@ -500,6 +504,7 @@ extension _HomePageConnection on HomeController {
       _terminalViewportController.resetSizes();
     }
     _applyState(() {
+      if (terminalCreateCancelled) _syncRuntimeViewState();
       _transportReady = false;
       if (resetRuntime) {
         _remoteSyncController.resetProtocolReady();

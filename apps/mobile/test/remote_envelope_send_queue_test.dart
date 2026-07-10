@@ -117,6 +117,24 @@ void main() {
     expect(results, [RemoteEnvelopeSendResult.rejected]);
   });
 
+  test('reports rejected once when transport send throws', () async {
+    final queue = RemoteEnvelopeSendQueue();
+    final transport = _FakeTransport(sendError: StateError('send failed'));
+    final results = <RemoteEnvelopeSendResult>[];
+    final errors = <Object>[];
+
+    await queue.send(
+      message: const RelayEnvelope(type: 'terminal.create'),
+      transport: transport,
+      connected: () => true,
+      onResult: (_, result) => results.add(result),
+      onError: errors.add,
+    );
+
+    expect(results, [RemoteEnvelopeSendResult.rejected]);
+    expect(errors, hasLength(1));
+  });
+
   test('routes terminal stream envelopes through terminal transport', () async {
     final queue = RemoteEnvelopeSendQueue();
     final transport = _FakeTransport();
@@ -151,9 +169,10 @@ Future<StoredDevice> _fakeDevice() async {
 }
 
 class _FakeTransport implements RemoteTransport {
-  _FakeTransport({this.sendResult = true});
+  _FakeTransport({this.sendResult = true, this.sendError});
 
   final bool sendResult;
+  final Object? sendError;
   final sent = <Map<String, dynamic>>[];
   final terminalSent = <Map<String, dynamic>>[];
 
@@ -175,12 +194,14 @@ class _FakeTransport implements RemoteTransport {
   @override
   Future<bool> send(Map<String, dynamic> envelope) async {
     sent.add(envelope);
+    if (sendError case final error?) throw error;
     return sendResult;
   }
 
   @override
   Future<bool> sendTerminal(Map<String, dynamic> envelope) async {
     terminalSent.add(envelope);
+    if (sendError case final error?) throw error;
     return sendResult;
   }
 

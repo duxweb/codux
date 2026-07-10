@@ -442,7 +442,11 @@ extension _HomePageProtocol on HomeController {
     if (isActiveTerminalError) {
       _terminalBufferRetry.reset();
     }
+    final terminalCreateCancelled =
+        message.sessionId != null &&
+        _remoteRuntime.cancelTerminalCreate(message.sessionId);
     _applyState(() {
+      if (terminalCreateCancelled) _syncRuntimeViewState();
       _aiStatsLoading = false;
       _filePickerLoading = false;
       _worktreeListLoading = false;

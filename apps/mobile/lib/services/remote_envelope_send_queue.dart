@@ -38,9 +38,16 @@ class RemoteEnvelopeSendQueue {
           }
           final outgoing = _attachDeviceIdentity(message, activeDevice, seq);
           final envelope = outgoing.toJson();
-          final sent = terminalStream
-              ? await transport.sendTerminal(envelope)
-              : await transport.send(envelope);
+          late final bool sent;
+          try {
+            sent = terminalStream
+                ? await transport.sendTerminal(envelope)
+                : await transport.send(envelope);
+          } catch (error) {
+            onResult?.call(message, RemoteEnvelopeSendResult.rejected);
+            onError?.call(error);
+            return;
+          }
           onResult?.call(
             message,
             sent

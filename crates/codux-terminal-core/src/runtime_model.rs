@@ -858,6 +858,7 @@ impl RemoteRuntimeModel {
 
     pub fn remove_terminal(&mut self, terminal_id: &str) -> RemoteRuntimePlan {
         let closing_active = self.active_session_id.as_deref() == Some(terminal_id);
+        self.cancel_terminal_create(Some(terminal_id.to_string()));
         self.terminals.retain(|item| item.id != terminal_id);
         self.last_terminal_id_by_project
             .retain(|_, id| id != terminal_id);
@@ -909,6 +910,21 @@ impl RemoteRuntimeModel {
             project_id,
             worktree_id: normalized_worktree_id,
         });
+    }
+
+    pub fn cancel_terminal_create(&mut self, terminal_id: Option<String>) -> bool {
+        let Some(request) = self.pending_terminal_create_request.as_ref() else {
+            return false;
+        };
+        if terminal_id
+            .as_deref()
+            .is_some_and(|terminal_id| terminal_id != request.terminal_id)
+        {
+            return false;
+        }
+        self.creating_terminal_project_id = None;
+        self.pending_terminal_create_request = None;
+        true
     }
 
     pub fn terminal_created(&mut self, terminal: RemoteRuntimeTerminal) -> RemoteRuntimePlan {

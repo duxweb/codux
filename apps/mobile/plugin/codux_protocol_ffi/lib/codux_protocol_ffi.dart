@@ -156,6 +156,9 @@ bool _hasRequiredSymbols(DynamicLibrary library) {
     library.lookup<NativeFunction<Void Function(Pointer<Void>, Pointer<Utf8>)>>(
       'codux_remote_runtime_model_begin_terminal_create_json',
     );
+    library.lookup<NativeFunction<Bool Function(Pointer<Void>, Pointer<Utf8>)>>(
+      'codux_remote_runtime_model_cancel_terminal_create',
+    );
     return true;
   } catch (_) {
     return false;
@@ -494,6 +497,11 @@ final _remoteRuntimeModelBeginTerminalCreateJson = _dylib
       Void Function(Pointer<Void>, Pointer<Utf8>),
       void Function(Pointer<Void>, Pointer<Utf8>)
     >('codux_remote_runtime_model_begin_terminal_create_json');
+final _remoteRuntimeModelCancelTerminalCreate = _dylib
+    .lookupFunction<
+      Bool Function(Pointer<Void>, Pointer<Utf8>),
+      bool Function(Pointer<Void>, Pointer<Utf8>)
+    >('codux_remote_runtime_model_cancel_terminal_create');
 final _remoteRuntimeModelTerminalCreatedJson = _dylib
     .lookupFunction<
       Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>),
@@ -1553,6 +1561,18 @@ class RemoteRuntimeCore {
       _remoteRuntimeModelBeginTerminalCreateJson(_liveHandle(), requestPtr);
     } finally {
       malloc.free(requestPtr);
+    }
+  }
+
+  bool cancelTerminalCreate([String? terminalId]) {
+    final terminalPtr = terminalId?.toNativeUtf8();
+    try {
+      return _remoteRuntimeModelCancelTerminalCreate(
+        _liveHandle(),
+        terminalPtr ?? nullptr,
+      );
+    } finally {
+      if (terminalPtr != null) malloc.free(terminalPtr);
     }
   }
 

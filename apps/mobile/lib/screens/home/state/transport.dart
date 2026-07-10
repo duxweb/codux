@@ -176,7 +176,9 @@ extension _HomePageTransport on HomeController {
     }
     _terminalInputBatcher.reset();
     _terminalInputSender.clear();
+    final terminalCreateCancelled = _remoteRuntime.cancelTerminalCreate();
     _applyState(() {
+      if (terminalCreateCancelled) _syncRuntimeViewState();
       _transportReady = false;
       _hostResponsive = false;
       _status = _t('app.reconnecting');
@@ -206,5 +208,4 @@ extension _HomePageTransport on HomeController {
     _activeTransport = null;
     await transport?.close();
   }
-
 }

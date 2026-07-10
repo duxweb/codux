@@ -878,6 +878,55 @@ fn runtime_model_waits_for_matching_local_create_id() {
 }
 
 #[test]
+fn runtime_model_cancels_only_matching_terminal_create() {
+    let mut runtime = RemoteRuntimeModel::new();
+    runtime.apply_project_list(projects(), Some("project-2".to_string()), None, true, false);
+    runtime.begin_terminal_create(
+        Some("local-split".to_string()),
+        Some("project-2".to_string()),
+        None,
+    );
+
+    assert!(!runtime.cancel_terminal_create(Some("other-split".to_string())));
+    assert_eq!(
+        runtime.snapshot().creating_terminal_project_id.as_deref(),
+        Some("project-2")
+    );
+    assert!(runtime.cancel_terminal_create(Some("local-split".to_string())));
+    assert_eq!(runtime.snapshot().creating_terminal_project_id, None);
+    assert!(!runtime.cancel_terminal_create(Some("local-split".to_string())));
+}
+
+#[test]
+fn runtime_model_cancels_pending_terminal_create_on_disconnect() {
+    let mut runtime = RemoteRuntimeModel::new();
+    runtime.apply_project_list(projects(), Some("project-2".to_string()), None, true, false);
+    runtime.begin_terminal_create(
+        Some("local-split".to_string()),
+        Some("project-2".to_string()),
+        None,
+    );
+
+    assert!(runtime.cancel_terminal_create(None));
+    assert_eq!(runtime.snapshot().creating_terminal_project_id, None);
+}
+
+#[test]
+fn runtime_model_terminal_close_cancels_matching_create() {
+    let mut runtime = RemoteRuntimeModel::new();
+    runtime.apply_project_list(projects(), Some("project-2".to_string()), None, true, false);
+    runtime.begin_terminal_create(
+        Some("local-split".to_string()),
+        Some("project-2".to_string()),
+        None,
+    );
+
+    runtime.remove_terminal("local-split");
+
+    assert_eq!(runtime.snapshot().creating_terminal_project_id, None);
+}
+
+#[test]
 fn runtime_model_does_not_bind_external_terminal_while_local_create_is_pending() {
     let mut runtime = RemoteRuntimeModel::new();
     runtime.apply_project_list(projects(), Some("project-2".to_string()), None, true, false);

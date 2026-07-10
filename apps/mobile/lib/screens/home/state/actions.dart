@@ -33,6 +33,9 @@ extension _HomePageActions on HomeController {
       _transportConnected = false;
       unawaited(_closeActiveTransport());
       _clearLatencyProbe();
+      if (_remoteRuntime.cancelTerminalCreate()) {
+        _syncRuntimeViewState();
+      }
     }
     await _saveDevices(result.state.devices);
     if (result.state.devices.isEmpty) {

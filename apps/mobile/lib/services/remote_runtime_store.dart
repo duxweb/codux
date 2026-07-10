@@ -278,6 +278,10 @@ class RemoteRuntimeStore {
     });
   }
 
+  bool cancelTerminalCreate([String? terminalId]) {
+    return _core.cancelTerminalCreate(terminalId);
+  }
+
   RemoteRuntimePlan terminalCreated(TerminalInfo terminal) {
     return _planFromCore(_core.terminalCreated(_terminalToJson(terminal)));
   }

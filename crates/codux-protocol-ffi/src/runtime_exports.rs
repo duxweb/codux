@@ -282,6 +282,17 @@ pub extern "C" fn codux_remote_runtime_model_begin_terminal_create_json(
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn codux_remote_runtime_model_cancel_terminal_create(
+    model: *mut FfiRemoteRuntimeModel,
+    terminal_id: *const c_char,
+) -> bool {
+    let Some(model) = remote_runtime_model_mut(model) else {
+        return false;
+    };
+    model.cancel_terminal_create(c_to_string(terminal_id))
+}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn codux_remote_runtime_model_terminal_created_json(
     model: *mut FfiRemoteRuntimeModel,
     terminal_json: *const c_char,
