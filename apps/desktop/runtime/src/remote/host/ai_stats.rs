@@ -11,10 +11,9 @@ impl RemoteHostRuntime {
         let project = project_store
             .projects_snapshot()
             .into_iter()
-            .find(|project| project.id == project_id)
-            .or_else(|| project_store.projects_snapshot().into_iter().next());
+            .find(|project| project.id == project_id);
         let Some(project) = project else {
-            self.send_error(envelope, "Unable to load AI stats.");
+            self.send_error(envelope, "Project not found for AI stats.");
             return;
         };
         let current_session_scope_id = envelope

@@ -25,7 +25,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        mpsc::{Receiver, SyncSender, sync_channel},
+        mpsc::{Receiver, SyncSender, channel, sync_channel},
     },
     thread,
 };
@@ -40,6 +40,10 @@ enum AIRuntimeSupervisorMessage {
     ScanBindings,
     ScanBindingFile(AIRuntimeBindingFileEvent),
     TranscriptTail(Vec<String>),
+    RemoveSession {
+        terminal_id: String,
+        reply: std::sync::mpsc::Sender<bool>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,6 +70,7 @@ pub struct AIRuntimeSupervisor {
     transcript_monitors: TranscriptMonitorMap,
     binding_scan: Arc<Mutex<AIRuntimeBindingScanState>>,
     events: Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    started: Mutex<bool>,
 }
 
 impl AIRuntimeSupervisor {
@@ -78,6 +83,7 @@ impl AIRuntimeSupervisor {
             transcript_monitors: Arc::new(Mutex::new(Default::default())),
             binding_scan: Arc::new(Mutex::new(Default::default())),
             events: Arc::new(Mutex::new(Vec::new())),
+            started: Mutex::new(false),
         }
     }
 
@@ -87,6 +93,13 @@ impl AIRuntimeSupervisor {
         runtime_event_dir: PathBuf,
         binding_dir: PathBuf,
     ) -> Result<(), String> {
+        let mut started = self
+            .started
+            .lock()
+            .map_err(|_| "AI runtime supervisor start lock poisoned.".to_string())?;
+        if *started {
+            return Ok(());
+        }
         let mut receiver = self
             .rx
             .lock()
@@ -103,7 +116,7 @@ impl AIRuntimeSupervisor {
         let transcript_monitors = Arc::clone(&self.transcript_monitors);
         let binding_scan = Arc::clone(&self.binding_scan);
         let events = Arc::clone(&self.events);
-        thread::Builder::new()
+        let spawn_result = thread::Builder::new()
             .name("codux-ai-runtime-supervisor".to_string())
             .spawn(move || {
                 supervisor_loop(
@@ -116,9 +129,14 @@ impl AIRuntimeSupervisor {
                     runtime_event_dir,
                     binding_dir,
                 )
-            })
-            .map_err(|error| error.to_string())?;
-        Ok(())
+            });
+        match spawn_result {
+            Ok(_) => {
+                *started = true;
+                Ok(())
+            }
+            Err(error) => Err(error.to_string()),
+        }
     }
 
     pub fn submit_frame(&self, frame: Vec<u8>) -> Result<(), String> {
@@ -142,7 +160,25 @@ impl AIRuntimeSupervisor {
     }
 
     pub fn remove_session(&self, terminal_id: &str) -> bool {
-        self.state.remove_session(terminal_id)
+        let Ok(started) = self.started.lock() else {
+            return false;
+        };
+        if !*started {
+            return self.state.remove_session(terminal_id);
+        }
+        drop(started);
+        let (reply, result) = channel();
+        if self
+            .tx
+            .send(AIRuntimeSupervisorMessage::RemoveSession {
+                terminal_id: terminal_id.to_string(),
+                reply,
+            })
+            .is_err()
+        {
+            return false;
+        }
+        result.recv().unwrap_or(false)
     }
 
     pub fn note_output_activity(&self, terminal_id: &str, now: f64) -> bool {
@@ -246,6 +282,15 @@ fn supervisor_loop(
                     &mut claude_cache,
                 );
                 after_mutation(&state, &transcript_monitors, &events, mutation);
+            }
+            AIRuntimeSupervisorMessage::RemoveSession { terminal_id, reply } => {
+                let mutation = AIRuntimeStateMutation {
+                    did_change: state.remove_session(&terminal_id),
+                    ..Default::default()
+                };
+                let removed = mutation.did_change;
+                after_mutation(&state, &transcript_monitors, &events, mutation);
+                let _ = reply.send(removed);
             }
         }
     }
@@ -734,6 +779,69 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, AIRuntimeSupervisorEvent::State { .. }))
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn supervisor_emits_state_after_removing_session() {
+        let supervisor = AIRuntimeSupervisor::new();
+        let registry = AIRuntimeRegistry::shared();
+        let dir = std::env::temp_dir().join(format!(
+            "codux-supervisor-remove-session-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let binding_dir = dir.join("bindings");
+        supervisor
+            .start(registry, dir.clone(), binding_dir)
+            .unwrap();
+        supervisor
+            .submit_frame(
+                br#"{"kind":"ai-hook","payload":{"kind":"promptSubmitted","terminalID":"term-1","projectID":"project-1","projectName":"Codux","projectPath":"/tmp/project","sessionTitle":"Task","tool":"codex","updatedAt":10}}"#
+                    .to_vec(),
+            )
+            .unwrap();
+        wait_for(|| supervisor.state_snapshot().sessions.len() == 1);
+        supervisor.drain_events();
+
+        assert!(supervisor.remove_session("term-1"));
+        wait_for(|| supervisor.state_snapshot().sessions.is_empty());
+        assert!(!supervisor.remove_session("term-1"));
+
+        let events = supervisor.drain_events();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AIRuntimeSupervisorEvent::State { snapshot } if snapshot.sessions.is_empty()
+        )));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn queued_hook_is_applied_before_session_removal() {
+        let supervisor = AIRuntimeSupervisor::new();
+        let registry = AIRuntimeRegistry::shared();
+        let dir = std::env::temp_dir().join(format!(
+            "codux-supervisor-remove-after-hook-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let binding_dir = dir.join("bindings");
+        supervisor
+            .start(registry, dir.clone(), binding_dir)
+            .unwrap();
+
+        supervisor
+            .submit_frame(
+                br#"{"kind":"ai-hook","payload":{"kind":"promptSubmitted","terminalID":"term-1","projectID":"project-1","projectName":"Codux","projectPath":"/tmp/project","sessionTitle":"Task","tool":"codex","updatedAt":10}}"#
+                    .to_vec(),
+            )
+            .unwrap();
+        assert!(supervisor.remove_session("term-1"));
+
+        assert!(supervisor.state_snapshot().sessions.is_empty());
+        let events = supervisor.drain_events();
+        assert!(matches!(
+            events.last(),
+            Some(AIRuntimeSupervisorEvent::State { snapshot }) if snapshot.sessions.is_empty()
+        ));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -1,4 +1,5 @@
 use super::*;
+use codux_runtime_live::remote_terminal_dispatch;
 
 impl RemoteHostRuntime {
     pub(super) fn handle_terminal_subscribe(self: &Arc<Self>, envelope: &RemoteEnvelope) {
@@ -290,21 +291,12 @@ impl RemoteHostRuntime {
         };
         self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
         let owner = self.remote_viewport_owner(envelope);
-        // Handoff guard — the protocol-level "one writer": only the device that
-        // currently OWNS the viewport may write to the PTY. A non-owner's input
-        // is dropped here (it should be showing the "taken over" placeholder, not
-        // typing). UI occlusion is the first line of defence; this is the hard
-        // backstop so a stale/duplicate view can never inject keystrokes into a
-        // session another device is driving. An unknown/not-yet-started session
-        // falls through (unwrap_or(true)) so the first input can still create it.
-        // When the lease expired back to the host-local placeholder (nobody is
-        // driving), the first remote input RE-CLAIMS instead of being dropped:
-        // only resize/create claimed before, so a pane idle past the lease TTL
-        // went permanently deaf to keystrokes.
         let is_owner = match self.terminals.viewport_state(session_id) {
             Ok(state) if state.owner == owner => true,
             Ok(state) if state.owner == crate::terminal_pty::terminal_viewport_local_owner() => {
-                self.terminals.claim_viewport(session_id, &owner).is_ok()
+                self.terminals
+                    .claim_viewport_auto(session_id, &owner)
+                    .is_ok_and(|state| state.owner == owner)
             }
             Ok(_) => false,
             Err(_) => true,
@@ -370,7 +362,7 @@ impl RemoteHostRuntime {
         }
         self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
         let owner = self.remote_viewport_owner(envelope);
-        let _ = self.terminals.claim_viewport(session_id, &owner);
+        let _ = self.terminals.claim_viewport_auto(session_id, &owner);
         self.resize_terminal_viewport_from_envelope(session_id, envelope, cols, rows);
     }
 
@@ -386,18 +378,10 @@ impl RemoteHostRuntime {
         }
         self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
         let owner = self.remote_viewport_owner(envelope);
-        // A "renewOnly" claim is the phone's idle keepalive: renew OUR lease if we
-        // still hold it, but NEVER steal it from a new owner. Without this, an idle
-        // phone's 8s keepalive lands as a fresh claim right after the desktop taps
-        // "Take over" and yanks the terminal straight back, so the handoff never
-        // sticks. Explicit interaction (input/scroll/Take over) omits the flag and
-        // reclaims as before (latest-writer-wins).
-        let renew_only = envelope
-            .payload
-            .get("renewOnly")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        if renew_only {
+        // Renew keeps the current phone lease alive without changing ownership;
+        // auto and force are handled by the shared lease state machine below.
+        let intent = remote_terminal_dispatch::terminal_viewport_claim_intent(&envelope.payload);
+        if intent == remote_terminal_dispatch::TerminalViewportClaimIntent::Renew {
             self.terminals.touch_viewport_lease(session_id, &owner);
             // Echo the authoritative owner back ONLY when the phone has actually
             // lost the lease (desktop/another device took over): it needs to learn
@@ -415,7 +399,16 @@ impl RemoteHostRuntime {
             }
             return;
         }
-        if let Ok(state) = self.terminals.claim_viewport(session_id, &owner) {
+        let state = match intent {
+            remote_terminal_dispatch::TerminalViewportClaimIntent::Auto => {
+                self.terminals.claim_viewport_auto(session_id, &owner)
+            }
+            remote_terminal_dispatch::TerminalViewportClaimIntent::Force => {
+                self.terminals.claim_viewport(session_id, &owner)
+            }
+            remote_terminal_dispatch::TerminalViewportClaimIntent::Renew => unreachable!(),
+        };
+        if let Ok(state) = state {
             let label = envelope
                 .device_id
                 .as_deref()
@@ -458,7 +451,7 @@ impl RemoteHostRuntime {
         }
         self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
         let owner = self.remote_viewport_owner(envelope);
-        let _ = self.terminals.claim_viewport(session_id, &owner);
+        let _ = self.terminals.claim_viewport_auto(session_id, &owner);
         self.resize_terminal_viewport_from_envelope(session_id, envelope, cols, rows);
     }
 

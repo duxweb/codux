@@ -18,7 +18,6 @@ class _ViewportSize {
 }
 
 class TerminalViewportController {
-  int? _lastCols;
   int? _lastRows;
   int? _pendingCols;
   int? _pendingRows;
@@ -56,7 +55,6 @@ class TerminalViewportController {
   }
 
   void resetSizes() {
-    _lastCols = null;
     _lastRows = null;
     _pendingCols = null;
     _pendingRows = null;
@@ -65,6 +63,14 @@ class TerminalViewportController {
     _generationBySession.clear();
     _ownerBySession.clear();
     _generation = 0;
+  }
+
+  void removeSession(String sessionId) {
+    final id = sessionId.trim();
+    if (id.isEmpty) return;
+    _sentBySession.remove(id);
+    _generationBySession.remove(id);
+    _ownerBySession.remove(id);
   }
 
   /// Record the phone's freshly measured grid even when there is no session to
@@ -148,7 +154,6 @@ class TerminalViewportController {
     if (!force) {
       final lastSessionSize = _sentBySession[id];
       if (lastSessionSize?.matches(cols, rows) == true) return null;
-      if (_lastCols == cols && _lastRows == rows) return null;
     }
     return TerminalViewportResize(cols: cols, rows: rows);
   }
@@ -156,7 +161,6 @@ class TerminalViewportController {
   void markSent(String sessionId, TerminalViewportResize resize) {
     final id = sessionId.trim();
     if (id.isEmpty) return;
-    _lastCols = resize.cols;
     _lastRows = resize.rows;
     _sentBySession[id] = _ViewportSize(resize.cols, resize.rows);
   }

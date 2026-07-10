@@ -282,7 +282,7 @@ fn viewport_state_marks_stale_output_per_viewer() {
 }
 
 #[test]
-fn terminal_viewport_resize_uses_remote_owner() {
+fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
     let support_dir = temp_support_dir("codux-remote-terminal-viewport-owner");
     let terminals = Arc::new(TerminalManager::new());
     let runtime = Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
@@ -309,7 +309,7 @@ fn terminal_viewport_resize_uses_remote_owner() {
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
         seq: None,
-        payload: json!({}),
+        payload: json!({ "intent": "auto" }),
     });
     runtime.handle_terminal_viewport_resize(&RemoteEnvelope {
         kind: "terminal.viewport.resize".to_string(),
@@ -322,28 +322,6 @@ fn terminal_viewport_resize_uses_remote_owner() {
         }),
     });
 
-    let state = terminals
-        .viewport_state(&session_id)
-        .expect("viewport state");
-    assert_eq!(state.owner, "remote:device-1");
-    assert_eq!(state.cols, 72);
-    assert_eq!(state.rows, 18);
-
-    let ignored = terminals
-        .resize_viewport(&session_id, "remote:device-2", 120, 40)
-        .expect("resize from non-owner");
-    assert!(ignored.is_none());
-    let state = terminals
-        .viewport_state(&session_id)
-        .expect("viewport state");
-    assert_eq!(state.owner, "remote:device-1");
-    assert_eq!(state.cols, 72);
-    assert_eq!(state.rows, 18);
-
-    let ignored = terminals
-        .resize_viewport(&session_id, "desktop", 100, 32)
-        .expect("resize from desktop while remote owns");
-    assert!(ignored.is_none());
     let state = terminals
         .viewport_state(&session_id)
         .expect("viewport state");
@@ -362,17 +340,6 @@ fn terminal_viewport_resize_uses_remote_owner() {
     assert_eq!(accepted.cols, 100);
     assert_eq!(accepted.rows, 32);
 
-    let ignored = terminals
-        .resize_viewport(&session_id, "remote:device-1", 72, 18)
-        .expect("old remote resize after desktop claim");
-    assert!(ignored.is_none());
-    let state = terminals
-        .viewport_state(&session_id)
-        .expect("viewport state");
-    assert_eq!(state.owner, "desktop");
-    assert_eq!(state.cols, 100);
-    assert_eq!(state.rows, 32);
-
     runtime.handle_terminal_viewport_resize(&RemoteEnvelope {
         kind: "terminal.viewport.resize".to_string(),
         device_id: Some("device-1".to_string()),
@@ -386,6 +353,45 @@ fn terminal_viewport_resize_uses_remote_owner() {
     let state = terminals
         .viewport_state(&session_id)
         .expect("viewport state");
+    assert_eq!(state.owner, "desktop");
+    assert_eq!(state.cols, 100);
+    assert_eq!(state.rows, 32);
+
+    runtime.handle_terminal_viewport_claim(&RemoteEnvelope {
+        kind: "terminal.viewport.claim".to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: Some(session_id.clone()),
+        seq: None,
+        payload: json!({ "intent": "auto" }),
+    });
+    assert_eq!(
+        terminals
+            .viewport_state(&session_id)
+            .expect("viewport state after automatic claim")
+            .owner,
+        "desktop"
+    );
+
+    runtime.handle_terminal_viewport_claim(&RemoteEnvelope {
+        kind: "terminal.viewport.claim".to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: Some(session_id.clone()),
+        seq: None,
+        payload: json!({ "intent": "force" }),
+    });
+    runtime.handle_terminal_viewport_resize(&RemoteEnvelope {
+        kind: "terminal.viewport.resize".to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: Some(session_id.clone()),
+        seq: None,
+        payload: json!({
+            "cols": 72,
+            "rows": 18,
+        }),
+    });
+    let state = terminals
+        .viewport_state(&session_id)
+        .expect("viewport state after forced claim");
     assert_eq!(state.owner, "remote:device-1");
     assert_eq!(state.cols, 72);
     assert_eq!(state.rows, 18);

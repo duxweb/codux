@@ -9,9 +9,6 @@ part of '../home_page.dart';
 extension _HomePageWorkspace on HomeController {
   void _selectTerminal(TerminalInfo terminal) {
     _terminalActions.selectTerminal(terminal);
-    // A: opening/selecting a terminal on mobile takes it over (handoff) — clears
-    // any handed-away state and reclaims so the host reflows the PTY to us.
-    _takeOverTerminalViewport(sessionId: terminal.id);
   }
 
   void _createCurrentProjectTerminal() {
@@ -259,14 +256,18 @@ extension _HomePageWorkspace on HomeController {
     );
     final trimmed = nextTitle?.trim();
     if (trimmed == null || trimmed.isEmpty || trimmed == session.title) return;
-    _send(_projectController.aiSessionRenameEnvelope(project, session.id, trimmed));
+    _send(
+      _projectController.aiSessionRenameEnvelope(project, session.id, trimmed),
+    );
   }
 
   Future<void> _deleteAISession(AISessionRecord session) async {
     final project = _selectedProject;
     if (project == null) return;
     final prefs = AppPreferences.of(context);
-    final name = session.title.trim().isNotEmpty ? session.title.trim() : session.id;
+    final name = session.title.trim().isNotEmpty
+        ? session.title.trim()
+        : session.id;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => FileDeleteDialog(
@@ -547,10 +548,11 @@ extension _HomePageWorkspace on HomeController {
   void _focusTerminalViewSoon() {
     Future<void>.delayed(const Duration(milliseconds: 80), () {
       if (!mounted) return;
-      if (_workspaceMode != WorkspaceMode.terminal || !_hasShownTerminal) return;
+      if (_workspaceMode != WorkspaceMode.terminal || !_hasShownTerminal) {
+        return;
+      }
       _claimTerminalViewport();
       _flushPendingTerminalResize(force: true);
     });
   }
-
 }

@@ -21,11 +21,11 @@
     },
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWpIL0FBaXRBRzNFKytwQTRNNkNZR3F1ZHBlb2YzeG5TYVRCM29kV0dEaW56Y0ZUMmVnY0pEaUVyRnl3b0d6eXV2dS9nTmFmME1RS05xT1BacEs0SUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTgwMzQyCWZpbGU6Y29kdXgtMi4wLjAtcmMuNy13aW5kb3dzLXg4Nl82NC1zZXR1cC5leGUKT3pweTFsWjF2Nm13YkdIb1VtUFJEYjV3YVlEWlV4Ym5ZalVraEpodVJKM1ZrODVkUndLWkhRL0ZkSm1nV05tN09XQWdQbjg1Z2hjUTVTckJGc3pNQlE9PQo=",
-      "url": "https://github.com/duxweb/codux/releases/download/v2.0.0-rc.7/codux-2.0.0-rc.7-windows-x86_64-setup.exe"
+      "url": "https://github.com/duxweb/codux/releases/download/v2.0.0-rc.7/codux-windows-x86_64-setup.exe"
     },
     "windows-x86_64-nsis": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSURHR3NLNGdlQWpIL0FBaXRBRzNFKytwQTRNNkNZR3F1ZHBlb2YzeG5TYVRCM29kV0dEaW56Y0ZUMmVnY0pEaUVyRnl3b0d6eXV2dS9nTmFmME1RS05xT1BacEs0SUEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzgzNTgwMzQyCWZpbGU6Y29kdXgtMi4wLjAtcmMuNy13aW5kb3dzLXg4Nl82NC1zZXR1cC5leGUKT3pweTFsWjF2Nm13YkdIb1VtUFJEYjV3YVlEWlV4Ym5ZalVraEpodVJKM1ZrODVkUndLWkhRL0ZkSm1nV05tN09XQWdQbjg1Z2hjUTVTckJGc3pNQlE9PQo=",
-      "url": "https://github.com/duxweb/codux/releases/download/v2.0.0-rc.7/codux-2.0.0-rc.7-windows-x86_64-setup.exe"
+      "url": "https://github.com/duxweb/codux/releases/download/v2.0.0-rc.7/codux-windows-x86_64-setup.exe"
     }
   }
 }

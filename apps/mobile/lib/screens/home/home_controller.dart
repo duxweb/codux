@@ -91,17 +91,11 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   bool _showTerminalSwitcher = false;
   bool _terminalReady = false;
   bool _terminalViewportInteractive = false;
-  // Handoff: true when the desktop (or another device) took this session over —
-  // we YIELD (placeholder + stop claiming/resizing) instead of reclaiming it,
-  // which would ping-pong with the desktop's "Take over". Cleared when we take
-  // it back (selecting the terminal, or the on-screen "Take over here" button).
+  // Handoff: true when the desktop (or another device) owns this session. The
+  // phone stays passive until the on-screen "Take over here" action forces it.
   bool _remoteHandedAway = false;
-  // When we last sent a viewport.claim, used to throttle the per-input claim so
-  // a fling over a mouse-tracking TUI (which forwards a wheel event -- and used
-  // to re-claim -- every cell-height) does not flood the transport with claims
-  // and spike measured latency. A claim only renews the lease / asserts
-  // ownership, so one per window is enough; a desktop steal still reclaims
-  // reactively via the viewport-state broadcast.
+  // The last automatic claim, used to collapse bind/focus/first-layout triggers
+  // for the same session into one request window.
   DateTime? _lastViewportClaimAt;
   String? _lastViewportClaimSession;
   RemoteTerminalBufferPhase _terminalBufferPhase =
@@ -361,11 +355,8 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       if (_sessionId == null) return;
-      // Renew only: a phone left idle on the terminal screen must not
-      // steal the viewport back from an actively-used desktop. Explicit
-      // interaction (scroll, input) reclaims instead. renewOnly makes the host
-      // renew our lease ONLY if we still own it -- after the desktop taps "Take
-      // over", this becomes a no-op there so the handoff sticks.
+      // Renew only: a phone left idle on the terminal screen must not steal the
+      // viewport back. The host renews only when this phone still owns it.
       if (!_terminalViewportInteractive) return;
       _claimTerminalViewport(renewOnly: true);
     });
@@ -602,7 +593,6 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       selectedProjectId: _selectedProjectId,
       terminalBufferCapability: _terminalBufferCapability,
       outputController: _terminalOutputController,
-      terminalRepaint: _terminalRepaint,
       terminalInputSender: _terminalInputSender,
       terminalInputBatcher: _terminalInputBatcher,
       terminalBufferRetry: _terminalBufferRetry,
@@ -618,6 +608,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       closeTerminalSwitcherAfterPendingWorktreeBuffer:
           _closeTerminalSwitcherAfterPendingWorktreeBuffer,
       trackTerminalBaselineRequest: _trackTerminalBaselineRequest,
+      removeTerminalSessionState: _removeTerminalSessionState,
       releaseTerminalViewport: ({String? sessionId}) =>
           _releaseTerminalViewport(sessionId: sessionId),
       clearTerminal: _clearTerminal,
@@ -625,7 +616,13 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       sendProjectSelect: (projectId, {required reason}) =>
           _sendProjectSelect(projectId, reason: reason),
       focusTerminalViewSoon: _focusTerminalViewSoon,
-      onSessionStateChanged: (previous, reason) {},
+      onSessionStateChanged: (previous, reason) {
+        if (previous.sessionId == _sessionId) return;
+        _terminalViewportInteractive = false;
+        _remoteHandedAway = false;
+        _lastViewportClaimAt = null;
+        _lastViewportClaimSession = null;
+      },
     );
   }
 

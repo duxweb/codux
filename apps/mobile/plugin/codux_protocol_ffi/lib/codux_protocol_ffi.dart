@@ -1289,7 +1289,7 @@ class RemoteRuntimeCorePlan {
     this.bindSessionId,
     this.bindFullBuffer = false,
     this.flushTerminalInput = false,
-    this.removedSessionId,
+    this.removedSessionIds = const [],
   });
 
   final bool stateChanged;
@@ -1301,7 +1301,7 @@ class RemoteRuntimeCorePlan {
   final String? bindSessionId;
   final bool bindFullBuffer;
   final bool flushTerminalInput;
-  final String? removedSessionId;
+  final List<String> removedSessionIds;
 
   factory RemoteRuntimeCorePlan.fromJson(Map<String, dynamic> json) {
     return RemoteRuntimeCorePlan(
@@ -1314,7 +1314,11 @@ class RemoteRuntimeCorePlan {
       bindSessionId: _nullableString(json['bindSessionId']),
       bindFullBuffer: json['bindFullBuffer'] == true,
       flushTerminalInput: json['flushTerminalInput'] == true,
-      removedSessionId: _nullableString(json['removedSessionId']),
+      removedSessionIds: [
+        if (json['removedSessionIds'] is List)
+          for (final value in json['removedSessionIds'] as List)
+            if ('$value'.trim().isNotEmpty) '$value'.trim(),
+      ],
     );
   }
 }

@@ -185,6 +185,7 @@ impl TerminalPtySession {
                 owner_label: None,
             },
             expires_at: Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL,
+            explicit_owner: false,
         }));
         let ai_runtime_binding = AIRuntimeTerminalBinding {
             terminal_id: id.clone(),
@@ -263,6 +264,10 @@ impl TerminalPtySession {
 
     pub fn claim_viewport(&self, owner: &str) -> Result<TerminalViewportState> {
         self.clone_handle().claim_viewport(owner)
+    }
+
+    pub fn claim_viewport_auto(&self, owner: &str) -> Result<TerminalViewportState> {
+        self.clone_handle().claim_viewport_auto(owner)
     }
 
     pub fn release_viewport(&self, owner: &str) -> Result<Option<TerminalViewportState>> {
@@ -534,31 +539,54 @@ impl TerminalExitSignal {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ViewportClaimIntent {
+    Auto,
+    Force,
+    Passive,
+}
+
 impl TerminalPtySessionHandle {
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         self.resize_viewport(terminal_viewport_local_owner(), cols, rows)
             .map(|_| ())
     }
 
-    /// Active claim: explicit viewport ownership intent from a controller.
-    /// Ordinary desktop focus/input does not call this; the current owner is
-    /// the only endpoint allowed to resize the PTY.
+    /// Explicit claim from a manual takeover or active desktop input.
     pub fn claim_viewport(&self, owner: &str) -> Result<TerminalViewportState> {
-        self.claim_viewport_with(owner, true)
+        self.claim_viewport_with(owner, ViewportClaimIntent::Force)
+    }
+
+    /// Automatic claim from a newly-visible controller. It may take the
+    /// untouched default desktop owner, but never overrides an explicit claim.
+    pub fn claim_viewport_auto(&self, owner: &str) -> Result<TerminalViewportState> {
+        self.claim_viewport_with(owner, ViewportClaimIntent::Auto)
     }
 
     /// Passive claim: ambient paths such as the desktop prepaint. Does NOT
     /// steal an unexpired lease held by a different owner — otherwise a
     /// painting desktop pane revokes a mobile claim within one frame.
     pub fn claim_viewport_passive(&self, owner: &str) -> Result<TerminalViewportState> {
-        self.claim_viewport_with(owner, false)
+        self.claim_viewport_with(owner, ViewportClaimIntent::Passive)
     }
 
-    fn claim_viewport_with(&self, owner: &str, force: bool) -> Result<TerminalViewportState> {
+    fn claim_viewport_with(
+        &self,
+        owner: &str,
+        intent: ViewportClaimIntent,
+    ) -> Result<TerminalViewportState> {
         let owner = terminal_viewport_owner(owner);
         let mut viewport = self.viewport.lock();
         let now = Instant::now();
-        if !force && viewport.state.owner != owner {
+        let owner_matches = viewport.state.owner == owner;
+        let can_auto_claim =
+            viewport.state.owner == terminal_viewport_local_owner() && !viewport.explicit_owner;
+        let can_claim = match intent {
+            ViewportClaimIntent::Force => true,
+            ViewportClaimIntent::Auto => owner_matches || can_auto_claim,
+            ViewportClaimIntent::Passive => owner_matches,
+        };
+        if !can_claim {
             return Ok(viewport.state.clone());
         }
         let state = &mut viewport.state;
@@ -566,6 +594,11 @@ impl TerminalPtySessionHandle {
         if state.owner != owner {
             state.owner = owner;
             state.generation = state.generation.saturating_add(1);
+        }
+        if intent == ViewportClaimIntent::Force {
+            viewport.explicit_owner = true;
+        } else if owner_changed {
+            viewport.explicit_owner = false;
         }
         viewport.expires_at = now + TERMINAL_VIEWPORT_LEASE_TTL;
         let state = viewport.state.clone();
@@ -618,6 +651,7 @@ impl TerminalPtySessionHandle {
             .unwrap_or_else(|| terminal_viewport_local_owner().to_string());
         viewport.state.owner = next_owner;
         viewport.state.generation = viewport.state.generation.saturating_add(1);
+        viewport.explicit_owner = false;
         viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
         let state = viewport.state.clone();
         drop(viewport);
@@ -633,6 +667,7 @@ impl TerminalPtySessionHandle {
         }
         viewport.state.owner = terminal_viewport_local_owner().to_string();
         viewport.state.generation = viewport.state.generation.saturating_add(1);
+        viewport.explicit_owner = false;
         viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
         let state = viewport.state.clone();
         drop(viewport);
@@ -728,6 +763,12 @@ pub(super) fn spawn_waiter(
         .spawn(move || {
             let exit_code = control.wait_exit_code();
             exit_signal.mark_exited(exit_code);
+            {
+                let mut info = info.lock();
+                info.status = "exited".to_string();
+                info.is_running = false;
+                info.last_active_at = rfc3339_now();
+            }
             emit_terminal_event(
                 &event_subscribers,
                 TerminalEvent::Exit {
@@ -735,10 +776,6 @@ pub(super) fn spawn_waiter(
                     exit_code,
                 },
             );
-            let mut info = info.lock();
-            info.status = "exited".to_string();
-            info.is_running = false;
-            info.last_active_at = rfc3339_now();
         })
         .expect("failed to spawn terminal waiter");
 }

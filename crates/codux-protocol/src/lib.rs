@@ -1026,6 +1026,11 @@ impl RemoteTerminalSubscriptions {
             .unsubscribe(REMOTE_RESOURCE_TERMINALS, Some(project_id), None, device_id);
     }
 
+    pub fn project_subscribers(&self, project_id: &str) -> HashSet<String> {
+        self.resources
+            .devices_for(REMOTE_RESOURCE_TERMINALS, Some(project_id), None)
+    }
+
     pub fn remove_project_session_viewers<'a>(
         &self,
         session_ids: impl IntoIterator<Item = &'a str>,

@@ -9,6 +9,7 @@ import 'package:codux_protocol_ffi/codux_protocol_ffi.dart'
     as codux_terminal_core;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 import '../../i18n.dart';
 import '../../models/remote_models.dart';
 import '../../models/workspace_mode.dart';
@@ -81,8 +82,7 @@ final String _remoteProtocolVersion = remoteProtocolVersion;
 const Duration _remoteStartupProbeTimeout = Duration(seconds: 15);
 const Duration _remoteLatencyProbeInterval = Duration(seconds: 3);
 const Duration _remoteLatencyProbeTimeout = Duration(seconds: 8);
-// Minimum gap between viewport.claim sends on the high-frequency input/scroll
-// path. Below the host lease TTL so the lease never lapses mid-interaction.
+// Bind, focus and first layout can all request the same automatic claim.
 const Duration _viewportClaimThrottle = Duration(seconds: 2);
 
 class CoduxHomePage extends StatefulWidget {
@@ -231,13 +231,16 @@ class _CoduxHomePageState extends State<CoduxHomePage>
               onSelectFilePickerEntry: c._selectRemoteProjectFolder,
               onOpenFilePickerHome: () => c._openRemoteFilePicker(),
               onOpenFilePickerRoot: () => c._openRemoteFilePicker('/'),
-              onOpenFilePickerVolumes: () => c._openRemoteFilePicker('/Volumes'),
-              onCloseVoice: () => c._applyState(() => c._showVoiceOverlay = false),
+              onOpenFilePickerVolumes: () =>
+                  c._openRemoteFilePicker('/Volumes'),
+              onCloseVoice: () =>
+                  c._applyState(() => c._showVoiceOverlay = false),
               onSendVoiceText: (text) {
                 c._insertTerminalText(text);
                 c._applyState(() => c._showVoiceOverlay = false);
               },
-              onCloseFileEditor: () => c._applyState(() => c._editingFilePath = null),
+              onCloseFileEditor: () =>
+                  c._applyState(() => c._editingFilePath = null),
               onEditFile: c._beginEditingFile,
               onSaveFile: c._saveEditingFile,
             ),
@@ -287,11 +290,15 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       terminalFontSize: c._settings.terminalFontSize,
       onChangeAccent: (next) {
         widget.onChangeAccent(next);
-        c._applyState(() => c._settings = c._settings.copyWith(accentId: next.id));
+        c._applyState(
+          () => c._settings = c._settings.copyWith(accentId: next.id),
+        );
       },
       onChangeLocale: (next) {
         widget.onChangeLocale(next);
-        c._applyState(() => c._settings = c._settings.copyWith(localeId: next.id));
+        c._applyState(
+          () => c._settings = c._settings.copyWith(localeId: next.id),
+        );
       },
       onChangeThemeMode: (next) {
         widget.onChangeThemeMode(next);
@@ -313,8 +320,9 @@ class _CoduxHomePageState extends State<CoduxHomePage>
         c._applyState(() => c._settings = settings);
         unawaited(c._storage.saveSettings(settings));
       },
-      onUseDetectedName: () =>
-          c._applyState(() => c._settingsNameController.text = c._detectedDeviceName),
+      onUseDetectedName: () => c._applyState(
+        () => c._settingsNameController.text = c._detectedDeviceName,
+      ),
       onSave: c._saveSettings,
       onBack: () => c._popCupertinoPage(() {
         c._showSettings = false;
@@ -353,17 +361,19 @@ class _CoduxHomePageState extends State<CoduxHomePage>
     // On the pad the terminal stays centered while the right column shows a tool
     // (stats/ssh/git), so the terminal toolbar must stay visible. Report an
     // effective 'terminal' mode whenever the terminal body is actually centered.
-    final isPadLayout =
-        MediaQuery.of(context).size.width >= _padLayoutMinWidth;
+    final isPadLayout = MediaQuery.of(context).size.width >= _padLayoutMinWidth;
     final terminalCentered = isPadLayout
-        ? (c._workspaceMode != WorkspaceMode.review && c._editingFilePath == null)
+        ? (c._workspaceMode != WorkspaceMode.review &&
+              c._editingFilePath == null)
         : (c._workspaceMode == WorkspaceMode.terminal);
     final terminalBody = RemoteTerminalPane(
       connected: c._isConnected,
       showTerminal: c._hasShownTerminal,
       hasDevice: c._activeDevice != null,
       status: c._status,
-      workspaceMode: terminalCentered ? WorkspaceMode.terminal : c._workspaceMode,
+      workspaceMode: terminalCentered
+          ? WorkspaceMode.terminal
+          : c._workspaceMode,
       projectListLoaded: c._projectListLoaded,
       projectCount: c._projects.length,
       terminalUploadLoading: c._terminalUploadLoading,
@@ -434,11 +444,14 @@ class _CoduxHomePageState extends State<CoduxHomePage>
       shellData: shellData,
       terminalBody: terminalBody,
       onShowTerminal: c._showTerminalMode,
-      onShowStats: () => c._toggleWorkspaceTool(WorkspaceMode.stats, c._requestAIStats),
+      onShowStats: () =>
+          c._toggleWorkspaceTool(WorkspaceMode.stats, c._requestAIStats),
       onShowFiles: c._showFilesMode,
       onShowReview: c._showReviewMode,
-      onShowSsh: () => c._toggleWorkspaceTool(WorkspaceMode.ssh, c._showSshMode),
-      onShowGit: () => c._toggleWorkspaceTool(WorkspaceMode.git, c._showGitMode),
+      onShowSsh: () =>
+          c._toggleWorkspaceTool(WorkspaceMode.ssh, c._showSshMode),
+      onShowGit: () =>
+          c._toggleWorkspaceTool(WorkspaceMode.git, c._showGitMode),
       onGitAction: (op, args) => c._gitAction(op, args: args),
       onRefreshGit: c._requestGitStatus,
       onSshUpsert: c._sshUpsert,

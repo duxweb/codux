@@ -43,6 +43,27 @@ pub struct TerminalMessage<'a> {
     pub payload: &'a Value,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerminalViewportClaimIntent {
+    Auto,
+    Force,
+    Renew,
+}
+
+pub fn terminal_viewport_claim_intent(payload: &Value) -> TerminalViewportClaimIntent {
+    if payload
+        .get("renewOnly")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return TerminalViewportClaimIntent::Renew;
+    }
+    match payload.get("intent").and_then(Value::as_str) {
+        Some("auto") => TerminalViewportClaimIntent::Auto,
+        _ => TerminalViewportClaimIntent::Force,
+    }
+}
+
 /// Shared state for a `terminal.create` request. Both hosts use this so the
 /// stable-session reattach path cannot drift between the desktop host and the
 /// headless agent.
@@ -369,11 +390,32 @@ pub trait RemoteTerminalDispatch {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_terminal_osc_color_env, finish_terminal_create_viewer_lifecycle,
-        prepare_terminal_create_lifecycle,
+        TerminalViewportClaimIntent, apply_terminal_osc_color_env,
+        finish_terminal_create_viewer_lifecycle, prepare_terminal_create_lifecycle,
+        terminal_viewport_claim_intent,
     };
     use crate::terminal_pty::{TerminalManager, TerminalPtyConfig};
     use serde_json::json;
+
+    #[test]
+    fn viewport_claim_intent_preserves_legacy_force_behavior() {
+        assert_eq!(
+            terminal_viewport_claim_intent(&json!({"intent": "auto"})),
+            TerminalViewportClaimIntent::Auto
+        );
+        assert_eq!(
+            terminal_viewport_claim_intent(&json!({"intent": "force"})),
+            TerminalViewportClaimIntent::Force
+        );
+        assert_eq!(
+            terminal_viewport_claim_intent(&json!({"renewOnly": true, "intent": "force"})),
+            TerminalViewportClaimIntent::Renew
+        );
+        assert_eq!(
+            terminal_viewport_claim_intent(&json!({})),
+            TerminalViewportClaimIntent::Force
+        );
+    }
 
     #[test]
     fn osc_color_env_applies_from_create_payload() {

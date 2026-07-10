@@ -17,8 +17,12 @@ impl RuntimeService {
     }
 
     /// Terminal status pushes from viewed remote hosts (their agent dots).
-    pub fn drain_remote_terminal_status(&self) -> Vec<serde_json::Value> {
+    pub fn drain_remote_terminal_status(&self) -> Vec<(String, serde_json::Value)> {
         self.remote_controllers.drain_pushed_terminal_status()
+    }
+
+    pub fn drain_disconnected_remote_devices(&self) -> Vec<String> {
+        self.remote_controllers.drain_disconnected_devices()
     }
 
     pub fn open_host_browser_url(
@@ -460,12 +464,12 @@ impl RuntimeService {
         scope_id: &str,
         include_cached: bool,
     ) -> Option<Result<Vec<crate::ai_history::AIHistoryCurrentSessionView>, String>> {
-        let device_id = self.host_device_for_project_path(project_path)?;
+        let (device_id, project_id) = self.remote_project_for_path(project_path)?;
         let controller = match self.remote_controllers.controller_for(&device_id) {
             Ok(controller) => controller,
             Err(error) => return Some(Err(error)),
         };
-        Some(controller.ai_stats(scope_id).map(|payload| {
+        Some(controller.ai_stats(&project_id, scope_id).map(|payload| {
             crate::ai_history::ai_current_session_views(
                 codux_runtime_core::ai_stats::current_sessions_from_payload(&payload),
                 include_cached,

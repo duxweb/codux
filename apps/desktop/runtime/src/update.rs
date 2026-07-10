@@ -616,4 +616,27 @@ mod tests {
         assert!(!status.automatic_install_supported);
         assert_eq!(status.installation_mode, "manualManifest");
     }
+
+    #[test]
+    fn checked_in_update_manifests_use_stable_windows_installer_url() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .expect("workspace root")
+            .to_path_buf();
+        for channel in ["beta", "stable"] {
+            let path = root.join("updates").join(channel).join("latest.json");
+            let manifest: Value = serde_json::from_slice(&fs::read(&path).expect("manifest"))
+                .expect("valid manifest");
+            let version = manifest["version"].as_str().expect("manifest version");
+            for platform in ["windows-x86_64", "windows-x86_64-nsis"] {
+                let url = manifest["platforms"][platform]["url"]
+                    .as_str()
+                    .expect("Windows updater URL");
+                assert!(url.ends_with("/codux-windows-x86_64-setup.exe"));
+                assert!(!url.contains(&format!("codux-{version}-windows")));
+            }
+        }
+    }
 }

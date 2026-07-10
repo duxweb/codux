@@ -120,13 +120,11 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
             const SizedBox(height: 16),
             Text(
               prefs.t('terminal.handoff.takenOver'),
-              style: TextStyle(
-                fontSize: 15,
-                color: AppColors.terminalTextDim,
-              ),
+              style: TextStyle(fontSize: 15, color: AppColors.terminalTextDim),
             ),
             const SizedBox(height: 20),
             FilledButton.tonal(
+              key: const ValueKey('terminal-take-over'),
               onPressed: widget.onTakeOver,
               child: Text(prefs.t('terminal.handoff.takeBack')),
             ),
@@ -181,7 +179,8 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
               // Clear the toolbar by the grid's top inset plus two rows (the
               // cursor line + a TUI input box's bottom border), not just touch.
               bottomMargin:
-                  terminalPadding.top + (_cursorMetrics?.lineHeight ?? 16.0) * 2,
+                  terminalPadding.top +
+                  (_cursorMetrics?.lineHeight ?? 16.0) * 2,
             );
             final showHostSyncOverlay =
                 widget.connected &&
@@ -234,7 +233,8 @@ class _RemoteTerminalPaneState extends State<RemoteTerminalPane> {
                                 onSelectionChanged: widget.onSelectionChanged,
                                 onRequestKeyboard: widget.onRequestKeyboard,
                                 keyboardRequested: widget.keyboardRequested,
-                                keyboardRequestSerial: widget.keyboardRequestSerial,
+                                keyboardRequestSerial:
+                                    widget.keyboardRequestSerial,
                                 onCursorMetrics: (metrics) {
                                   if (_cursorMetrics == metrics) return;
                                   setState(() => _cursorMetrics = metrics);

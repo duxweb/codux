@@ -755,11 +755,11 @@ impl RemoteController {
         Ok(reply.get("result").cloned().unwrap_or(Value::Null))
     }
 
-    pub fn ai_stats(&self, project_id: &str) -> Result<Value, String> {
+    pub fn ai_stats(&self, project_id: &str, worktree_id: &str) -> Result<Value, String> {
         self.request(
             REMOTE_AI_STATS,
             REMOTE_AI_STATS,
-            json!({ "projectId": project_id }),
+            json!({ "projectId": project_id, "worktreeId": worktree_id }),
         )
     }
 
@@ -1687,6 +1687,10 @@ mod tests {
                         br#"{"type":"terminal.closed","sessionId":"session-1","payload":{"id":"session-1"}}"#,
                     );
                 }
+                Some(REMOTE_AI_STATS) => {
+                    self.inner
+                        .route(br#"{"type":"ai.stats","payload":{"sessions":[]}}"#);
+                }
                 _ => {}
             }
             true
@@ -1890,6 +1894,37 @@ mod tests {
         assert_eq!(
             sent[0].get("type").and_then(Value::as_str),
             Some(REMOTE_TERMINAL_LIST)
+        );
+    }
+
+    #[test]
+    fn ai_stats_requests_project_and_worktree_scope() {
+        let inner = Arc::new(ControllerInner::default());
+        let transport = Arc::new(CapturingReplyTransport::new(Arc::clone(&inner)));
+        let controller = RemoteController {
+            transport: transport.clone(),
+            device_id: "device-1".to_string(),
+            inner,
+            next_id: AtomicU64::new(1),
+        };
+
+        controller
+            .ai_stats("project-1", "worktree-1")
+            .expect("AI stats");
+
+        let sent = transport.sent();
+        let payload = sent[0].get("payload").expect("payload");
+        assert_eq!(
+            sent[0].get("type").and_then(Value::as_str),
+            Some(REMOTE_AI_STATS)
+        );
+        assert_eq!(
+            payload.get("projectId").and_then(Value::as_str),
+            Some("project-1")
+        );
+        assert_eq!(
+            payload.get("worktreeId").and_then(Value::as_str),
+            Some("worktree-1")
         );
     }
 

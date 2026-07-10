@@ -10,7 +10,6 @@ import 'package:codux_flutter/services/remote_terminal_output_controller.dart';
 import 'package:codux_flutter/services/terminal_buffer_retry.dart';
 import 'package:codux_flutter/services/terminal_input_batcher.dart';
 import 'package:codux_flutter/services/terminal_input_reliable_sender.dart';
-import 'package:codux_flutter/services/terminal_repaint_signal.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -18,6 +17,8 @@ void main() {
     final timers = <_FakeTimer>[];
     final sentRetryRequests = <String>[];
     final sentEnvelopes = <RelayEnvelope>[];
+    final removedSessionStates = <String>[];
+    var focusCount = 0;
     var sessionId = 'term-a';
     String? pendingSessionId;
     var projectId = 'project-1';
@@ -45,7 +46,6 @@ void main() {
       selectedProjectId: projectId,
       terminalBufferCapability: TerminalBufferCapability.fallback,
       outputController: output,
-      terminalRepaint: TerminalRepaintSignal(),
       terminalInputSender: inputSender,
       terminalInputBatcher: TerminalInputBatcher(send: (_) {}),
       terminalBufferRetry: retry,
@@ -74,11 +74,12 @@ void main() {
           hasPendingRequest: (_) => true,
         );
       },
+      removeTerminalSessionState: removedSessionStates.add,
       releaseTerminalViewport: ({String? sessionId}) {},
       clearTerminal: () {},
       requestTerminalList: () {},
       sendProjectSelect: (_, {required reason}) {},
-      focusTerminalViewSoon: () {},
+      focusTerminalViewSoon: () => focusCount += 1,
       onSessionStateChanged: (_, _) {},
     );
 
@@ -88,6 +89,7 @@ void main() {
     );
     expect(retry.pendingSessionId, 'term-a');
     expect(timers.single.isActive, isTrue);
+    expect(focusCount, 1);
 
     output.accept(
       RelayEnvelope(
@@ -113,6 +115,7 @@ void main() {
 
     expect(retry.pendingSessionId, isNull);
     expect(timers.single.isActive, isFalse);
+    expect(focusCount, 2);
     timers.single.fire();
     expect(sentRetryRequests, isEmpty);
     expect(
@@ -123,6 +126,12 @@ void main() {
           .length,
       greaterThanOrEqualTo(1),
     );
+
+    coordinator.applyRuntimePlan(
+      const RemoteRuntimePlan(removedSessionIds: ['term-a', 'term-b']),
+      reason: 'removed',
+    );
+    expect(removedSessionStates, ['term-a', 'term-b']);
   });
 }
 

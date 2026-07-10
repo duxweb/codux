@@ -29,3 +29,37 @@ fn ai_stats_watcher_tracks_one_project_per_device_and_clears_on_disconnect() {
 
     fs::remove_dir_all(support_dir).ok();
 }
+
+#[test]
+fn ai_stats_rejects_unknown_project_instead_of_using_first_project() {
+    let support_dir = temp_support_dir("codux-remote-ai-stats-project-scope");
+    write_two_project_state(&support_dir);
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    let transport = Arc::new(CapturingTransport::default());
+    if let Ok(mut current) = runtime.transport.lock() {
+        *current = Some(transport.clone());
+    }
+
+    runtime.handle_ai_stats(&RemoteEnvelope {
+        kind: REMOTE_AI_STATS.to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: None,
+        seq: None,
+        payload: json!({
+            "projectId": "missing-project",
+            "worktreeId": "missing-worktree"
+        }),
+    });
+
+    let messages = transport.take_messages();
+    assert_eq!(messages.len(), 1);
+    let envelope: RemoteEnvelope = serde_json::from_slice(&messages[0].1).expect("error envelope");
+    assert_eq!(envelope.kind, REMOTE_ERROR);
+    assert_eq!(
+        envelope.payload["message"],
+        "Project not found for AI stats."
+    );
+    assert!(runtime.ai_stats_watchers.lock().unwrap().is_empty());
+
+    fs::remove_dir_all(support_dir).ok();
+}

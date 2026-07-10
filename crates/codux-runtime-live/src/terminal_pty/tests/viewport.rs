@@ -2,6 +2,68 @@ use super::*;
 
 #[cfg(unix)]
 #[test]
+fn automatic_viewport_claim_respects_explicit_handoffs() {
+    let manager = TerminalManager::new();
+    let temp = std::env::temp_dir().join(format!(
+        "codux-terminal-viewport-auto-claim-{}",
+        Uuid::new_v4()
+    ));
+    fs::create_dir_all(&temp).unwrap();
+    let session_id = manager
+        .create(
+            TerminalPtyConfig {
+                shell: Some("sh".to_string()),
+                command: Some("printf ready".to_string()),
+                cwd: Some(temp.to_string_lossy().to_string()),
+                cols: Some(100),
+                rows: Some(32),
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .expect("create terminal");
+    let session = manager.session(&session_id).expect("session");
+    let handle = session.clone_handle();
+
+    assert!(!session.viewport.lock().explicit_owner);
+    let state = handle
+        .claim_viewport_auto("remote:phone")
+        .expect("automatic phone claim");
+    assert_eq!(state.owner, "remote:phone");
+    assert!(!session.viewport.lock().explicit_owner);
+
+    handle
+        .claim_viewport(terminal_viewport_local_owner())
+        .expect("explicit desktop claim");
+    assert!(session.viewport.lock().explicit_owner);
+    let state = handle
+        .claim_viewport_auto("remote:phone")
+        .expect("blocked automatic phone claim");
+    assert_eq!(state.owner, terminal_viewport_local_owner());
+    assert!(session.viewport.lock().explicit_owner);
+
+    let state = handle
+        .claim_viewport("remote:phone")
+        .expect("forced phone claim");
+    assert_eq!(state.owner, "remote:phone");
+    assert!(session.viewport.lock().explicit_owner);
+
+    handle
+        .release_viewport("remote:phone")
+        .expect("release phone viewport")
+        .expect("released viewport state");
+    assert!(!session.viewport.lock().explicit_owner);
+    let state = handle
+        .claim_viewport_auto("remote:phone")
+        .expect("automatic claim after release");
+    assert_eq!(state.owner, "remote:phone");
+
+    let _ = session.kill();
+    fs::remove_dir_all(temp).ok();
+}
+
+#[cfg(unix)]
+#[test]
 fn remote_visible_viewport_expires_back_to_desktop() {
     let manager = TerminalManager::new();
     let temp =

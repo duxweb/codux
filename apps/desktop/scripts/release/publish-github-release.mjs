@@ -171,6 +171,9 @@ function isVersionedUserInstallerAsset(lowerName) {
     /^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-macos-(?:aarch64|x86_64|universal)\.dmg$/.test(
       lowerName,
     ) ||
+    /^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-macos-(?:aarch64|x86_64|universal)-updater\.app\.tar\.gz$/.test(
+      lowerName,
+    ) ||
     /^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-windows-x86_64-setup\.exe$/.test(lowerName)
   );
 }
@@ -193,7 +196,7 @@ function buildLatestJson(assets) {
       if (platforms[platform]) continue;
       platforms[platform] = {
         signature: fs.readFileSync(signatureAsset.path, "utf8").trim(),
-        url: releaseAssetUrl(bundleAsset.name),
+        url: releaseAssetUrl(publicUpdaterAssetName(bundleAsset, byName)),
       };
     }
   }
@@ -206,6 +209,17 @@ function buildLatestJson(assets) {
     pub_date: new Date().toISOString(),
     platforms,
   };
+}
+
+function publicUpdaterAssetName(bundleAsset, byName) {
+  const stableName = bundleAsset.name
+    .replace(/^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-(macos-(?:aarch64|x86_64|universal)-updater\.app\.tar\.gz)$/i, "codux-$1")
+    .replace(/^codux-\d+\.\d+\.\d+(?:-[a-z0-9.]+)?-(windows-x86_64-setup\.(?:exe|msi))$/i, "codux-$1");
+  if (stableName === bundleAsset.name) return bundleAsset.name;
+  if (!byName.has(stableName)) {
+    throw new Error(`Stable updater asset ${stableName} was not found for ${bundleAsset.name}`);
+  }
+  return stableName;
 }
 
 function releaseAssetUrl(assetName) {

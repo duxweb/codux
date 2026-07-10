@@ -185,6 +185,14 @@ impl TerminalManager {
         self.session(session_id)?.claim_viewport(owner)
     }
 
+    pub fn claim_viewport_auto(
+        &self,
+        session_id: &str,
+        owner: &str,
+    ) -> Result<TerminalViewportState> {
+        self.session(session_id)?.claim_viewport_auto(owner)
+    }
+
     pub fn touch_viewport_lease(&self, session_id: &str, owner: &str) {
         if let Ok(session) = self.session(session_id) {
             session.clone_handle().touch_viewport_lease(owner);

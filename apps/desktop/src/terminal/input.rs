@@ -29,6 +29,9 @@ impl TerminalInputHandler {
         if bytes.is_empty() {
             return;
         }
+        let _ = self.terminal_view.update(cx, |view, cx| {
+            view.prepare_local_viewport_for_input(cx);
+        });
         self.model.update(cx, |model, cx| {
             model.prepare_input_viewport(cx);
             model.write_bytes(&bytes);

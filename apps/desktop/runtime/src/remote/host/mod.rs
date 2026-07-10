@@ -402,8 +402,8 @@ impl RemoteHostRuntime {
 
     /// Push one live terminal status event (loading/waiting/completed dots) to
     /// connected controllers. These are transient one-shots — no resource
-    /// versioning; a viewer that missed one self-heals via the next event or
-    /// its own stale sweep.
+    /// versioning. The next OSC transition is authoritative, and a controller
+    /// clears statuses from a host when that host's link disconnects.
     pub fn broadcast_terminal_status(&self, payload: Value) {
         self.send(REMOTE_TERMINAL_STATUS, None, None, payload);
     }

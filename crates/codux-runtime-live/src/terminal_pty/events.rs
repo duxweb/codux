@@ -4,6 +4,7 @@ use super::*;
 pub(super) struct TerminalViewportLease {
     pub(super) state: TerminalViewportState,
     pub(super) expires_at: Instant,
+    pub(super) explicit_owner: bool,
 }
 
 pub type EventSink = Arc<dyn Fn(TerminalEvent) -> bool + Send + Sync + 'static>;

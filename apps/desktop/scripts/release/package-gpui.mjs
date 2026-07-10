@@ -74,6 +74,7 @@ function packageMacos() {
   run("tar", ["-czf", updaterPath, "-C", outputDir, `${appName}.app`]);
   writeSha256(updaterPath);
   signTauriUpdaterArtifact(updaterPath);
+  writeStableAliasCopy(updaterPath, `${stableArtifactBaseName("macos")}-updater.app.tar.gz`);
   fs.rmSync(appDir, { recursive: true, force: true });
 }
 

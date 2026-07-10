@@ -821,11 +821,11 @@ async fn connect_serving_host(
     // On viewport-lease expiry, hand the viewport to another phone still viewing
     // the same agent terminal (if any) instead of snapping back to the host.
     {
-        let subscriptions = fanout.subscriptions();
+        let fanout = fanout.clone();
         driver.set_viewport_owner_resolver(Arc::new(
             move |session_id: &str, expired_owner: &str| {
-                subscriptions
-                    .viewers_for_session(session_id, None)
+                fanout
+                    .viewers(session_id)
                     .into_iter()
                     .map(|device| {
                         codux_runtime_live::terminal_pty::terminal_viewport_remote_owner(&device)

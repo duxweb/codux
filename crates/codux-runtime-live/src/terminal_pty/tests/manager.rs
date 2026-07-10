@@ -317,6 +317,37 @@ fn terminal_event_subscribers_are_pruned_when_sink_is_closed() {
     assert!(subscribers.lock().is_empty());
 }
 
+#[cfg(unix)]
+#[test]
+fn exit_event_observes_session_as_exited() {
+    let manager = Arc::new(TerminalManager::new());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let manager_for_event = Arc::clone(&manager);
+    let session_id = manager
+        .create(
+            TerminalPtyConfig {
+                command: Some("exit 0".to_string()),
+                ..Default::default()
+            },
+            move |event| {
+                if matches!(event, TerminalEvent::Exit { .. }) {
+                    let _ = tx.send(manager_for_event.list());
+                }
+            },
+        )
+        .expect("create terminal");
+
+    let terminals = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("exit event");
+    let terminal = terminals
+        .into_iter()
+        .find(|terminal| terminal.id == session_id)
+        .expect("exited terminal remains queryable");
+    assert_eq!(terminal.status, "exited");
+    assert!(!terminal.is_running);
+}
+
 #[test]
 fn keyed_terminal_event_subscribers_replace_stale_sinks() {
     let subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>> =

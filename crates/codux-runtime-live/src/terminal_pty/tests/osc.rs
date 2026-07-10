@@ -164,6 +164,15 @@ fn terminal_title_spinner_drives_turn_level_status() {
     );
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
     assert_eq!(status.source, "terminal-title-osc");
+    assert!(bridge.drain_supervisor_events().is_empty());
+
+    // Repeated spinner frames are rendering updates, not lifecycle changes.
+    push_output(
+        &mut watcher,
+        &terminal_id,
+        "\x1b]0;⠹ | Data\x07\x1b]0;⠸ | Data\x07".as_bytes(),
+    );
+    assert!(bridge.drain_supervisor_events().is_empty());
 
     // Blocked on approval: both blink phases map to one Waiting.
     push_output(

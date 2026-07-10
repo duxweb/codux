@@ -1,11 +1,15 @@
 use super::ai_runtime_status::AgentLifecycleState;
 use super::{CoduxApp, ProjectInfo, WorktreeInfo};
+use crate::terminal::TerminalPane;
 use codux_runtime::ai_runtime::{TerminalStatusEvent, TerminalStatusState};
 
 pub(in crate::app) struct PaneAgentLifecycle {
     pub state: AgentLifecycleState,
     project_id: Option<String>,
     worktree_id: Option<String>,
+    terminal_instance_id: Option<String>,
+    updated_at: f64,
+    remote_device_id: Option<String>,
 }
 
 impl PaneAgentLifecycle {
@@ -14,21 +18,37 @@ impl PaneAgentLifecycle {
             state: AgentLifecycleState::Idle,
             project_id: None,
             worktree_id: None,
+            terminal_instance_id: None,
+            updated_at: 0.0,
+            remote_device_id: None,
         }
     }
 
-    pub(in crate::app) fn apply_status(
+    fn apply_status_event(
         &mut self,
         state: AgentLifecycleState,
         project_id: Option<String>,
         worktree_id: Option<String>,
+        terminal_instance_id: Option<String>,
+        updated_at: f64,
+        remote_device_id: Option<String>,
     ) {
         self.project_id = project_id;
         self.worktree_id = worktree_id;
+        self.terminal_instance_id = terminal_instance_id;
+        self.updated_at = updated_at;
+        self.remote_device_id = remote_device_id;
         if self.state == state {
             return;
         }
         self.state = state;
+    }
+
+    fn accepts_status_event(&self, terminal_instance_id: Option<&str>, updated_at: f64) -> bool {
+        if self.terminal_instance_id.as_deref() == terminal_instance_id {
+            return self.updated_at <= 0.0 || (updated_at > 0.0 && updated_at >= self.updated_at);
+        }
+        updated_at > self.updated_at
     }
 
     pub(in crate::app) fn dismiss_completed(&mut self) -> bool {
@@ -81,6 +101,18 @@ pub(in crate::app) fn aggregate_agent_lifecycle(
 }
 
 impl CoduxApp {
+    pub(in crate::app) fn drain_and_apply_terminal_lifecycle_events(
+        &mut self,
+        events: &[codux_runtime::ai_runtime::AIRuntimeSupervisorEvent],
+    ) -> bool {
+        let disconnected_devices = self.runtime_service.drain_disconnected_remote_devices();
+        let remote_statuses = self.runtime_service.drain_remote_terminal_status();
+        let mut changed = self.clear_remote_agent_lifecycle_for_devices(&disconnected_devices);
+        changed |= self.apply_terminal_status_events(events);
+        changed |= self.apply_remote_terminal_status_payloads(&remote_statuses);
+        changed
+    }
+
     pub(in crate::app) fn apply_terminal_status_events(
         &mut self,
         events: &[codux_runtime::ai_runtime::AIRuntimeSupervisorEvent],
@@ -92,7 +124,7 @@ impl CoduxApp {
             else {
                 continue;
             };
-            if self.apply_terminal_status_event(status) {
+            if self.apply_terminal_status_event(status, None) {
                 changed = true;
             }
         }
@@ -102,21 +134,45 @@ impl CoduxApp {
     // Status pushed by a viewed remote host; same apply path as local events.
     pub(in crate::app) fn apply_remote_terminal_status_payloads(
         &mut self,
-        payloads: &[serde_json::Value],
+        payloads: &[(String, serde_json::Value)],
     ) -> bool {
         let mut changed = false;
-        for payload in payloads {
+        for (device_id, payload) in payloads {
             let Ok(status) = serde_json::from_value::<TerminalStatusEvent>(payload.clone()) else {
                 continue;
             };
-            if self.apply_terminal_status_event(&status) {
+            if self.apply_terminal_status_event(&status, Some(device_id)) {
                 changed = true;
             }
         }
         changed
     }
 
-    fn apply_terminal_status_event(&mut self, status: &TerminalStatusEvent) -> bool {
+    fn apply_terminal_status_event(
+        &mut self,
+        status: &TerminalStatusEvent,
+        remote_device_id: Option<&str>,
+    ) -> bool {
+        let terminal_instance_id = normalized_status_id(status.terminal_instance_id.as_deref());
+        let current_instance_id = self
+            .terminal_pane_registry
+            .get(&status.terminal_id)
+            .and_then(TerminalPane::terminal_instance_id);
+        if !status_matches_terminal_instance(
+            terminal_instance_id.as_deref(),
+            current_instance_id.as_deref(),
+        ) {
+            return false;
+        }
+        if self
+            .pane_agent_lifecycle
+            .get(&status.terminal_id)
+            .is_some_and(|existing| {
+                !existing.accepts_status_event(terminal_instance_id.as_deref(), status.updated_at)
+            })
+        {
+            return false;
+        }
         let Some(next) = agent_lifecycle_state_for_terminal_status(status.state) else {
             return self.clear_pane_agent_lifecycle(&status.terminal_id);
         };
@@ -127,10 +183,13 @@ impl CoduxApp {
             .entry(terminal_id.clone())
             .or_insert_with(PaneAgentLifecycle::new);
         let previous = entry.state;
-        entry.apply_status(
+        entry.apply_status_event(
             next,
             normalized_status_id(status.project_id.as_deref()),
             normalized_status_id(status.worktree_id.as_deref()),
+            terminal_instance_id,
+            status.updated_at,
+            remote_device_id.map(str::to_string),
         );
         let changed = pane_lifecycle_entry_changed(existed_before, previous, entry.state);
         if changed {
@@ -146,6 +205,33 @@ impl CoduxApp {
                     entry.worktree_id
                 ),
             );
+        }
+        changed
+    }
+
+    pub(in crate::app) fn clear_remote_agent_lifecycle_for_devices(
+        &mut self,
+        device_ids: &[String],
+    ) -> bool {
+        if device_ids.is_empty() {
+            return false;
+        }
+        let terminal_ids = self
+            .pane_agent_lifecycle
+            .iter()
+            .filter_map(|(terminal_id, lifecycle)| {
+                lifecycle
+                    .remote_device_id
+                    .as_deref()
+                    .is_some_and(|device_id| {
+                        device_ids.iter().any(|candidate| candidate == device_id)
+                    })
+                    .then(|| terminal_id.clone())
+            })
+            .collect::<Vec<_>>();
+        let mut changed = false;
+        for terminal_id in terminal_ids {
+            changed |= self.clear_pane_agent_lifecycle(&terminal_id);
         }
         changed
     }
@@ -259,6 +345,13 @@ fn normalized_status_id(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn status_matches_terminal_instance(
+    event_instance_id: Option<&str>,
+    current_instance_id: Option<&str>,
+) -> bool {
+    current_instance_id.is_none() || event_instance_id == current_instance_id
+}
+
 fn agent_lifecycle_state_for_terminal_status(
     state: TerminalStatusState,
 ) -> Option<AgentLifecycleState> {
@@ -276,23 +369,46 @@ fn agent_lifecycle_state_for_terminal_status(
 mod tests {
     use super::*;
 
+    fn lifecycle(
+        state: AgentLifecycleState,
+        project_id: Option<&str>,
+        worktree_id: Option<&str>,
+    ) -> PaneAgentLifecycle {
+        let mut lifecycle = PaneAgentLifecycle::new();
+        lifecycle.apply_status_event(
+            state,
+            project_id.map(str::to_string),
+            worktree_id.map(str::to_string),
+            None,
+            0.0,
+            None,
+        );
+        lifecycle
+    }
+
     #[test]
     fn pane_lifecycle_applies_status_directly() {
         let mut lifecycle = PaneAgentLifecycle::new();
 
-        lifecycle.apply_status(
+        lifecycle.apply_status_event(
             AgentLifecycleState::Working,
             Some("project-a".to_string()),
             Some("worktree-a".to_string()),
+            None,
+            0.0,
+            None,
         );
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
         assert_eq!(lifecycle.project_id.as_deref(), Some("project-a"));
         assert_eq!(lifecycle.worktree_id.as_deref(), Some("worktree-a"));
 
-        lifecycle.apply_status(
+        lifecycle.apply_status_event(
             AgentLifecycleState::Completed,
             Some("project-a".to_string()),
             Some("worktree-a".to_string()),
+            None,
+            0.0,
+            None,
         );
         assert_eq!(lifecycle.state, AgentLifecycleState::Completed);
     }
@@ -300,7 +416,7 @@ mod tests {
     #[test]
     fn completed_status_stays_until_dismissed() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed, None, None);
+        lifecycle.apply_status_event(AgentLifecycleState::Completed, None, None, None, 0.0, None);
 
         assert!(lifecycle.dismiss_completed());
         assert_eq!(lifecycle.state, AgentLifecycleState::Idle);
@@ -309,7 +425,7 @@ mod tests {
     #[test]
     fn dismiss_completed_ignores_non_completed_state() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Working, None, None);
+        lifecycle.apply_status_event(AgentLifecycleState::Working, None, None, None, 0.0, None);
 
         assert!(!lifecycle.dismiss_completed());
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
@@ -318,8 +434,8 @@ mod tests {
     #[test]
     fn completed_status_is_overwritten_by_following_loading() {
         let mut lifecycle = PaneAgentLifecycle::new();
-        lifecycle.apply_status(AgentLifecycleState::Completed, None, None);
-        lifecycle.apply_status(AgentLifecycleState::Working, None, None);
+        lifecycle.apply_status_event(AgentLifecycleState::Completed, None, None, None, 0.0, None);
+        lifecycle.apply_status_event(AgentLifecycleState::Working, None, None, None, 0.0, None);
 
         assert_eq!(lifecycle.state, AgentLifecycleState::Working);
     }
@@ -328,6 +444,69 @@ mod tests {
     fn removal_changed_for_non_idle() {
         assert!(pane_lifecycle_removal_changed(AgentLifecycleState::Working));
         assert!(!pane_lifecycle_removal_changed(AgentLifecycleState::Idle));
+    }
+
+    #[test]
+    fn lifecycle_rejects_older_event_for_same_terminal_instance() {
+        let mut lifecycle = PaneAgentLifecycle::new();
+        lifecycle.apply_status_event(
+            AgentLifecycleState::Working,
+            Some("project-a".to_string()),
+            Some("worktree-a".to_string()),
+            Some("instance-2".to_string()),
+            20.0,
+            None,
+        );
+
+        assert!(!lifecycle.accepts_status_event(Some("instance-2"), 19.0));
+        assert!(lifecycle.accepts_status_event(Some("instance-2"), 20.0));
+        assert!(lifecycle.accepts_status_event(Some("instance-2"), 21.0));
+    }
+
+    #[test]
+    fn lifecycle_rejects_old_terminal_instance_event() {
+        let mut lifecycle = PaneAgentLifecycle::new();
+        lifecycle.apply_status_event(
+            AgentLifecycleState::Working,
+            Some("project-a".to_string()),
+            Some("worktree-a".to_string()),
+            Some("instance-2".to_string()),
+            20.0,
+            None,
+        );
+
+        assert!(!lifecycle.accepts_status_event(Some("instance-1"), 20.0));
+        assert!(!lifecycle.accepts_status_event(Some("instance-1"), 19.0));
+        assert!(lifecycle.accepts_status_event(Some("instance-3"), 21.0));
+    }
+
+    #[test]
+    fn status_must_match_mounted_terminal_instance() {
+        assert!(status_matches_terminal_instance(
+            Some("instance-2"),
+            Some("instance-2")
+        ));
+        assert!(!status_matches_terminal_instance(
+            Some("instance-1"),
+            Some("instance-2")
+        ));
+        assert!(!status_matches_terminal_instance(None, Some("instance-2")));
+        assert!(status_matches_terminal_instance(Some("instance-1"), None));
+    }
+
+    #[test]
+    fn remote_status_records_its_source_device() {
+        let mut lifecycle = PaneAgentLifecycle::new();
+        lifecycle.apply_status_event(
+            AgentLifecycleState::Working,
+            None,
+            None,
+            Some("instance-1".to_string()),
+            10.0,
+            Some("device-1".to_string()),
+        );
+
+        assert_eq!(lifecycle.remote_device_id.as_deref(), Some("device-1"));
     }
 
     #[test]
@@ -387,21 +566,17 @@ mod tests {
             exists: true,
             git_summary: Default::default(),
         };
-        let linked_lifecycle = PaneAgentLifecycle {
-            state: AgentLifecycleState::Working,
-            project_id: Some("project-a".to_string()),
-            worktree_id: Some("worktree-a".to_string()),
-        };
-        let other_lifecycle = PaneAgentLifecycle {
-            state: AgentLifecycleState::Working,
-            project_id: Some("project-a".to_string()),
-            worktree_id: Some("project-a".to_string()),
-        };
-        let unscoped_lifecycle = PaneAgentLifecycle {
-            state: AgentLifecycleState::Working,
-            project_id: Some("project-a".to_string()),
-            worktree_id: None,
-        };
+        let linked_lifecycle = lifecycle(
+            AgentLifecycleState::Working,
+            Some("project-a"),
+            Some("worktree-a"),
+        );
+        let other_lifecycle = lifecycle(
+            AgentLifecycleState::Working,
+            Some("project-a"),
+            Some("project-a"),
+        );
+        let unscoped_lifecycle = lifecycle(AgentLifecycleState::Working, Some("project-a"), None);
 
         assert!(lifecycle_belongs_to_worktree(&linked_lifecycle, &worktree));
         assert!(!lifecycle_belongs_to_worktree(&other_lifecycle, &worktree));
@@ -415,21 +590,21 @@ mod tests {
     fn project_lifecycle_aggregates_terminal_entries_from_all_worktrees() {
         let project_id = "project-a";
         let entries = [
-            PaneAgentLifecycle {
-                state: AgentLifecycleState::Completed,
-                project_id: Some(project_id.to_string()),
-                worktree_id: Some(project_id.to_string()),
-            },
-            PaneAgentLifecycle {
-                state: AgentLifecycleState::Working,
-                project_id: Some(project_id.to_string()),
-                worktree_id: Some("worktree-a".to_string()),
-            },
-            PaneAgentLifecycle {
-                state: AgentLifecycleState::Waiting,
-                project_id: Some("project-b".to_string()),
-                worktree_id: Some("project-b".to_string()),
-            },
+            lifecycle(
+                AgentLifecycleState::Completed,
+                Some(project_id),
+                Some(project_id),
+            ),
+            lifecycle(
+                AgentLifecycleState::Working,
+                Some(project_id),
+                Some("worktree-a"),
+            ),
+            lifecycle(
+                AgentLifecycleState::Waiting,
+                Some("project-b"),
+                Some("project-b"),
+            ),
         ];
 
         let lifecycle = aggregate_agent_lifecycle(
@@ -456,16 +631,16 @@ mod tests {
             git_summary: Default::default(),
         };
         let entries = [
-            PaneAgentLifecycle {
-                state: AgentLifecycleState::Working,
-                project_id: Some("project-a".to_string()),
-                worktree_id: Some("project-a".to_string()),
-            },
-            PaneAgentLifecycle {
-                state: AgentLifecycleState::Completed,
-                project_id: Some("project-a".to_string()),
-                worktree_id: Some("worktree-a".to_string()),
-            },
+            lifecycle(
+                AgentLifecycleState::Working,
+                Some("project-a"),
+                Some("project-a"),
+            ),
+            lifecycle(
+                AgentLifecycleState::Completed,
+                Some("project-a"),
+                Some("worktree-a"),
+            ),
         ];
 
         let lifecycle = aggregate_agent_lifecycle(

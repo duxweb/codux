@@ -266,6 +266,10 @@ pub extern "C" fn codux_remote_runtime_model_begin_terminal_create_json(
     let Ok(request) = serde_json::from_str::<serde_json::Value>(&request_json) else {
         return;
     };
+    let terminal_id = request
+        .get("terminalId")
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
     let project_id = request
         .get("projectId")
         .and_then(|value| value.as_str())
@@ -274,7 +278,7 @@ pub extern "C" fn codux_remote_runtime_model_begin_terminal_create_json(
         .get("worktreeId")
         .and_then(|value| value.as_str())
         .map(str::to_string);
-    model.begin_terminal_create(project_id, worktree_id);
+    model.begin_terminal_create(terminal_id, project_id, worktree_id);
 }
 
 #[unsafe(no_mangle)]

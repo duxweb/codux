@@ -7,7 +7,6 @@ import '../../services/remote_terminal_binding_coordinator.dart';
 import '../../services/remote_terminal_output_controller.dart';
 import '../../services/terminal_input_batcher.dart';
 import '../../services/terminal_input_reliable_sender.dart';
-import '../../services/terminal_repaint_signal.dart';
 import '../../services/terminal_buffer_retry.dart';
 
 class HomeRuntimeSnapshot {
@@ -28,7 +27,6 @@ class HomeRuntimeCoordinator {
     required this.selectedProjectId,
     required this.terminalBufferCapability,
     required this.outputController,
-    required this.terminalRepaint,
     required this.terminalInputSender,
     required this.terminalInputBatcher,
     required this.terminalBufferRetry,
@@ -39,6 +37,7 @@ class HomeRuntimeCoordinator {
     required this.restoreTerminalSessionFromCache,
     required this.closeTerminalSwitcherAfterPendingWorktreeBuffer,
     required this.trackTerminalBaselineRequest,
+    required this.removeTerminalSessionState,
     required this.releaseTerminalViewport,
     required this.clearTerminal,
     required this.requestTerminalList,
@@ -51,7 +50,6 @@ class HomeRuntimeCoordinator {
   final String? selectedProjectId;
   final TerminalBufferCapability terminalBufferCapability;
   final RemoteTerminalOutputController outputController;
-  final TerminalRepaintSignal terminalRepaint;
   final TerminalInputReliableSender terminalInputSender;
   final TerminalInputBatcher terminalInputBatcher;
   final TerminalBufferRetryCoordinator terminalBufferRetry;
@@ -63,6 +61,7 @@ class HomeRuntimeCoordinator {
   final void Function(String sessionId)
   closeTerminalSwitcherAfterPendingWorktreeBuffer;
   final void Function(String sessionId) trackTerminalBaselineRequest;
+  final void Function(String sessionId) removeTerminalSessionState;
   final void Function({String? sessionId}) releaseTerminalViewport;
   final VoidCallback clearTerminal;
   final VoidCallback requestTerminalList;
@@ -80,17 +79,13 @@ class HomeRuntimeCoordinator {
         plan.requestTerminalList ||
         plan.requestProjectSelectId != null ||
         plan.bindSessionId != null ||
-        plan.removedSessionId != null) {
+        plan.removedSessionIds.isNotEmpty) {
       CoduxLog.info(
         '[codux-flutter-runtime] plan reason=$reason state=${plan.stateChanged} clear=${plan.clearTerminal} resetBuffer=${plan.resetTerminalBuffer} requestTerminalList=${plan.requestTerminalList} requestProjectSelect=${plan.requestProjectSelectId ?? ''} bind=${plan.bindSessionId ?? ''} beforeProject=${previous.selectedProjectId ?? ''} beforeWorktree=${previous.selectedWorktreeId ?? ''} beforeSession=${previous.sessionId ?? ''}',
       );
     }
-    if (plan.removedSessionId != null) {
-      final removed = plan.removedSessionId!;
-      outputController.removeSession(removed);
-      terminalBufferRetry.resetSession(removed);
-      terminalRepaint.tick();
-      terminalInputSender.clear(sessionId: removed);
+    for (final removed in plan.removedSessionIds) {
+      removeTerminalSessionState(removed);
     }
     if (plan.resetTerminalInput) {
       terminalInputBatcher.reset();

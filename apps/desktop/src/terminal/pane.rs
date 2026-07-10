@@ -367,6 +367,10 @@ impl TerminalPane {
         self.session.remote_device_id()
     }
 
+    pub fn terminal_instance_id(&self) -> Option<String> {
+        self.session.terminal_instance_id()
+    }
+
     /// Reap the host PTY for a remote pane on a user-initiated close. Returns
     /// `true` if this was a remote pane. No-op for local panes (the local PTY is
     /// killed separately). Switching projects must NOT call this — the host shell
@@ -557,6 +561,26 @@ struct TerminalLayoutRecord {
 }
 
 impl TerminalSessionBinding {
+    fn terminal_instance_id(&self) -> Option<String> {
+        let inner = self.inner.lock();
+        inner
+            .session
+            .as_ref()
+            .and_then(|session| session.ai_runtime_binding().terminal_instance_id)
+            .or_else(|| {
+                inner
+                    .remote
+                    .as_ref()
+                    .and_then(|remote| remote.config.session_instance_id.clone())
+            })
+            .or_else(|| {
+                inner
+                    .pending_match_config
+                    .as_ref()
+                    .and_then(|config| config.session_instance_id.clone())
+            })
+    }
+
     fn pending(config: TerminalPtyConfig) -> (Self, mpsc::Receiver<(u16, u16)>) {
         let (initial_layout_tx, initial_layout_rx) = mpsc::channel();
         (
@@ -846,9 +870,9 @@ impl TerminalSessionBinding {
         Ok(())
     }
 
-    fn force_local_viewport_if_current_owner(&self) -> Result<()> {
+    fn refresh_local_viewport_if_current_owner(&self) -> Result<()> {
         if self.local_viewport_owns() {
-            self.restore_local_viewport()?;
+            self.claim_local_viewport()?;
         }
         Ok(())
     }

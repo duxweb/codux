@@ -245,4 +245,41 @@ void main() {
       isNotNull,
     );
   });
+
+  test('removed session accepts a rebuilt viewport with reset generation', () {
+    final controller = TerminalViewportController();
+    controller.recordMeasured(80, 24);
+    final initial = controller.flushPending(
+      sessionId: 'session-1',
+      force: false,
+    );
+    controller.markSent('session-1', initial!);
+    controller.applyRemoteState(
+      const RelayEnvelope(
+        type: 'terminal.viewport.state',
+        sessionId: 'session-1',
+        payload: {'owner': 'desktop', 'cols': 120, 'rows': 40, 'generation': 8},
+      ),
+    );
+
+    controller.removeSession('session-1');
+
+    expect(controller.ownerFor('session-1'), isNull);
+    expect(controller.reportedSize('session-1'), isNull);
+    expect(
+      controller.flushPending(sessionId: 'session-1', force: false),
+      isNotNull,
+    );
+    expect(
+      controller.applyRemoteState(
+        const RelayEnvelope(
+          type: 'terminal.viewport.state',
+          sessionId: 'session-1',
+          payload: {'owner': 'mobile', 'cols': 80, 'rows': 24, 'generation': 1},
+        ),
+      ),
+      isTrue,
+    );
+    expect(controller.ownerFor('session-1'), 'mobile');
+  });
 }

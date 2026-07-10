@@ -2,6 +2,8 @@ part of '../home_page.dart';
 
 const int _terminalStaleOutputSeqTolerance = 8;
 
+enum _TerminalViewportClaimIntent { auto, force }
+
 /// Terminal session handling for [_CoduxHomePageState]: output/upload
 /// effects, buffer-resync bookkeeping, viewport claim/release, resize, input
 /// send, and terminal create/lookup. Split into a part + extension to keep the
@@ -36,15 +38,21 @@ extension _HomePageTerminal on HomeController {
       _terminalBindingCoordinator.markSessionBaselineStale(sessionId);
     }
     if (sessionId == _sessionId) {
-      if (handedAway != _remoteHandedAway) {
+      final interactive = localOwner.isNotEmpty && owner == localOwner;
+      final becameInteractive = interactive && !_terminalViewportInteractive;
+      if (handedAway != _remoteHandedAway ||
+          interactive != _terminalViewportInteractive) {
         _applyState(() {
           _remoteHandedAway = handedAway;
-          if (handedAway) _terminalViewportInteractive = false;
+          _terminalViewportInteractive = interactive;
         });
       }
       // Don't adopt the new owner's (wider) grid into our screen — it would
       // garble; the placeholder covers it until we take over.
       if (handedAway) return;
+      if (becameInteractive) {
+        _flushPendingTerminalResize(force: true, sessionId: sessionId);
+      }
     }
     final size = _terminalViewportController.reportedSize(sessionId);
     if (size == null || size.cols <= 0 || size.rows <= 0) return;
@@ -230,6 +238,24 @@ extension _HomePageTerminal on HomeController {
     }
     _terminalBaselineResyncRequestedAt[sessionId] = now;
     return true;
+  }
+
+  void _removeTerminalSessionState(String sessionId) {
+    final id = sessionId.trim();
+    if (id.isEmpty) return;
+    if (_sessionId == id) {
+      _cancelTerminalBaselineRearm();
+    }
+    _terminalOutputController.removeSession(id);
+    _terminalBufferRetry.resetSession(id);
+    _terminalInputSender.clear(sessionId: id);
+    _terminalBindingCoordinator.clearSessionBaselineStale(id);
+    _terminalViewportController.removeSession(id);
+    _terminalBaselineResyncRequestedAt.remove(id);
+    _viewportOwnerRefreshAfterBaseline.remove(id);
+    _terminalOutputAckSeqBySession.remove(id);
+    _terminalOutputAckAtBySession.remove(id);
+    _terminalRepaint.tick();
   }
 
   void _requestPendingViewportOwnerRefresh(String sessionId) {
@@ -479,46 +505,37 @@ extension _HomePageTerminal on HomeController {
 
   void _claimTerminalViewport({
     String? sessionId,
-    bool throttled = false,
     bool renewOnly = false,
+    _TerminalViewportClaimIntent intent = _TerminalViewportClaimIntent.auto,
   }) {
-    if (_remoteHandedAway) return;
     final id = sessionId ?? _sessionId;
     if (id == null || id.trim().isEmpty) return;
     if (!_terminalViewportClaimable) return;
     final terminal = _terminalById(id);
     if (terminal == null || !_canResizeTerminal(terminal)) return;
-    // High-frequency input/scroll claims are throttled: we already own the
-    // viewport interactively, so re-asserting it on every keystroke / fling tick
-    // just floods the wire. Skip the network send (but keep the interactive
-    // flag) when we claimed this same session very recently. Non-throttled
-    // callers (keyboard keepalive, reactive reclaim after a desktop steal,
-    // resize) always send.
-    if (throttled &&
-        _terminalViewportInteractive &&
+    if (!renewOnly &&
+        intent == _TerminalViewportClaimIntent.auto &&
         _lastViewportClaimSession == id &&
         _lastViewportClaimAt != null &&
         DateTime.now().difference(_lastViewportClaimAt!) <
             _viewportClaimThrottle) {
       return;
     }
-    // renewOnly is the idle keepalive: it must NOT assert interactivity or steal.
-    // The host renews our lease only if we still hold it (handle_terminal_viewport_claim),
-    // so an idle phone can't yank an actively-driven desktop back. Explicit
-    // claims flip us interactive and reclaim (latest-writer-wins).
-    if (!renewOnly) {
-      _terminalViewportInteractive = true;
-      _lastViewportClaimAt = DateTime.now();
-      _lastViewportClaimSession = id;
-    }
-    _sendTerminalEnvelope(
+    final sent = _sendTerminalEnvelope(
       RelayEnvelope(
         type: RemoteMessageType.terminalViewportClaim,
         sessionId: id,
-        payload: renewOnly ? const {'renewOnly': true} : null,
+        payload: renewOnly
+            ? const {'renewOnly': true}
+            : {'intent': intent.name},
       ),
       terminal: terminal,
     );
+    // Every claim waits for the host's authoritative owner state before resize.
+    if (sent && !renewOnly) {
+      _lastViewportClaimAt = DateTime.now();
+      _lastViewportClaimSession = id;
+    }
   }
 
   void _releaseTerminalViewport({String? sessionId}) {
@@ -527,6 +544,10 @@ extension _HomePageTerminal on HomeController {
     final terminal = _terminalById(id);
     if (terminal == null || !_canResizeTerminal(terminal)) return;
     _terminalViewportInteractive = false;
+    if (_lastViewportClaimSession == id) {
+      _lastViewportClaimAt = null;
+      _lastViewportClaimSession = null;
+    }
     _sendTerminalEnvelope(
       RelayEnvelope(
         type: RemoteMessageType.terminalViewportRelease,
@@ -536,17 +557,15 @@ extension _HomePageTerminal on HomeController {
     );
   }
 
-  // Handoff: take the session back from whoever holds it now (desktop/another
-  // device). Clears the handed-away flag, then claims + resizes so the host
-  // reflows the PTY back to our grid.
+  // Handoff: request ownership from whoever holds it now. The host's viewport
+  // state response clears the placeholder and triggers the resize.
   void _takeOverTerminalViewport({String? sessionId}) {
     final id = sessionId ?? _sessionId;
     if (id == null || id.trim().isEmpty) return;
-    if (_remoteHandedAway) {
-      _applyState(() => _remoteHandedAway = false);
-    }
-    _claimTerminalViewport(sessionId: id);
-    _flushPendingTerminalResize(force: true, sessionId: id);
+    _claimTerminalViewport(
+      sessionId: id,
+      intent: _TerminalViewportClaimIntent.force,
+    );
   }
 
   void _queueTerminalTyping(String data) {
@@ -583,7 +602,7 @@ extension _HomePageTerminal on HomeController {
       _applyState(() => _status = _t('terminal.createOrSelectFirst'));
       return;
     }
-    _claimTerminalViewport(sessionId: id, throttled: true);
+    _claimTerminalViewport(sessionId: id);
     _flushPendingTerminalResize(force: true, sessionId: id);
     _terminalInputSender.send(
       sessionId: id,
@@ -646,7 +665,9 @@ extension _HomePageTerminal on HomeController {
     }
     if (_creatingTerminalProjectId == target) return;
     final scope = _remoteRuntime.terminalScopeForProject(target);
+    final terminalId = const Uuid().v4();
     _remoteRuntime.beginTerminalCreate(
+      terminalId: terminalId,
       projectId: target,
       worktreeId: scope?.worktreeId,
     );
@@ -663,6 +684,7 @@ extension _HomePageTerminal on HomeController {
       RelayEnvelope(
         type: RemoteMessageType.terminalCreate,
         payload: {
+          'terminalId': terminalId,
           'projectId': target,
           if (scope?.worktreeId != null && scope!.worktreeId!.trim().isNotEmpty)
             'worktreeId': scope.worktreeId!,

@@ -13,6 +13,7 @@ import 'package:codux_flutter/services/remote_protocol_service.dart';
 import 'package:codux_flutter/services/remote_transport.dart';
 import 'package:codux_flutter/theme/app_theme.dart';
 import 'package:codux_flutter/widgets/components/device_home_screen.dart';
+import 'package:uuid/uuid.dart';
 
 void main() {
   testWidgets('Codux app boots', (WidgetTester tester) async {
@@ -398,6 +399,24 @@ void main() {
                 },
               ),
             );
+            return;
+          }
+          if (type == RemoteMessageType.terminalViewportClaim) {
+            final payload = envelope['payload'];
+            if (payload is Map && payload['intent'] == 'force') {
+              transport.emitEncrypted(
+                const RelayEnvelope(
+                  type: 'terminal.viewport.state',
+                  sessionId: 'session-2',
+                  payload: {
+                    'owner': 'remote:device-1',
+                    'cols': 100,
+                    'rows': 32,
+                    'generation': 2,
+                  },
+                ),
+              );
+            }
           }
         },
       );
@@ -413,6 +432,14 @@ void main() {
       await tester.tap(find.text('Mac'));
       await tester.pumpAndSettle(const Duration(milliseconds: 300));
       await tester.pump(const Duration(milliseconds: 300));
+      if (find
+          .byKey(const ValueKey('remote-terminal-body'))
+          .evaluate()
+          .isEmpty) {
+        await tester.tap(find.text('Mac').first);
+        await tester.pumpAndSettle(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
+      }
 
       final log = CoduxLog.snapshotText();
       expect(log, contains('project.list count=2 selected=project-2'));
@@ -434,11 +461,165 @@ void main() {
       expect(subscribePayload?['baseline'], isTrue);
       expect(subscribePayload?['maxChars'], isA<int>());
       expect(subscribePayload?['chunkChars'], isA<int>());
-      // The self-drawn terminal view reports its viewport size on layout, so a
-      // resize is expected here; the meaningful guarantee (bind to the host
-      // selected terminal, no terminal.buffer request) is asserted above.
+      expect(
+        _lastPayloadOf(
+          sent,
+          RemoteMessageType.terminalViewportClaim,
+        )?['intent'],
+        'auto',
+      );
+      expect(
+        sent
+            .where(
+              (envelope) =>
+                  envelope['type'] == RemoteMessageType.terminalViewportClaim,
+            )
+            .length,
+        1,
+      );
+      expect(
+        sent.where(
+          (envelope) =>
+              envelope['type'] == RemoteMessageType.terminalViewportResize,
+        ),
+        isEmpty,
+      );
+
+      fake.emitEncrypted(
+        const RelayEnvelope(
+          type: 'terminal.viewport.state',
+          sessionId: 'session-2',
+          payload: {
+            'owner': 'desktop',
+            'cols': 100,
+            'rows': 32,
+            'generation': 1,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      const takeOverKey = ValueKey('terminal-take-over');
+      expect(find.byKey(takeOverKey), findsOneWidget);
+
+      sent.clear();
+      await tester.tap(find.byKey(takeOverKey));
+      await tester.pump();
+      expect(
+        _lastPayloadOf(
+          sent,
+          RemoteMessageType.terminalViewportClaim,
+        )?['intent'],
+        'force',
+      );
+      expect(
+        sent.where(
+          (envelope) =>
+              envelope['type'] == RemoteMessageType.terminalViewportResize,
+        ),
+        isNotEmpty,
+      );
     },
   );
+
+  testWidgets('new terminal uses one id for create and active selection', (
+    WidgetTester tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+    final device = await _fakeDevice();
+    late final _FakeRemoteTransport fake;
+    fake = _FakeRemoteTransport(
+      device: device,
+      onSent: (transport, envelope) {
+        sent.add(envelope);
+        final type = '${envelope['type'] ?? ''}';
+        if (type == 'host.info') {
+          transport.emitEncrypted(
+            const RelayEnvelope(
+              type: 'project.list',
+              payload: {
+                'selectedProjectId': 'project-1',
+                'projects': [
+                  {'id': 'project-1', 'name': 'Project 1', 'path': '/tmp/p1'},
+                ],
+              },
+            ),
+          );
+          transport.emitEncrypted(
+            const RelayEnvelope(
+              type: 'terminal.list',
+              payload: {
+                'terminals': [
+                  {
+                    'id': 'session-1',
+                    'title': 'Terminal',
+                    'projectId': 'project-1',
+                    'layoutOrder': 0,
+                  },
+                ],
+              },
+            ),
+          );
+          transport.emitEncrypted(
+            RelayEnvelope(type: 'host.info', payload: _hostInfoPayload()),
+          );
+          return;
+        }
+        if (type == RemoteMessageType.terminalCreate) {
+          final payload = Map<String, dynamic>.from(envelope['payload'] as Map);
+          final terminalId = '${payload['terminalId'] ?? ''}';
+          transport.emitEncrypted(
+            RelayEnvelope(
+              type: RemoteMessageType.terminalCreated,
+              sessionId: terminalId,
+              payload: {
+                'id': terminalId,
+                'title': 'Terminal',
+                'projectId': 'project-1',
+                'layoutOrder': 1,
+              },
+            ),
+          );
+        }
+      },
+    );
+
+    await tester.pumpWidget(
+      CoduxFlutterApp(initialDevices: [device], transportFactory: (_) => fake),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mac'));
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    if (find.byKey(const ValueKey('remote-terminal-body')).evaluate().isEmpty) {
+      await tester.tap(find.text('Mac').first);
+      await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    }
+    await tester.tap(find.byIcon(Icons.grid_view_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('terminal-switcher-add')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+
+    final createPayload = _lastPayloadOf(
+      sent,
+      RemoteMessageType.terminalCreate,
+    );
+    final terminalId = '${createPayload?['terminalId'] ?? ''}';
+    expect(Uuid.isValidUUID(fromString: terminalId), isTrue);
+    expect(
+      find.byKey(ValueKey('terminal-switcher-terminal-$terminalId')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(ValueKey('terminal-switcher-terminal-$terminalId')),
+        matching: find.byIcon(Icons.check_rounded),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      _lastTerminalBaselineSubscribePayload(sent, sessionId: terminalId),
+      isNotNull,
+    );
+  });
 
   testWidgets(
     'switching projects remounts cached terminal from the local pty pool',
@@ -2255,11 +2436,7 @@ List<String> _sentTypes(List<Map<String, dynamic>> sent) =>
 
 List<Map<String, Object?>> _terminalListForProject(String projectId) {
   final terminals = <Map<String, Object?>>[
-    {
-      'id': 'session-1',
-      'title': 'One',
-      'projectId': 'project-1',
-    },
+    {'id': 'session-1', 'title': 'One', 'projectId': 'project-1'},
   ];
   if (projectId == 'project-2') {
     terminals.add({

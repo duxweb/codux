@@ -49,7 +49,7 @@ class RemoteRuntimePlan {
     this.bindSessionId,
     this.bindFullBuffer = false,
     this.flushTerminalInput = false,
-    this.removedSessionId,
+    this.removedSessionIds = const [],
   });
 
   final bool stateChanged;
@@ -61,7 +61,7 @@ class RemoteRuntimePlan {
   final String? bindSessionId;
   final bool bindFullBuffer;
   final bool flushTerminalInput;
-  final String? removedSessionId;
+  final List<String> removedSessionIds;
 
   bool get hasEffect =>
       stateChanged ||
@@ -73,7 +73,7 @@ class RemoteRuntimePlan {
       bindSessionId != null ||
       bindFullBuffer ||
       flushTerminalInput ||
-      removedSessionId != null;
+      removedSessionIds.isNotEmpty;
 
   bool get hasRuntimeAction =>
       clearTerminal ||
@@ -84,7 +84,7 @@ class RemoteRuntimePlan {
       bindSessionId != null ||
       bindFullBuffer ||
       flushTerminalInput ||
-      removedSessionId != null;
+      removedSessionIds.isNotEmpty;
 }
 
 class RemoteRuntimeStore {
@@ -265,8 +265,13 @@ class RemoteRuntimeStore {
     return _planFromCore(_core.removeTerminal(terminalId));
   }
 
-  void beginTerminalCreate({required String projectId, String? worktreeId}) {
+  void beginTerminalCreate({
+    required String terminalId,
+    required String projectId,
+    String? worktreeId,
+  }) {
     _core.beginTerminalCreate({
+      'terminalId': terminalId,
       'projectId': projectId,
       if (worktreeId != null && worktreeId.trim().isNotEmpty)
         'worktreeId': worktreeId,
@@ -317,7 +322,12 @@ class RemoteRuntimeStore {
   }
 
   static bool isAccessibleTerminal(TerminalInfo terminal) =>
-      terminal.id.isNotEmpty && terminal.projectId.isNotEmpty;
+      terminal.id.isNotEmpty &&
+      terminal.projectId.isNotEmpty &&
+      !const {
+        'exited',
+        'closed',
+      }.contains(terminal.status?.trim().toLowerCase());
 
   RemoteRuntimeState _stateFromCore() {
     final snapshot = _core.snapshot();
@@ -354,7 +364,7 @@ RemoteRuntimePlan _planFromCore(codux_runtime_core.RemoteRuntimeCorePlan plan) {
     bindSessionId: plan.bindSessionId,
     bindFullBuffer: plan.bindFullBuffer,
     flushTerminalInput: plan.flushTerminalInput,
-    removedSessionId: plan.removedSessionId,
+    removedSessionIds: plan.removedSessionIds,
   );
 }
 

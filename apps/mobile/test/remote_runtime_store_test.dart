@@ -1033,11 +1033,75 @@ void main() {
       final plan = store.removeTerminal('session-1');
 
       expect(plan.clearTerminal, isTrue);
-      expect(plan.removedSessionId, 'session-1');
+      expect(plan.removedSessionIds, ['session-1']);
       expect(store.selectedProjectId, 'project-1');
       expect(store.activeSessionId, isNull);
     },
   );
+
+  test('terminal list reports every removed inactive session through FFI', () {
+    final store = RemoteRuntimeStore();
+    store.applyProjectList(
+      projects: _projects,
+      remoteSelectedProjectId: 'project-1',
+      remoteSelectedWorktreeId: null,
+      terminalVisible: true,
+      terminalListLoaded: false,
+    );
+    store.applyTerminalList(
+      terminals: const [
+        TerminalInfo(id: 'active', title: 'Active', projectId: 'project-1'),
+        TerminalInfo(id: 'inactive-a', title: 'A', projectId: 'project-2'),
+        TerminalInfo(id: 'inactive-b', title: 'B', projectId: 'project-2'),
+      ],
+      terminalVisible: true,
+      terminalListLoaded: true,
+    );
+
+    final plan = store.applyTerminalList(
+      terminals: const [
+        TerminalInfo(id: 'active', title: 'Active', projectId: 'project-1'),
+      ],
+      terminalVisible: true,
+      terminalListLoaded: true,
+    );
+
+    expect(plan.removedSessionIds, ['inactive-a', 'inactive-b']);
+  });
+
+  test('locally created terminal becomes active through FFI', () {
+    final store = RemoteRuntimeStore();
+    store.applyProjectList(
+      projects: _projects,
+      remoteSelectedProjectId: 'project-1',
+      remoteSelectedWorktreeId: null,
+      terminalVisible: true,
+      terminalListLoaded: false,
+    );
+    store.applyTerminalList(
+      terminals: const [
+        TerminalInfo(id: 'session-1', title: 'One', projectId: 'project-1'),
+      ],
+      terminalVisible: true,
+      terminalListLoaded: true,
+    );
+    store.beginTerminalCreate(terminalId: 'session-2', projectId: 'project-1');
+
+    final plan = store.terminalCreated(
+      const TerminalInfo(
+        id: 'session-2',
+        title: 'Two',
+        projectId: 'project-1',
+        layoutOrder: 1,
+      ),
+    );
+
+    expect(plan.bindSessionId, 'session-2');
+    expect(plan.clearTerminal, isTrue);
+    expect(plan.resetTerminalInput, isTrue);
+    expect(plan.resetTerminalBuffer, isTrue);
+    expect(store.activeSessionId, 'session-2');
+  });
 }
 
 const _projects = [

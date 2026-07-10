@@ -85,6 +85,7 @@ struct ManagerShared {
     // `controller_for` can surface *why* a host stays "not ready" (offline host,
     // relay unreachable, dial timeout) instead of a generic message.
     last_errors: Mutex<HashMap<String, String>>,
+    disconnected_devices: Mutex<HashSet<String>>,
 }
 
 impl ManagerShared {
@@ -165,6 +166,9 @@ impl ManagerShared {
             }
             if mapped == ControllerLinkState::Disconnected {
                 shared.clear_path(&device_id);
+                if let Ok(mut devices) = shared.disconnected_devices.lock() {
+                    devices.insert(device_id.clone());
+                }
                 shared.handle_disconnect(&device_id);
             }
         })
@@ -323,6 +327,7 @@ impl RemoteControllerManager {
                 paths: Mutex::new(HashMap::new()),
                 reconnecting: Mutex::new(HashSet::new()),
                 last_errors: Mutex::new(HashMap::new()),
+                disconnected_devices: Mutex::new(HashSet::new()),
             }),
         }
     }
@@ -419,17 +424,35 @@ impl RemoteControllerManager {
     /// project once the loop establishes the link.
     /// Collect `terminal.status` pushes from every live controller link
     /// without dialing anything.
-    pub fn drain_pushed_terminal_status(&self) -> Vec<serde_json::Value> {
-        let controllers: Vec<Arc<RemoteController>> = self
+    pub fn drain_pushed_terminal_status(&self) -> Vec<(String, serde_json::Value)> {
+        let controllers: Vec<(String, Arc<RemoteController>)> = self
             .shared
             .connections
             .lock()
-            .map(|connections| connections.values().cloned().collect())
+            .map(|connections| {
+                connections
+                    .iter()
+                    .map(|(device_id, controller)| (device_id.clone(), controller.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
         controllers
             .iter()
-            .flat_map(|controller| controller.drain_pushed_terminal_status())
+            .flat_map(|(device_id, controller)| {
+                controller
+                    .drain_pushed_terminal_status()
+                    .into_iter()
+                    .map(|payload| (device_id.clone(), payload))
+            })
             .collect()
+    }
+
+    pub fn drain_disconnected_devices(&self) -> Vec<String> {
+        self.shared
+            .disconnected_devices
+            .lock()
+            .map(|mut devices| devices.drain().collect())
+            .unwrap_or_default()
     }
 
     pub fn controller_for(&self, device_id: &str) -> Result<Arc<RemoteController>, String> {
@@ -501,6 +524,9 @@ impl RemoteControllerManager {
 
     /// Drop a paired host and any live connection or link state for it.
     pub fn forget(&self, device_id: &str) -> Result<Vec<SavedRemoteHost>, String> {
+        if let Ok(mut devices) = self.shared.disconnected_devices.lock() {
+            devices.insert(device_id.to_string());
+        }
         let old = self
             .shared
             .connections
@@ -524,6 +550,12 @@ impl RemoteControllerManager {
 mod tests {
     use super::*;
 
+    fn manager(name: &str) -> RemoteControllerManager {
+        RemoteControllerManager::new(
+            std::env::temp_dir().join(format!("{name}-{}", uuid::Uuid::new_v4())),
+        )
+    }
+
     #[test]
     fn reconnect_delay_caps_at_background_ceiling() {
         let mut delay = Duration::from_secs(1);
@@ -531,5 +563,47 @@ mod tests {
             delay = next_reconnect_delay(delay);
         }
         assert_eq!(delay, RECONNECT_MAX_DELAY);
+    }
+
+    #[test]
+    fn disconnected_device_is_drained_once() {
+        let manager = manager("codux-controller-disconnect-drain");
+        manager
+            .shared
+            .set_link("device-1", ControllerLinkState::Disconnected);
+        manager
+            .shared
+            .disconnected_devices
+            .lock()
+            .unwrap()
+            .insert("device-1".to_string());
+
+        assert_eq!(manager.drain_disconnected_devices(), ["device-1"]);
+        assert!(manager.drain_disconnected_devices().is_empty());
+    }
+
+    #[test]
+    fn reconnect_does_not_discard_undrained_disconnect_event() {
+        let manager = manager("codux-controller-reconnect-drain");
+        manager
+            .shared
+            .disconnected_devices
+            .lock()
+            .unwrap()
+            .insert("device-1".to_string());
+        manager
+            .shared
+            .set_link("device-1", ControllerLinkState::Connected);
+
+        assert_eq!(manager.drain_disconnected_devices(), ["device-1"]);
+    }
+
+    #[test]
+    fn forgetting_device_emits_status_cleanup_event() {
+        let manager = manager("codux-controller-forget-cleanup");
+
+        manager.forget("device-1").unwrap();
+
+        assert_eq!(manager.drain_disconnected_devices(), ["device-1"]);
     }
 }
