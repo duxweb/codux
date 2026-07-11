@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">Web サイト</a> &middot;
-  <a href="https://codux.dux.cn/zh-cn/getting-started/">ドキュメント</a> &middot;
+  <a href="https://codux.work">Web サイト</a> &middot;
+  <a href="https://codux.work/getting-started/">ドキュメント</a> &middot;
   <a href="https://github.com/duxweb/codux/releases/latest">ダウンロード</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">モバイル</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">フィードバック</a>
@@ -280,5 +280,5 @@ Codux が長時間 agent 実行を救ったことがあるなら、⭐ がより
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">codux.dux.cn</a>
+  <a href="https://codux.work">codux.work</a>
 </p>

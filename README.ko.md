@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">웹사이트</a> &middot;
-  <a href="https://codux.dux.cn/zh-cn/getting-started/">문서</a> &middot;
+  <a href="https://codux.work">웹사이트</a> &middot;
+  <a href="https://codux.work/getting-started/">문서</a> &middot;
   <a href="https://github.com/duxweb/codux/releases/latest">다운로드</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">모바일</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">피드백</a>
@@ -280,5 +280,5 @@ Codux가 긴 agent 실행을 구해 준 적이 있다면, ⭐ 는 더 많은 사
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">codux.dux.cn</a>
+  <a href="https://codux.work">codux.work</a>
 </p>

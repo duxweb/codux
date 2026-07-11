@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">Website</a> &middot;
-  <a href="https://codux.dux.cn/zh-cn/getting-started/">Docs</a> &middot;
+  <a href="https://codux.work">Website</a> &middot;
+  <a href="https://codux.work/getting-started/">Docs</a> &middot;
   <a href="https://github.com/duxweb/codux/releases/latest">Download</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">Mobile</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">Feedback</a>
@@ -280,5 +280,5 @@ If Codux ever rescued one of your long agent runs, a ⭐ helps more people find 
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">codux.dux.cn</a>
+  <a href="https://codux.work">codux.work</a>
 </p>

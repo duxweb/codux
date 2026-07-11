@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">官网</a> &middot;
-  <a href="https://codux.dux.cn/zh-cn/getting-started/">文档</a> &middot;
+  <a href="https://codux.work">官网</a> &middot;
+  <a href="https://codux.work/zh-cn/getting-started/">文档</a> &middot;
   <a href="https://github.com/duxweb/codux/releases/latest">下载</a> &middot;
   <a href="https://github.com/duxweb/codux-flutter/releases/latest">移动端</a> &middot;
   <a href="https://github.com/duxweb/codux/issues">反馈</a>
@@ -280,5 +280,5 @@ Codux 认可并支持 [LINUX DO](https://linux.do) 社区。
 </p>
 
 <p align="center">
-  <a href="https://codux.dux.cn">codux.dux.cn</a>
+  <a href="https://codux.work">codux.work</a>
 </p>
