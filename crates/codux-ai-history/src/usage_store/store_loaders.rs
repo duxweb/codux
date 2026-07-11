@@ -190,7 +190,7 @@ impl AIUsageStore {
             ORDER BY last_seen_at DESC;
             "#,
         )?;
-        let rows = statement
+        statement
             .query_map(params![project_path], |row| {
                 Ok(NormalizedSessionLinkRow {
                     source: row.get(0)?,
@@ -206,8 +206,7 @@ impl AIUsageStore {
                 })
             })?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(Into::into);
-        rows
+            .map_err(Into::into)
     }
 
     fn project_usage_buckets(
@@ -259,7 +258,7 @@ impl AIUsageStore {
         &self,
         conn: &Connection,
         project_path: &str,
-    ) -> Result<HashMap<(String, String, String, i64), Vec<AIUsageAmount>>> {
+    ) -> Result<HashMap<UsageBucketKey, Vec<AIUsageAmount>>> {
         let mut statement = conn.prepare(
             r#"
             SELECT source, session_key, model, bucket_start, unit, value
@@ -282,7 +281,7 @@ impl AIUsageStore {
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        let mut map = HashMap::<(String, String, String, i64), Vec<AIUsageAmount>>::new();
+        let mut map = HashMap::<UsageBucketKey, Vec<AIUsageAmount>>::new();
         for (source, session_key, model, bucket_start, amount) in rows {
             merge_usage_amount(
                 map.entry((source, session_key, model, bucket_start))

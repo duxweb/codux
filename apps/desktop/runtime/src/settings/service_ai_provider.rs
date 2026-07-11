@@ -61,8 +61,8 @@ impl SettingsService {
                 Value::String("automatic".to_string()),
             );
         }
-        if let Some(memory) = ai.get_mut("memory").and_then(Value::as_object_mut) {
-            if memory
+        if let Some(memory) = ai.get_mut("memory").and_then(Value::as_object_mut)
+            && memory
                 .get("defaultExtractorProviderId")
                 .and_then(Value::as_str)
                 .map(|id| id == provider_id)
@@ -73,9 +73,8 @@ impl SettingsService {
                     Value::String("automatic".to_string()),
                 );
             }
-        }
-        if let Some(pet) = ai.get_mut("pet").and_then(Value::as_object_mut) {
-            if pet
+        if let Some(pet) = ai.get_mut("pet").and_then(Value::as_object_mut)
+            && pet
                 .get("speechProviderId")
                 .and_then(Value::as_str)
                 .map(|id| id == provider_id)
@@ -86,7 +85,6 @@ impl SettingsService {
                     Value::String("automatic".to_string()),
                 );
             }
-        }
         self.save_raw_settings(&raw)?;
         Ok(summary_from_raw(&raw))
     }

@@ -180,7 +180,7 @@ impl CoduxApp {
         register!(
             native_menu::OpenSshPanel,
             |app: &mut CoduxApp, window: &mut Window, cx: &mut Context<CoduxApp>| {
-                app.toggle_assistant_panel(AssistantPanel::SSH, window, cx)
+                app.toggle_assistant_panel(AssistantPanel::Ssh, window, cx)
             }
         );
         register!(

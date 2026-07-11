@@ -64,6 +64,33 @@ impl ResourceVersions {
             .copied()
             .unwrap_or(0)
     }
+
+    fn remove_project(&self, project_id: &str) {
+        let mut versions = match self.versions.lock() {
+            Ok(versions) => versions,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        versions.retain(|(_, current_project_id, _), _| {
+            current_project_id.as_deref() != Some(project_id)
+        });
+    }
+
+    fn remove_session(&self, session_id: &str) {
+        let mut versions = match self.versions.lock() {
+            Ok(versions) => versions,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        versions.retain(|(_, _, current_session_id), _| {
+            current_session_id.as_deref() != Some(session_id)
+        });
+    }
+
+    fn clear(&self) {
+        match self.versions.lock() {
+            Ok(mut versions) => versions.clear(),
+            Err(poisoned) => poisoned.into_inner().clear(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -90,6 +117,14 @@ impl RuntimeSubscriptionRouter {
         &self,
         envelope: &RemoteEnvelope,
     ) -> Result<RuntimeSubscriptionChange, String> {
+        let change = Self::parse_subscribe_envelope(envelope)?;
+        self.subscribe_change(&change);
+        Ok(change)
+    }
+
+    pub fn parse_subscribe_envelope(
+        envelope: &RemoteEnvelope,
+    ) -> Result<RuntimeSubscriptionChange, String> {
         if envelope.kind != REMOTE_RESOURCE_SUBSCRIBE {
             return Err("Expected resource.subscribe envelope.".to_string());
         }
@@ -98,12 +133,6 @@ impl RuntimeSubscriptionRouter {
             envelope.session_id.as_deref(),
             &envelope.payload,
         )?;
-        self.subscriptions.subscribe(
-            &target.resource,
-            target.project_id.as_deref(),
-            target.session_id.as_deref(),
-            &device_id,
-        );
         Ok(RuntimeSubscriptionChange {
             device_id,
             resource: target.resource,
@@ -111,6 +140,15 @@ impl RuntimeSubscriptionRouter {
             session_id: target.session_id,
             baseline: target.baseline,
         })
+    }
+
+    pub fn subscribe_change(&self, change: &RuntimeSubscriptionChange) {
+        self.subscriptions.subscribe(
+            &change.resource,
+            change.project_id.as_deref(),
+            change.session_id.as_deref(),
+            &change.device_id,
+        );
     }
 
     pub fn unsubscribe_envelope(
@@ -144,16 +182,41 @@ impl RuntimeSubscriptionRouter {
         self.subscriptions.remove_device(device_id);
     }
 
+    pub fn subscribe(
+        &self,
+        resource: &str,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        device_id: &str,
+    ) {
+        self.subscriptions
+            .subscribe(resource, project_id, session_id, device_id);
+    }
+
+    pub fn unsubscribe(
+        &self,
+        resource: &str,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        device_id: &str,
+    ) {
+        self.subscriptions
+            .unsubscribe(resource, project_id, session_id, device_id);
+    }
+
     pub fn remove_project(&self, project_id: &str) {
         self.subscriptions.remove_project(project_id);
+        self.versions.remove_project(project_id);
     }
 
     pub fn remove_session(&self, session_id: &str) {
         self.subscriptions.remove_session(session_id);
+        self.versions.remove_session(session_id);
     }
 
     pub fn clear(&self) {
         self.subscriptions.clear();
+        self.versions.clear();
     }
 
     pub fn devices_for(
@@ -164,6 +227,20 @@ impl RuntimeSubscriptionRouter {
     ) -> HashSet<String> {
         self.subscriptions
             .devices_for(resource, project_id, session_id)
+    }
+
+    pub fn devices_for_resource(&self, resource: &str) -> HashSet<String> {
+        self.subscriptions.devices_for_resource(resource)
+    }
+
+    pub fn devices_for_exact(
+        &self,
+        resource: &str,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+    ) -> HashSet<String> {
+        self.subscriptions
+            .devices_for_exact(resource, project_id, session_id)
     }
 
     /// Bump and return the next version for a resource key. Stamp this onto the
@@ -214,6 +291,7 @@ mod tests {
             kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
             device_id: Some("device-1".to_string()),
             session_id: None,
+            request_id: None,
             seq: None,
             payload: json!({
                 "resource": REMOTE_RESOURCE_GIT_STATUS,
@@ -283,6 +361,7 @@ mod tests {
             kind: REMOTE_PROJECT_LIST.to_string(),
             device_id: Some("device-1".to_string()),
             session_id: None,
+            request_id: None,
             seq: None,
             payload: json!({
                 "resource": REMOTE_RESOURCE_GIT_STATUS,
@@ -359,12 +438,43 @@ mod tests {
     }
 
     #[test]
+    fn scope_cleanup_removes_matching_resource_versions() {
+        let router = RuntimeSubscriptionRouter::new();
+        router.next_version(REMOTE_RESOURCE_GIT_STATUS, Some("p1"), None);
+        router.next_version(REMOTE_RESOURCE_GIT_STATUS, Some("p2"), None);
+        router.next_version(REMOTE_RESOURCE_TERMINALS, None, Some("s1"));
+
+        router.remove_project("p1");
+        router.remove_session("s1");
+
+        assert_eq!(
+            router.current_version(REMOTE_RESOURCE_GIT_STATUS, Some("p1"), None),
+            0
+        );
+        assert_eq!(
+            router.current_version(REMOTE_RESOURCE_GIT_STATUS, Some("p2"), None),
+            1
+        );
+        assert_eq!(
+            router.current_version(REMOTE_RESOURCE_TERMINALS, None, Some("s1")),
+            0
+        );
+
+        router.clear();
+        assert_eq!(
+            router.current_version(REMOTE_RESOURCE_GIT_STATUS, Some("p2"), None),
+            0
+        );
+    }
+
+    #[test]
     fn routes_session_scoped_terminal_subscriptions() {
         let router = RuntimeSubscriptionRouter::new();
         let subscribe = RemoteEnvelope {
             kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
             device_id: Some("device-1".to_string()),
             session_id: Some("session-1".to_string()),
+            request_id: None,
             seq: None,
             payload: json!({
                 "resource": REMOTE_RESOURCE_TERMINALS,

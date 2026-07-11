@@ -491,13 +491,13 @@ fn collect_message_text(
                 {
                     continue;
                 }
-                if is_text_key(key) {
-                    if let Value::String(text) = child {
-                        if useful_text(text) {
-                            texts.push(text.clone());
-                        }
-                        continue;
+                if is_text_key(key)
+                    && let Value::String(text) = child
+                {
+                    if useful_text(text) {
+                        texts.push(text.clone());
                     }
+                    continue;
                 }
                 collect_message_text(child, depth + 1, texts, omitted_items);
             }

@@ -6,15 +6,16 @@ pub fn select_memory_provider<'a>(
     tool: Option<&str>,
 ) -> Option<&'a MemoryProvider> {
     let requested = settings.memory.default_extractor_provider_id.trim();
-    if !requested.is_empty() && requested != "automatic" {
-        if let Some(provider) = settings.providers.iter().find(|provider| {
+    if !requested.is_empty()
+        && requested != "automatic"
+        && let Some(provider) = settings.providers.iter().find(|provider| {
             provider.id == requested
                 && provider.is_enabled
                 && provider.use_for_memory_extraction
                 && supports_completion(&provider.kind)
-        }) {
-            return Some(provider);
-        }
+        })
+    {
+        return Some(provider);
     }
     let normalized_tool = tool
         .and_then(normalized_non_empty)

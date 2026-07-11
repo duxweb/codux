@@ -257,7 +257,7 @@ pub struct AIProviderSettings {
     pub priority: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteSettings {
     #[serde(default, rename = "isEnabled")]

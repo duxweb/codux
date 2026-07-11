@@ -2,12 +2,14 @@ use super::*;
 
 #[test]
 fn terminal_environment_forces_utf8_locale() {
-    let mut config = TerminalPtyConfig::default();
-    config.env = Some(HashMap::from([
-        ("LANG".to_string(), "C".to_string()),
-        ("LC_ALL".to_string(), "C".to_string()),
-        ("LC_CTYPE".to_string(), "POSIX".to_string()),
-    ]));
+    let config = TerminalPtyConfig {
+        env: Some(HashMap::from([
+            ("LANG".to_string(), "C".to_string()),
+            ("LC_ALL".to_string(), "C".to_string()),
+            ("LC_CTYPE".to_string(), "POSIX".to_string()),
+        ])),
+        ..Default::default()
+    };
 
     let env = terminal_environment("/bin/zsh", None, "term-1", &config, None);
 
@@ -28,11 +30,13 @@ fn terminal_environment_does_not_set_term_program() {
 
 #[test]
 fn terminal_environment_preserves_real_term_program() {
-    let mut config = TerminalPtyConfig::default();
-    config.env = Some(HashMap::from([
-        ("TERM_PROGRAM".to_string(), "Ghostty".to_string()),
-        ("TERM_PROGRAM_VERSION".to_string(), "1.2.3".to_string()),
-    ]));
+    let config = TerminalPtyConfig {
+        env: Some(HashMap::from([
+            ("TERM_PROGRAM".to_string(), "Ghostty".to_string()),
+            ("TERM_PROGRAM_VERSION".to_string(), "1.2.3".to_string()),
+        ])),
+        ..Default::default()
+    };
 
     let env = terminal_environment("/bin/zsh", None, "term-1", &config, None);
 

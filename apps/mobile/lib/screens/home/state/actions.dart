@@ -92,7 +92,8 @@ extension _HomePageActions on HomeController {
 
   void _onProjectSelected(ProjectInfo project) {
     final projectChanged = _selectedProjectId != project.id;
-    final resetTerminal = projectChanged && _workspaceMode == WorkspaceMode.terminal;
+    final resetTerminal =
+        projectChanged && _workspaceMode == WorkspaceMode.terminal;
     if (resetTerminal) {
       _releaseTerminalViewport();
     }
@@ -107,6 +108,8 @@ extension _HomePageActions on HomeController {
       if (projectChanged) {
         _projectFileController.forget(project.id);
         _pendingWorktreeSwitch = null;
+        _creatingWorktree = false;
+        _worktreeListLoading = false;
         // Drop the previous project's review/diff selection so the review panel
         // doesn't show stale files after switching projects.
         _gitDiffPath = null;
@@ -118,7 +121,11 @@ extension _HomePageActions on HomeController {
       terminalVisible: resetTerminal,
     );
     _applyRuntimePlan(plan, reason: 'user-select');
-    _ensureSelectedProjectWorktrees(loading: _showTerminalSwitcher);
+    if (projectChanged) {
+      _requestWorktreeList(loading: _showTerminalSwitcher);
+    } else {
+      _ensureSelectedProjectWorktrees(loading: _showTerminalSwitcher);
+    }
     _requestAISessions(force: true);
     if (_workspaceMode == WorkspaceMode.stats) {
       _requestAIStats();
@@ -131,7 +138,8 @@ extension _HomePageActions on HomeController {
     }
     // Review and git panels read git.status; refresh it for the new project so
     // they don't stay stale until the view is toggled away and back.
-    if (_workspaceMode == WorkspaceMode.review || _workspaceMode == WorkspaceMode.git) {
+    if (_workspaceMode == WorkspaceMode.review ||
+        _workspaceMode == WorkspaceMode.git) {
       _requestGitStatus();
       return;
     }
@@ -589,5 +597,4 @@ extension _HomePageActions on HomeController {
       ),
     );
   }
-
 }

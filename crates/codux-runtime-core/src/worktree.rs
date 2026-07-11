@@ -101,25 +101,27 @@ pub fn default_worktree_base_branch(branch: &str, branches: &[GitBranchSummary])
         .unwrap_or_else(|| branch.to_string())
 }
 
-pub fn worktree_summary_payload(
-    project_id: impl Into<String>,
-    selected_worktree_id: Option<String>,
-    worktrees: Value,
-    tasks: Value,
-    available: bool,
-    base_branches: Vec<String>,
-    default_base_branch: String,
-    error: Option<String>,
-) -> Value {
+pub struct WorktreeSummaryPayload {
+    pub project_id: String,
+    pub selected_worktree_id: Option<String>,
+    pub worktrees: Value,
+    pub tasks: Value,
+    pub available: bool,
+    pub base_branches: Vec<String>,
+    pub default_base_branch: String,
+    pub error: Option<String>,
+}
+
+pub fn worktree_summary_payload(payload: WorktreeSummaryPayload) -> Value {
     json!({
-        "projectId": project_id.into(),
-        "selectedWorktreeId": selected_worktree_id,
-        "worktrees": worktrees,
-        "tasks": tasks,
-        "available": available,
-        "baseBranches": base_branches,
-        "defaultBaseBranch": default_base_branch,
-        "error": error,
+        "projectId": payload.project_id,
+        "selectedWorktreeId": payload.selected_worktree_id,
+        "worktrees": payload.worktrees,
+        "tasks": payload.tasks,
+        "available": payload.available,
+        "baseBranches": payload.base_branches,
+        "defaultBaseBranch": payload.default_base_branch,
+        "error": payload.error,
     })
 }
 

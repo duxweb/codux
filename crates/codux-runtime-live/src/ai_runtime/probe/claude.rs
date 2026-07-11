@@ -81,7 +81,7 @@ fn probe_claude_runtime_from_paths(
 ) -> Option<AIRuntimeContextSnapshot> {
     let candidate = select_claude_session_candidate(file_urls, project_path, request)?;
     let external_id = candidate.external_session_id;
-    let selected_paths = claude_log_paths_for_session(&file_urls, &external_id);
+    let selected_paths = claude_log_paths_for_session(file_urls, &external_id);
     let mut aggregate: Option<ClaudeAggregate> = None;
     // Track the matched file with the most recent activity so the supervisor can
     // size+mtime watch it (parity with codex); claude sessions are otherwise
@@ -92,13 +92,13 @@ fn probe_claude_runtime_from_paths(
         let next = if let Some(cache) = cache.as_deref_mut() {
             parse_claude_log_runtime_state_cached(
                 &file_url,
-                &project_path,
+                project_path,
                 &external_id,
                 &request.terminal_id,
                 cache,
             )
         } else {
-            parse_claude_log_runtime_state(&file_url, &project_path, &external_id)
+            parse_claude_log_runtime_state(&file_url, project_path, &external_id)
         };
         let Some(next) = next else {
             continue;
@@ -305,10 +305,10 @@ fn claude_session_id_for_project_since(
                 continue;
             }
         }
-        if let Some(cwd) = row.get("cwd").and_then(|value| value.as_str()) {
-            if !paths_equivalent(Some(cwd), project_path) {
-                continue;
-            }
+        if let Some(cwd) = row.get("cwd").and_then(|value| value.as_str())
+            && !paths_equivalent(Some(cwd), project_path)
+        {
+            continue;
         }
         let Some(id) = row
             .get("sessionId")
@@ -536,13 +536,12 @@ fn parse_claude_log_runtime_state_cached(
         project_path: project_path.to_string(),
         external_session_id: external_session_id.to_string(),
     };
-    if let Some(entry) = cache.files.get(&key) {
-        if !entry.has_pending_partial
-            && entry.size == size
-            && entry.modified_nanos == modified_nanos
-        {
-            return entry.matched.then(|| entry.aggregate.clone());
-        }
+    if let Some(entry) = cache.files.get(&key)
+        && !entry.has_pending_partial
+        && entry.size == size
+        && entry.modified_nanos == modified_nanos
+    {
+        return entry.matched.then(|| entry.aggregate.clone());
     }
 
     let can_append = cache
@@ -682,10 +681,10 @@ fn parse_claude_log_line(
     if row.get("sessionId").and_then(|value| value.as_str()) != Some(external_session_id) {
         return Some(false);
     }
-    if let Some(cwd) = row.get("cwd").and_then(|value| value.as_str()) {
-        if !paths_equivalent(Some(cwd), project_path) {
-            return Some(false);
-        }
+    if let Some(cwd) = row.get("cwd").and_then(|value| value.as_str())
+        && !paths_equivalent(Some(cwd), project_path)
+    {
+        return Some(false);
     }
     if is_claude_control_command_row(&row) {
         return Some(true);
@@ -977,10 +976,10 @@ fn claude_user_message_text(row: &Value) -> Option<String> {
         Value::Array(items) => {
             let mut out = String::new();
             for item in items {
-                if item.get("type").and_then(Value::as_str) == Some("text") {
-                    if let Some(text) = item.get("text").and_then(Value::as_str) {
-                        out.push_str(text);
-                    }
+                if item.get("type").and_then(Value::as_str) == Some("text")
+                    && let Some(text) = item.get("text").and_then(Value::as_str)
+                {
+                    out.push_str(text);
                 }
             }
             (!out.is_empty()).then_some(out)

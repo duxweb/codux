@@ -9,7 +9,20 @@ impl RemoteHostRuntime {
         session_id: Option<&str>,
         payload: Value,
     ) -> bool {
-        let Some(data) = self.outgoing_transport_text(kind, device_id, session_id, payload) else {
+        self.send_transport_with_request_id(kind, device_id, session_id, None, payload)
+    }
+
+    pub(super) fn send_transport_with_request_id(
+        &self,
+        kind: &str,
+        device_id: Option<&str>,
+        session_id: Option<&str>,
+        request_id: Option<&str>,
+        payload: Value,
+    ) -> bool {
+        let Some(data) =
+            self.outgoing_transport_text(kind, device_id, session_id, request_id, payload)
+        else {
             crate::runtime_trace::runtime_trace(
                 "remote",
                 &format!(
@@ -273,6 +286,7 @@ impl RemoteHostRuntime {
         let weak_for_upload = Arc::downgrade(self);
         let weak_for_state = Arc::downgrade(self);
         let weak_for_pairing = Arc::downgrade(self);
+        let weak_for_authorize = Arc::downgrade(self);
         let weak_for_web_tunnel = Arc::downgrade(self);
         let state_generation = generation;
         let transport = RemoteTransportFactory::connect_host(
@@ -296,9 +310,14 @@ impl RemoteHostRuntime {
                 }
             }),
             Arc::new(move |handshake| {
-                if let Some(runtime) = weak_for_pairing.upgrade() {
-                    runtime.handle_transport_pairing_request(handshake);
-                }
+                weak_for_pairing
+                    .upgrade()
+                    .and_then(|runtime| runtime.handle_transport_pairing_request(handshake))
+            }),
+            Arc::new(move |device_id, device_token| {
+                weak_for_authorize.upgrade().is_some_and(|runtime| {
+                    runtime.is_authorized_device_token(Some(device_id), Some(device_token))
+                })
             }),
             Some(Arc::new(move |request| {
                 if let Some(runtime) = weak_for_web_tunnel.upgrade() {
@@ -378,17 +397,6 @@ impl RemoteHostRuntime {
             }
             raw
         };
-        if !self.is_authorized_device(envelope.device_id.as_deref()) {
-            crate::runtime_trace::runtime_trace(
-                "remote",
-                &format!(
-                    "drop unauthorized device={}",
-                    envelope.device_id.as_deref().unwrap_or("")
-                ),
-            );
-            self.send_device_unauthorized(envelope.device_id.as_deref());
-            return;
-        }
         crate::runtime_trace::runtime_trace(
             "remote",
             &format!(
@@ -418,18 +426,10 @@ impl RemoteHostRuntime {
                 upload.bytes.len()
             ),
         );
-        if !self.is_authorized_device(Some(device_id)) {
-            crate::runtime_trace::runtime_trace(
-                "remote",
-                &format!("drop unauthorized upload device={device_id}"),
-            );
-            self.send_device_unauthorized(Some(device_id));
-            return Err("Device is not authorized.".to_string());
-        }
         if upload.session_id.trim().is_empty() {
             return Err("Terminal session is required.".to_string());
         }
-        if upload.bytes.is_empty() || upload.bytes.len() > 20 * 1024 * 1024 {
+        if upload.bytes.is_empty() || upload.bytes.len() > codux_protocol::REMOTE_BLOB_MAX_BYTES {
             return Err("Upload size is not supported.".to_string());
         }
         let name = sanitized_remote_upload_name(&upload.name);

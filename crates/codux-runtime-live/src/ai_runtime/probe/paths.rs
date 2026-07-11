@@ -64,7 +64,7 @@ pub(crate) fn find_codex_rollout_by_cwd_since(
 }
 
 pub(crate) fn claude_project_log_paths(project_path: &str) -> Vec<PathBuf> {
-    let directory_name = project_path.replace('/', "-").replace('.', "-");
+    let directory_name = project_path.replace(['/', '.'], "-");
     let direct_dir = home_dir()
         .join(".claude")
         .join("projects")
@@ -258,13 +258,12 @@ pub(crate) fn kimi_runtime_resource_paths(
     for share in kimi_share_dirs() {
         push_unique_path(&mut paths, share.join("session_index.jsonl"));
     }
-    if let Some(project_path) = normalized_string(project_path) {
-        if let Some(session_dir) =
+    if let Some(project_path) = normalized_string(project_path)
+        && let Some(session_dir) =
             kimi_session_dir_since(&project_path, external_session_id, started_at)
-        {
-            push_unique_path(&mut paths, kimi_wire_path(&session_dir));
-            push_unique_path(&mut paths, kimi_state_path(&session_dir));
-        }
+    {
+        push_unique_path(&mut paths, kimi_wire_path(&session_dir));
+        push_unique_path(&mut paths, kimi_state_path(&session_dir));
     }
     paths
 }
@@ -598,10 +597,10 @@ fn codex_file_belongs_to_project_since(
         }
         let row_type = row.get("type").and_then(|value| value.as_str());
         let payload = row.get("payload").unwrap_or(&Value::Null);
-        if matches!(row_type, Some("session_meta") | Some("turn_context")) {
-            if let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str()) {
-                return paths_equivalent(Some(cwd), project_path);
-            }
+        if matches!(row_type, Some("session_meta") | Some("turn_context"))
+            && let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str())
+        {
+            return paths_equivalent(Some(cwd), project_path);
         }
     }
     false

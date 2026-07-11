@@ -55,10 +55,8 @@ pub(in crate::ai_runtime::hooks) fn codewhale_hook_config_status_in(
     let text = fs::read_to_string(config_path).unwrap_or_default();
     let missing = hooks
         .iter()
-        .filter_map(|hook| {
-            (!has_codewhale_managed_hook(&text, hook.event_key, hook.action))
-                .then(|| format!("{}:{}", hook.event_key, hook.action))
-        })
+        .filter(|hook| !has_codewhale_managed_hook(&text, hook.event_key, hook.action))
+        .map(|hook| format!("{}:{}", hook.event_key, hook.action))
         .collect::<Vec<_>>();
     AIRuntimeToolHookConfigStatus {
         configured: missing.is_empty(),
@@ -91,7 +89,7 @@ fn block_is_managed(block: &[String]) -> bool {
         (line.starts_with("name") && line.contains(MANAGED_NAME_PREFIX))
             || (line.starts_with("command")
                 && line.contains("dmux-ai-state")
-                && line.contains(&owner)
+                && line.contains(owner)
                 && line.contains("codewhale"))
     })
 }
@@ -119,7 +117,7 @@ fn has_codewhale_managed_hook(text: &str, event: &str, action: &str) -> bool {
             line.starts_with("command")
                 && line.contains("dmux-ai-state")
                 && line.contains(action)
-                && line.contains(&owner)
+                && line.contains(owner)
                 && line.contains("codewhale")
         });
         if has_event && has_action {

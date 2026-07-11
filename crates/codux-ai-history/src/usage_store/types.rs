@@ -3,6 +3,8 @@ pub struct AIUsageStore {
     database_path: PathBuf,
 }
 
+type UsageBucketKey = (String, String, String, i64);
+
 #[derive(Debug, Clone)]
 pub struct AIExternalFileSummary {
     pub source: String,

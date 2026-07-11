@@ -169,18 +169,11 @@ impl CoduxApp {
         let project_list_state = self.ensure_project_list_state(cx);
         let collapsed = self.project_column_collapsed;
         let language = self.state.settings.language.clone();
-        let has_project = self.state.selected_project.is_some();
-        let has_projects = !self.state.projects.is_empty();
-        let has_worktree = self.state.worktrees.selected_worktree_id.is_some();
         let scroll_handle = self.project_scroll_handle.clone();
 
         if let Some(view) = &self.project_column_view {
             view.update(cx, |view, cx| {
-                let changed = view.collapsed != collapsed
-                    || view.language != language
-                    || view.has_project != has_project
-                    || view.has_projects != has_projects
-                    || view.has_worktree != has_worktree;
+                let changed = view.collapsed != collapsed || view.language != language;
 
                 if !changed {
                     return;
@@ -188,9 +181,6 @@ impl CoduxApp {
 
                 view.collapsed = collapsed;
                 view.language = language;
-                view.has_project = has_project;
-                view.has_projects = has_projects;
-                view.has_worktree = has_worktree;
                 view.scroll_handle = scroll_handle;
                 cx.notify();
             });
@@ -201,9 +191,6 @@ impl CoduxApp {
             project_list_state,
             collapsed,
             language,
-            has_project,
-            has_projects,
-            has_worktree,
             scroll_handle,
             _observe_project_list_state: None,
         });

@@ -258,8 +258,7 @@ pub(in crate::app) fn git_credentials_window_workspace(
                     "username",
                     labels.credential_username.clone(),
                     &app.git_credential_username,
-                    false,
-                    retrying,
+                    (false, retrying),
                     window,
                     cx,
                     |app, value, window, cx| app.set_git_credential_username(value, window, cx),
@@ -268,8 +267,7 @@ pub(in crate::app) fn git_credentials_window_workspace(
                     "password-or-token",
                     labels.credential_password_or_token.clone(),
                     &app.git_credential_password_or_token,
-                    true,
-                    retrying,
+                    (true, retrying),
                     window,
                     cx,
                     |app, value, window, cx| {
@@ -319,12 +317,12 @@ fn git_credentials_input(
     id: &'static str,
     label: String,
     value: &str,
-    masked: bool,
-    disabled: bool,
+    state: (bool, bool),
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
+    let (masked, disabled) = state;
     let value = value.to_string();
     let state = window.use_keyed_state(SharedString::from(format!("git-credential-{id}")), cx, {
         let value = value.clone();

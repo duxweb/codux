@@ -348,6 +348,50 @@ fn exit_event_observes_session_as_exited() {
     assert!(!terminal.is_running);
 }
 
+#[cfg(unix)]
+#[test]
+fn terminal_manager_recreates_exited_session_with_same_id() {
+    let manager = TerminalManager::new();
+    let terminal_id = format!("test-restart-terminal-{}", Uuid::new_v4());
+    let first = manager
+        .attach_or_create_with_context(
+            TerminalPtyConfig {
+                terminal_id: Some(terminal_id.clone()),
+                shell: Some("/bin/sh".to_string()),
+                command: Some("exit 0".to_string()),
+                ..Default::default()
+            },
+            None,
+            Arc::new(|_| true),
+        )
+        .expect("first terminal should start")
+        .0;
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline && !first.has_exited() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(first.has_exited());
+
+    let second = manager
+        .attach_or_create_with_context(
+            TerminalPtyConfig {
+                terminal_id: Some(terminal_id.clone()),
+                shell: Some("/bin/cat".to_string()),
+                ..Default::default()
+            },
+            None,
+            Arc::new(|_| true),
+        )
+        .expect("exited terminal should restart")
+        .0;
+
+    assert_eq!(second.id(), terminal_id);
+    assert!(!Arc::ptr_eq(&first, &second));
+    assert!(second.info().is_running);
+    let _ = second.kill();
+}
+
 #[test]
 fn keyed_terminal_event_subscribers_replace_stale_sinks() {
     let subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>> =

@@ -27,7 +27,7 @@ use clone_ui::git_empty_repository_panel;
 pub(in crate::app) use clone_ui::{git_clone_window_workspace, git_credentials_window_workspace};
 use diff_window::*;
 use history::*;
-pub(in crate::app) use labels::{GitSidebarLabels, git_section};
+pub(in crate::app) use labels::{GitSectionInput, GitSidebarLabels, git_section};
 use panels::*;
 use review::*;
 pub(in crate::app) use review::{
@@ -38,6 +38,7 @@ use status_format::*;
 pub(in crate::app) use status_rows::git_diff_window_workspace;
 use status_rows::*;
 use status_tree::*;
+type GitTreeChildrenSnapshot = Vec<(String, Vec<(String, String, String)>)>;
 #[derive(Clone, PartialEq)]
 pub(in crate::app) struct GitFilesPanelSnapshot {
     language: String,
@@ -45,7 +46,7 @@ pub(in crate::app) struct GitFilesPanelSnapshot {
     changed_files: Vec<(String, String, String)>,
     expanded_sections: Vec<String>,
     expanded_dirs: Vec<String>,
-    tree_children: Vec<(String, Vec<(String, String, String)>)>,
+    tree_children: GitTreeChildrenSnapshot,
     selected_file: Option<String>,
     selected_files: Vec<String>,
 }
@@ -96,16 +97,18 @@ impl Render for GitFilesPanelView {
                 .collect::<Vec<_>>();
 
             git_files_panel(
-                &staged,
-                &changed,
-                &untracked,
-                &app.git_expanded_sections,
-                &app.git_expanded_dirs,
-                &app.git_tree_children,
-                app.selected_git_file.as_deref(),
-                &app.selected_git_files,
-                labels,
-                app.git_files_scroll_handle.clone(),
+                GitFilesPanelInput {
+                    staged: &staged,
+                    changed: &changed,
+                    untracked: &untracked,
+                    expanded_sections: &app.git_expanded_sections,
+                    expanded_dirs: &app.git_expanded_dirs,
+                    tree_children: &app.git_tree_children,
+                    selected_file: app.selected_git_file.as_deref(),
+                    selected_files: &app.selected_git_files,
+                    labels,
+                    scroll_handle: app.git_files_scroll_handle.clone(),
+                },
                 cx,
             )
             .into_any_element()

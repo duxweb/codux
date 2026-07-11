@@ -79,13 +79,15 @@ impl CoduxApp {
         // empty for the common local-only boot.
         let mut boot_pending_terminals = Vec::new();
         let (terminals, active_terminal_id, next_terminal_index) = spawn_terminal_tabs(
-            &restore_plan,
-            terminal_manager.clone(),
-            launch_context.as_ref(),
-            &base_pty_config,
-            terminal_config,
-            &terminal_pane_registry,
-            Some(&mut boot_pending_terminals),
+            SpawnTerminalTabsInput {
+                plan: &restore_plan,
+                terminal_manager: terminal_manager.clone(),
+                launch_context: launch_context.as_ref(),
+                base_pty_config: &base_pty_config,
+                terminal_config,
+                terminal_pane_registry: &terminal_pane_registry,
+                pending_out: Some(&mut boot_pending_terminals),
+            },
             cx,
         )?;
         let collapsed_terminal_panes = collapsed_terminal_slots_from_layout(
@@ -506,7 +508,7 @@ impl CoduxApp {
     ) {
         self._observe_window_appearance =
             Some(window.observe_window_appearance(move |window, cx| {
-                let _ = app_entity.update(cx, |app, cx| {
+                app_entity.update(cx, |app, cx| {
                     app.window_appearance = window.appearance();
                     app.main_window_fullscreen = window.is_fullscreen();
                     theme::apply_component_theme(

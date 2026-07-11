@@ -36,8 +36,6 @@ void main() {
         sentEnvelopes.add(envelope);
         return true;
       },
-      terminalById: (id) =>
-          TerminalInfo(id: id, title: id, projectId: projectId),
       nextRequestId: (scope) => 'req-$scope',
     );
     final inputSender = TerminalInputReliableSender(send: (_) => true);
@@ -132,6 +130,72 @@ void main() {
       reason: 'removed',
     );
     expect(removedSessionStates, ['term-a', 'term-b']);
+    final unsubscribedSessionIds = sentEnvelopes
+        .where(
+          (message) =>
+              message.type == RemoteMessageType.resourceUnsubscribe &&
+              message.sessionId != null,
+        )
+        .map((message) => message.sessionId)
+        .toList();
+    expect(unsubscribedSessionIds, containsAll(['term-a', 'term-b']));
+  });
+
+  test('ninth bound session unsubscribes the least recently used session', () {
+    final sent = <RelayEnvelope>[];
+    final output = RemoteTerminalOutputController();
+    var sessionId = 'term-1';
+    final binding = RemoteTerminalBindingCoordinator(
+      outputController: output,
+      send: (envelope) {
+        sent.add(envelope);
+        return true;
+      },
+      nextRequestId: (scope) => 'req-$scope',
+    );
+    final coordinator = HomeRuntimeCoordinator(
+      remoteProtocolReady: true,
+      selectedProjectId: 'project-1',
+      terminalBufferCapability: TerminalBufferCapability.fallback,
+      outputController: output,
+      terminalInputSender: TerminalInputReliableSender(send: (_) => true),
+      terminalInputBatcher: TerminalInputBatcher(send: (_) {}),
+      terminalBufferRetry: TerminalBufferRetryCoordinator(),
+      terminalBindingCoordinator: binding,
+      captureSnapshot: () => HomeRuntimeSnapshot(
+        selectedProjectId: 'project-1',
+        selectedWorktreeId: null,
+        sessionId: sessionId,
+      ),
+      syncRuntimeViewState: () {},
+      setTerminalBufferLoading: (_) {},
+      restoreTerminalSessionFromCache: (_) => false,
+      closeTerminalSwitcherAfterPendingWorktreeBuffer: (_) {},
+      trackTerminalBaselineRequest: (_) {},
+      removeTerminalSessionState: (_) {},
+      releaseTerminalViewport: ({String? sessionId}) {},
+      clearTerminal: () {},
+      requestTerminalList: () {},
+      sendProjectSelect: (_, {required reason}) {},
+      focusTerminalViewSoon: () {},
+      onSessionStateChanged: (_, _) {},
+    );
+
+    for (var index = 1; index <= 9; index += 1) {
+      sessionId = 'term-$index';
+      coordinator.applyRuntimePlan(
+        RemoteRuntimePlan(bindSessionId: sessionId, bindFullBuffer: true),
+        reason: 'bind-$index',
+      );
+    }
+
+    final sessionUnsubscribes = sent.where(
+      (message) =>
+          message.type == RemoteMessageType.resourceUnsubscribe &&
+          message.sessionId != null,
+    );
+    expect(sessionUnsubscribes, hasLength(1));
+    expect(sessionUnsubscribes.single.sessionId, 'term-1');
   });
 }
 

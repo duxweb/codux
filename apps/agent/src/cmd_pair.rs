@@ -54,19 +54,19 @@ pub fn qrcode(args: PairArgs) -> Result<(), String> {
 fn ensure_ticket(args: PairArgs) -> Result<String, String> {
     if args.has_relay_override() {
         let mut config = CoduxConfig::load();
-        config.ensure_identity();
+        let generated_identity = config.ensure_identity()?;
         let changed = cmd_config::apply_relay_args(
             &mut config,
             args.relay_preset.as_deref(),
             args.relay_url.as_deref(),
             args.relay_authentication.as_deref(),
         )?;
-        if changed {
+        if generated_identity || changed {
             config.save()?;
-            if runstate::is_running() {
-                println!("Relay changed — restarting Codux host…");
-                cmd_service::stop()?;
-            }
+        }
+        if changed && runstate::is_running() {
+            println!("Relay changed — restarting Codux host…");
+            cmd_service::stop()?;
         }
     }
     if !runstate::is_running() {

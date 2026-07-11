@@ -1,9 +1,9 @@
 use super::*;
 
-pub(super) fn stats_range_summary<'a>(
-    global: &'a codux_runtime::ai_history::AIGlobalHistorySummary,
+pub(super) fn stats_range_summary(
+    global: &codux_runtime::ai_history::AIGlobalHistorySummary,
     range: StatsTimeRange,
-) -> Option<&'a codux_runtime::ai_history::AIGlobalHistoryRangeSummary> {
+) -> Option<&codux_runtime::ai_history::AIGlobalHistoryRangeSummary> {
     let key = stats_time_range_key(range);
     global
         .range_summaries

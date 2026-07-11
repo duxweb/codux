@@ -24,27 +24,39 @@ impl CoduxSelectOption {
     }
 }
 
+pub(in crate::app) struct CoduxSelectConfig {
+    pub(in crate::app) id: String,
+    pub(in crate::app) value: String,
+    pub(in crate::app) options: Vec<CoduxSelectOption>,
+    pub(in crate::app) placeholder: SharedString,
+    pub(in crate::app) width: Length,
+    pub(in crate::app) menu_width: Pixels,
+    pub(in crate::app) disabled: bool,
+}
+
+type CoduxSelectAction = Rc<dyn Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>)>;
+
 pub(in crate::app) fn codux_select(
-    id: impl Into<String>,
-    value: &str,
-    options: Vec<CoduxSelectOption>,
-    placeholder: impl Into<SharedString>,
-    width: impl Into<Length> + Clone,
-    menu_width: Pixels,
-    disabled: bool,
-    _window: &mut Window,
+    config: CoduxSelectConfig,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> AnyElement {
-    let id = id.into();
+    let CoduxSelectConfig {
+        id,
+        value,
+        options,
+        placeholder,
+        width,
+        menu_width,
+        disabled,
+    } = config;
     let selected_index = options.iter().position(|item| item.value == value);
     let selected_label = selected_index
         .and_then(|index| options.get(index))
         .map(|item| item.label.clone())
-        .unwrap_or_else(|| placeholder.into());
-    let action: Rc<dyn Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>)> =
-        Rc::new(action);
-    let selected_value = value.to_string();
+        .unwrap_or(placeholder);
+    let action: CoduxSelectAction = Rc::new(action);
+    let selected_value = value;
     let app_entity = cx.entity();
 
     Button::new(SharedString::from(format!("codux-select-trigger-{id}")))

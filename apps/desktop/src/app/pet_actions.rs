@@ -476,10 +476,9 @@ impl CoduxApp {
             return;
         }
 
-        if self.desktop_pet_line.trim().is_empty() {
-            self.request_desktop_pet_idle_llm_line(now, cx);
-        } else if self.desktop_pet_line_visible_until > 0.0
-            && now < self.desktop_pet_line_visible_until
+        if self.desktop_pet_line.trim().is_empty()
+            || (self.desktop_pet_line_visible_until > 0.0
+                && now < self.desktop_pet_line_visible_until)
         {
             self.request_desktop_pet_idle_llm_line(now, cx);
         } else {
@@ -1138,43 +1137,42 @@ impl CoduxApp {
     ) {
         let trimmed_species = species.trim();
         let window_handle = window.window_handle();
-        if let Some(custom_id) = trimmed_species.strip_prefix("custom:") {
-            if let Some(custom_pet) = self
+        if let Some(custom_id) = trimmed_species.strip_prefix("custom:")
+            && let Some(custom_pet) = self
                 .pet_custom_pets
                 .iter()
                 .find(|pet| pet.id == custom_id)
                 .cloned()
-            {
-                let display_name = custom_pet.display_name.clone();
-                let request = PetClaimRequest {
-                    species: format!("custom:{}", custom_pet.id.clone()),
-                    custom_name: custom_name.trim().to_string(),
-                    custom_pet: Some(custom_pet),
-                    _projects: Vec::new(),
-                };
-                self.run_pet_change_async(
-                    "claim_custom_pet",
-                    format!("claiming custom pet: {display_name}"),
-                    move |service| {
-                        let request = PetClaimRequest {
-                            custom_pet: request
-                                .custom_pet
-                                .map(|pet| service.hydrate_custom_pet_data_url(pet)),
-                            ..request
-                        };
-                        service.claim_pet_from_indexed_history(request).map(|_| ())
-                    },
-                    move |app, cx| {
-                        app.status_message = format!("custom pet claimed: {display_name}");
-                        let _ = window_handle.update(cx, |_root, window, _cx| {
-                            window.remove_window();
-                        });
-                    },
-                    cx,
-                );
-                self.invalidate_ui_region(cx, UiRegion::Root);
-                return;
-            }
+        {
+            let display_name = custom_pet.display_name.clone();
+            let request = PetClaimRequest {
+                species: format!("custom:{}", custom_pet.id.clone()),
+                custom_name: custom_name.trim().to_string(),
+                custom_pet: Some(custom_pet),
+                _projects: Vec::new(),
+            };
+            self.run_pet_change_async(
+                "claim_custom_pet",
+                format!("claiming custom pet: {display_name}"),
+                move |service| {
+                    let request = PetClaimRequest {
+                        custom_pet: request
+                            .custom_pet
+                            .map(|pet| service.hydrate_custom_pet_data_url(pet)),
+                        ..request
+                    };
+                    service.claim_pet_from_indexed_history(request).map(|_| ())
+                },
+                move |app, cx| {
+                    app.status_message = format!("custom pet claimed: {display_name}");
+                    let _ = window_handle.update(cx, |_root, window, _cx| {
+                        window.remove_window();
+                    });
+                },
+                cx,
+            );
+            self.invalidate_ui_region(cx, UiRegion::Root);
+            return;
         }
 
         let species = if trimmed_species.is_empty() {

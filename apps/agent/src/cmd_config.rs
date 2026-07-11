@@ -31,7 +31,6 @@ pub fn run(args: ConfigArgs) -> Result<(), String> {
 
     let mut config = CoduxConfig::load();
     let existed = CoduxConfig::exists();
-    config.ensure_identity();
     let theme = ColorfulTheme::default();
 
     println!("Codux host setup\n");
@@ -102,7 +101,7 @@ pub fn run(args: ConfigArgs) -> Result<(), String> {
     }
 
     // Preserve (or mint once) the stable host identity.
-    config.ensure_identity();
+    config.ensure_identity()?;
     config.save()?;
 
     println!();
@@ -118,7 +117,6 @@ pub fn run(args: ConfigArgs) -> Result<(), String> {
 fn run_non_interactive(args: ConfigArgs) -> Result<(), String> {
     let mut config = CoduxConfig::load();
     let existed = CoduxConfig::exists();
-    config.ensure_identity();
 
     if let Some(device_name) = args.device_name {
         let device_name = device_name.trim();
@@ -134,7 +132,7 @@ fn run_non_interactive(args: ConfigArgs) -> Result<(), String> {
         args.relay_url.as_deref(),
         args.relay_authentication.as_deref(),
     )?;
-    config.ensure_identity();
+    config.ensure_identity()?;
     config.save()?;
 
     println!(
@@ -161,10 +159,9 @@ pub fn apply_relay_args(
         if let Some(preset) = relay_preset
             .map(str::trim)
             .filter(|preset| !preset.is_empty())
+            && preset != RELAY_PRESET_CUSTOM
         {
-            if preset != RELAY_PRESET_CUSTOM {
-                return Err("--relay-url can only be used with --relay-preset custom".to_string());
-            }
+            return Err("--relay-url can only be used with --relay-preset custom".to_string());
         }
         config.relay_preset = RELAY_PRESET_CUSTOM.to_string();
         config.relay_url = url.to_string();

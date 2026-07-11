@@ -105,7 +105,7 @@ fn process_liveness_retires_undetected_hookless_sessions() {
     let shell_pids = vec![("kiro-term-1".to_string(), 1234)];
     let empty_detected = std::collections::HashMap::new();
     let first = store.retire_undetected_hookless_sessions(
-        &[terminal.clone()],
+        std::slice::from_ref(&terminal),
         &shell_pids,
         &empty_detected,
         1007.0,

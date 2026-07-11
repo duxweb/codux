@@ -20,6 +20,7 @@ pub use types::{
     MemoryExtractionItem, MemoryExtractionResponse, MemoryKind, MemoryScope, MemoryTier,
     PromptMemoryEntry, PromptMemorySummary,
 };
+pub(crate) use types::PromptMemoryContext;
 
 #[cfg(test)]
 mod tests {

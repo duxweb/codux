@@ -326,18 +326,17 @@ fn capture_raw_sample(cache: &Mutex<ProcessCache>) -> Option<RawSample> {
                 continue;
             }
 
-            if is_webkit_helper(&identity.name) {
-                if responsible_pid(identity.pid) == Some(main_pid)
+            if is_webkit_helper(&identity.name)
+                && (responsible_pid(identity.pid) == Some(main_pid)
                     || (identity.started_at_micros >= earliest_webkit_start
                         && identity.started_at_micros <= latest_webkit_start
-                        && responsible_pid(identity.pid).is_none())
+                        && responsible_pid(identity.pid).is_none()))
                 {
                     helper_pids.push(MonitoredProcess {
                         pid: identity.pid,
                         kind: classify_webkit_helper(&identity.name),
                     });
                 }
-            }
         }
 
         helper_pids.sort_unstable_by_key(|process| process.pid);

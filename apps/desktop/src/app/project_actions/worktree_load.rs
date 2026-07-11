@@ -196,13 +196,16 @@ impl CoduxApp {
         codux_runtime::async_runtime::spawn_blocking(move || {
             if let Err(error) = runtime_service.save_terminal_layout_with_grid(
                 &owner_id,
-                layout_snapshot.tabs,
-                layout_snapshot.top_panes,
-                layout_snapshot.top_ratios,
-                layout_snapshot.top_grid,
-                layout_snapshot.split_tree,
-                layout_snapshot.bottom_ratio,
-                layout_snapshot.collapsed_panes,
+                codux_runtime::terminal_layout::TerminalLayoutSummary {
+                    tabs: layout_snapshot.tabs,
+                    top_panes: layout_snapshot.top_panes,
+                    top_ratios: layout_snapshot.top_ratios,
+                    top_grid: layout_snapshot.top_grid,
+                    split_tree: layout_snapshot.split_tree,
+                    bottom_ratio: layout_snapshot.bottom_ratio,
+                    collapsed_panes: layout_snapshot.collapsed_panes,
+                    ..Default::default()
+                },
             ) {
                 codux_runtime::runtime_trace::runtime_trace(
                     "terminal-layout",

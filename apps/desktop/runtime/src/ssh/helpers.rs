@@ -25,7 +25,7 @@ pub fn render_ssh_launch_context_from_support_dir(
 }
 
 pub(super) fn render_ssh_launch_context_for_profiles(
-    profiles: &mut Vec<SSHConnectionProfile>,
+    profiles: &mut [SSHConnectionProfile],
     codux_ssh_command: Option<String>,
 ) -> Option<String> {
     if profiles.is_empty() {
@@ -34,8 +34,7 @@ pub(super) fn render_ssh_launch_context_for_profiles(
     let codux_ssh_command = codux_ssh_command
         .and_then(|value| normalized(&value))
         .unwrap_or_else(|| "codux-ssh".to_string());
-    let lines = vec![
-        "Codux saved SSH connections are available through terminal commands.".to_string(),
+    let lines = ["Codux saved SSH connections are available through terminal commands.".to_string(),
         format!(
             "Always run `{codux_ssh_command} list` at the time of use to discover the current saved SSH profiles as JSON."
         ),
@@ -50,8 +49,7 @@ pub(super) fn render_ssh_launch_context_for_profiles(
         ),
         "Do not grep the repository or inspect Codux config files to discover saved SSH hosts; use the wrapper list command.".to_string(),
         "If no saved profile matches, ask the user to add a saved SSH profile or provide explicit host details for the system ssh command.".to_string(),
-        "Do not ask for, print, infer, or expose saved passwords, passphrases, or private key paths.".to_string(),
-    ];
+        "Do not ask for, print, infer, or expose saved passwords, passphrases, or private key paths.".to_string()];
     Some(lines.join("\n"))
 }
 

@@ -138,25 +138,24 @@ fn run_project_index(
     let project_id = project.id.clone();
     let project_path = project.path.clone();
     let fingerprint = project_history_source_fingerprint(&project);
-    if project_source_fingerprint_unchanged(&state, &project_id, &fingerprint) {
-        if let Ok(Some(snapshot)) =
+    if project_source_fingerprint_unchanged(&state, &project_id, &fingerprint)
+        && let Ok(Some(snapshot)) =
             load_indexed_project_history_at(database_path.clone(), project.clone())
-        {
-            runtime_trace_elapsed(
-                "ai-history",
-                "run_project_index skipped_unchanged",
-                started_at,
-                &format!(
-                    "project={} path={} files={} sessions={} total_tokens={}",
-                    project_id,
-                    project_path,
-                    fingerprint.files.len(),
-                    snapshot.sessions.len(),
-                    snapshot.project_summary.project_total_tokens
-                ),
-            );
-            return Ok(snapshot);
-        }
+    {
+        runtime_trace_elapsed(
+            "ai-history",
+            "run_project_index skipped_unchanged",
+            started_at,
+            &format!(
+                "project={} path={} files={} sessions={} total_tokens={}",
+                project_id,
+                project_path,
+                fingerprint.files.len(),
+                snapshot.sessions.len(),
+                snapshot.project_summary.project_total_tokens
+            ),
+        );
+        return Ok(snapshot);
     }
     let progress_project = project.clone();
     let snapshot = index_project_history_fresh_at(

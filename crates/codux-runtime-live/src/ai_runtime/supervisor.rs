@@ -22,7 +22,7 @@ use crate::ai_runtime::{
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         mpsc::{Receiver, SyncSender, channel, sync_channel},
@@ -50,13 +50,13 @@ enum AIRuntimeSupervisorMessage {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AIRuntimeSupervisorEvent {
     RuntimeEvent {
-        event: AIRuntimeEvent,
+        event: Box<AIRuntimeEvent>,
     },
     State {
-        snapshot: AIRuntimeStateSnapshot,
+        snapshot: Box<AIRuntimeStateSnapshot>,
     },
     Completion {
-        completion: AIRuntimeCompletionEvent,
+        completion: Box<AIRuntimeCompletionEvent>,
     },
     TerminalStatus {
         status: TerminalStatusEvent,
@@ -71,6 +71,16 @@ pub struct AIRuntimeSupervisor {
     binding_scan: Arc<Mutex<AIRuntimeBindingScanState>>,
     events: Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
     started: Mutex<bool>,
+}
+
+struct AIRuntimeSupervisorLoopContext {
+    registry: Arc<AIRuntimeRegistry>,
+    state: Arc<AIRuntimeStateStore>,
+    transcript_monitors: TranscriptMonitorMap,
+    binding_scan: Arc<Mutex<AIRuntimeBindingScanState>>,
+    events: Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    runtime_event_dir: PathBuf,
+    binding_dir: PathBuf,
 }
 
 impl AIRuntimeSupervisor {
@@ -112,24 +122,18 @@ impl AIRuntimeSupervisor {
         start_event_dir_watcher(self.tx.clone(), runtime_event_dir.clone());
         start_binding_dir_watcher(self.tx.clone(), binding_dir.clone());
         let _ = self.tx.try_send(AIRuntimeSupervisorMessage::ScanBindings);
-        let state = Arc::clone(&self.state);
-        let transcript_monitors = Arc::clone(&self.transcript_monitors);
-        let binding_scan = Arc::clone(&self.binding_scan);
-        let events = Arc::clone(&self.events);
+        let context = AIRuntimeSupervisorLoopContext {
+            registry,
+            state: Arc::clone(&self.state),
+            transcript_monitors: Arc::clone(&self.transcript_monitors),
+            binding_scan: Arc::clone(&self.binding_scan),
+            events: Arc::clone(&self.events),
+            runtime_event_dir,
+            binding_dir,
+        };
         let spawn_result = thread::Builder::new()
             .name("codux-ai-runtime-supervisor".to_string())
-            .spawn(move || {
-                supervisor_loop(
-                    rx,
-                    registry,
-                    state,
-                    transcript_monitors,
-                    binding_scan,
-                    events,
-                    runtime_event_dir,
-                    binding_dir,
-                )
-            });
+            .spawn(move || supervisor_loop(rx, context));
         match spawn_result {
             Ok(_) => {
                 *started = true;
@@ -215,14 +219,17 @@ impl Default for AIRuntimeSupervisor {
 
 fn supervisor_loop(
     rx: Receiver<AIRuntimeSupervisorMessage>,
-    registry: Arc<AIRuntimeRegistry>,
-    state: Arc<AIRuntimeStateStore>,
-    transcript_monitors: TranscriptMonitorMap,
-    binding_scan: Arc<Mutex<AIRuntimeBindingScanState>>,
-    events: Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
-    runtime_event_dir: PathBuf,
-    binding_dir: PathBuf,
+    context: AIRuntimeSupervisorLoopContext,
 ) {
+    let AIRuntimeSupervisorLoopContext {
+        registry,
+        state,
+        transcript_monitors,
+        binding_scan,
+        events,
+        runtime_event_dir,
+        binding_dir,
+    } = context;
     let mut claude_cache = ClaudeProbeCache::default();
     while let Ok(message) = rx.recv() {
         match message {
@@ -299,7 +306,7 @@ fn supervisor_loop(
 fn handle_binding_scan(
     state: &AIRuntimeStateStore,
     binding_scan: &Arc<Mutex<AIRuntimeBindingScanState>>,
-    binding_dir: &PathBuf,
+    binding_dir: &Path,
 ) -> AIRuntimeStateMutation {
     let events = binding_scan
         .lock()
@@ -382,9 +389,9 @@ fn handle_hook_frame(
     push_event(
         events,
         AIRuntimeSupervisorEvent::RuntimeEvent {
-            event: AIRuntimeEvent::Hook {
+            event: Box::new(AIRuntimeEvent::Hook {
                 payload: payload.clone(),
-            },
+            }),
         },
     );
     let mutation = state.apply_hook_with_claude_cache(payload, Some(claude_cache));
@@ -410,7 +417,12 @@ fn after_mutation(
     if mutation.did_change {
         refresh_transcript_monitors(transcript_monitors, &state.transcript_monitored_sessions());
         let snapshot = state.snapshot();
-        push_event(events, AIRuntimeSupervisorEvent::State { snapshot });
+        push_event(
+            events,
+            AIRuntimeSupervisorEvent::State {
+                snapshot: Box::new(snapshot),
+            },
+        );
     }
     let completions = if mutation.completions.is_empty() {
         mutation.completion.into_iter().collect::<Vec<_>>()
@@ -418,7 +430,12 @@ fn after_mutation(
         mutation.completions
     };
     for completion in completions {
-        push_event(events, AIRuntimeSupervisorEvent::Completion { completion });
+        push_event(
+            events,
+            AIRuntimeSupervisorEvent::Completion {
+                completion: Box::new(completion),
+            },
+        );
     }
 }
 
@@ -957,7 +974,7 @@ mod tests {
             &binding_scan,
             AIRuntimeBindingFileEvent {
                 path: path.clone(),
-                signature: signature.clone(),
+                signature,
             },
         );
         assert!(mutation.did_change);

@@ -85,6 +85,10 @@ class HomeRuntimeCoordinator {
       );
     }
     for (final removed in plan.removedSessionIds) {
+      terminalBindingCoordinator.unsubscribeSession(
+        removed,
+        reason: 'removed-$reason',
+      );
       removeTerminalSessionState(removed);
     }
     if (plan.resetTerminalInput) {
@@ -136,7 +140,10 @@ class HomeRuntimeCoordinator {
     if (!remoteProtocolReady) return;
     final sessionId = captureSnapshot().sessionId;
     if (sessionId == null || sessionId.trim().isEmpty) return;
-    applyTerminalBind(RemoteRuntimePlan(bindSessionId: sessionId), reason);
+    applyTerminalBind(
+      RemoteRuntimePlan(bindSessionId: sessionId, bindFullBuffer: true),
+      reason,
+    );
   }
 
   void applyTerminalBind(RemoteRuntimePlan plan, String reason) {
@@ -166,8 +173,11 @@ class HomeRuntimeCoordinator {
     focusTerminalViewSoon();
     final evicted = outputController.evictInactiveSessions(bindSessionId);
     for (final sessionId in evicted) {
+      terminalBindingCoordinator.unsubscribeSession(
+        sessionId,
+        reason: 'lru-evict',
+      );
       terminalInputSender.clear(sessionId: sessionId);
-      terminalBindingCoordinator.markSessionBaselineStale(sessionId);
     }
     if (evicted.isNotEmpty) {
       CoduxLog.info(
@@ -177,12 +187,6 @@ class HomeRuntimeCoordinator {
     if (bindResult.baselineRequested) {
       trackTerminalBaselineRequest(bindSessionId);
     }
-    terminalBindingCoordinator.ensureBoundTerminalHasBaseline(
-      sessionId: bindSessionId,
-      baselineRequested: bindResult.baselineRequested,
-      reason: reason,
-      capability: terminalBufferCapability,
-    );
     if (plan.flushTerminalInput) {
       terminalInputBatcher.flush();
     }

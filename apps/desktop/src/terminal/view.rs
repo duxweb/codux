@@ -1,3 +1,8 @@
+type TerminalFocusObserver = Arc<dyn Fn(&mut Window, &mut Context<TerminalView>)>;
+type TerminalTitleObserver = Arc<dyn Fn(Option<String>, &mut Context<TerminalView>)>;
+type TerminalSearchObserver = Arc<dyn Fn(bool, &mut Context<TerminalView>)>;
+type TerminalLinkOpener = Arc<dyn Fn(String, &mut Window, &mut Context<TerminalView>)>;
+
 pub struct TerminalView {
     model: Entity<TerminalModel>,
     renderer: TerminalRenderer,
@@ -18,16 +23,16 @@ pub struct TerminalView {
     last_pty_resize_at: Option<Instant>,
     focus_in_subscription: Option<Subscription>,
     focus_out_subscription: Option<Subscription>,
-    focus_observer: Option<Arc<dyn Fn(&mut Window, &mut Context<TerminalView>)>>,
-    title_observer: Option<Arc<dyn Fn(Option<String>, &mut Context<TerminalView>)>>,
-    search_observer: Option<Arc<dyn Fn(bool, &mut Context<TerminalView>)>>,
+    focus_observer: Option<TerminalFocusObserver>,
+    title_observer: Option<TerminalTitleObserver>,
+    search_observer: Option<TerminalSearchObserver>,
     osc_title: Option<String>,
     search_open: bool,
     search_input: Option<Entity<InputState>>,
     search_matches: Vec<SelectionRange>,
     search_match_index: usize,
     _search_input_subscription: Option<Subscription>,
-    link_opener: Option<Arc<dyn Fn(String, &mut Window, &mut Context<TerminalView>)>>,
+    link_opener: Option<TerminalLinkOpener>,
     selection_autoscroll: Option<SelectionAutoScroll>,
     // Right-click went to the app as a mouse report; the context menu must stay closed.
     context_menu_suppressed: bool,
@@ -162,18 +167,21 @@ impl TerminalScrollInputState {
 
 impl TerminalView {
     fn new<W>(
-        stdin_writer: W,
-        bytes_rx: flume::Receiver<Vec<u8>>,
-        session_event_rx: flume::Receiver<TerminalUiEvent>,
-        session_event_wake_rx: flume::Receiver<()>,
-        session: TerminalSessionBinding,
-        config: TerminalConfig,
-        restored_output: Option<TerminalOutputSnapshot>,
+        input: TerminalViewInput<W>,
         cx: &mut Context<Self>,
     ) -> Self
     where
         W: Write + Send + 'static,
     {
+        let TerminalViewInput {
+            stdin_writer,
+            bytes_rx,
+            session_event_rx,
+            session_event_wake_rx,
+            session,
+            config,
+            restored_output,
+        } = input;
         let model = cx.new(|cx| {
             TerminalModel::new(
                 stdin_writer,
@@ -447,20 +455,19 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if is_copy_keystroke(&event.keystroke) {
-            if self.copy_selected_text(cx) {
+        if is_copy_keystroke(&event.keystroke)
+            && self.copy_selected_text(cx) {
                 cx.stop_propagation();
                 cx.notify();
                 return;
             }
-        }
 
         if is_paste_keystroke(&event.keystroke) {
             if let Some(text) = self.terminal_clipboard_paste_text(cx) {
                 self.suppress_text_input_echo(&text);
                 let view = cx.entity();
                 window.defer(cx, move |_window, cx| {
-                    let _ = view.update(cx, |terminal, cx| {
+                    view.update(cx, |terminal, cx| {
                         terminal.paste_text(&text, cx);
                     });
                 });
@@ -515,11 +522,10 @@ impl TerminalView {
     pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let was_open = self.search_open;
         self.search_open = true;
-        if !was_open {
-            if let Some(observer) = self.search_observer.clone() {
+        if !was_open
+            && let Some(observer) = self.search_observer.clone() {
                 observer(true, cx);
             }
-        }
         let input = match self.search_input.clone() {
             Some(input) => input,
             None => {
@@ -1044,11 +1050,10 @@ impl TerminalView {
             let model = self.model.read(cx);
             (model.remote_viewer(), model.viewport_generation())
         };
-        if !is_remote && generation != previous_generation {
-            if let Err(error) = self.session.refresh_local_viewport_if_current_owner() {
+        if !is_remote && generation != previous_generation
+            && let Err(error) = self.session.refresh_local_viewport_if_current_owner() {
                 eprintln!("failed to restore desktop terminal viewport: {error}");
             }
-        }
     }
 
     fn write_bytes(&mut self, bytes: &[u8], cx: &mut Context<Self>) {
@@ -1247,6 +1252,16 @@ impl TerminalView {
         let range = clamp_utf16_range(range_utf16, len);
         Some(utf16_substring(&marked_text.text, range))
     }
+}
+
+struct TerminalViewInput<W> {
+    stdin_writer: W,
+    bytes_rx: flume::Receiver<Vec<u8>>,
+    session_event_rx: flume::Receiver<TerminalUiEvent>,
+    session_event_wake_rx: flume::Receiver<()>,
+    session: TerminalSessionBinding,
+    config: TerminalConfig,
+    restored_output: Option<TerminalOutputSnapshot>,
 }
 
 fn should_send_alternate_scroll(mode: TerminalInputMode, shift_pressed: bool) -> bool {

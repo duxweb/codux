@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 pub use codux_protocol::RemoteTransportKind;
-use codux_protocol::{RemoteEnvelope, RemoteTransportPairingRequest};
+use codux_protocol::RemoteTransportPairingRequest;
 #[cfg(target_os = "android")]
 use std::ffi::c_void;
 #[cfg(target_os = "android")]
@@ -35,12 +35,23 @@ pub type RemoteTransportUploadHandler =
     Arc<dyn Fn(RemoteTransportUpload) -> Result<(), String> + Send + Sync + 'static>;
 pub type RemoteTransportStateHandler = Arc<dyn Fn(String, String) + Send + Sync + 'static>;
 pub type RemoteTransportPairingHandler =
-    Arc<dyn Fn(RemoteTransportPairingRequest) + Send + Sync + 'static>;
-pub type RemoteTransportControlHandler =
-    Arc<dyn Fn(String, RemoteEnvelope) -> bool + Send + Sync + 'static>;
+    Arc<dyn Fn(RemoteTransportPairingRequest) -> Option<serde_json::Value> + Send + Sync + 'static>;
+pub type RemoteTransportAuthorizationHandler =
+    Arc<dyn Fn(&str, &str) -> bool + Send + Sync + 'static>;
 pub type RemoteTransportLogHandler = Arc<dyn Fn(String) + Send + Sync + 'static>;
 pub type WebTunnelTcpConnectHandler =
     Arc<dyn Fn(WebTunnelTcpConnectRequest) -> Result<(), String> + Send + Sync + 'static>;
+
+#[derive(Clone)]
+pub struct RemoteHostTransportHandlers {
+    pub on_message: RemoteTransportMessageHandler,
+    pub on_upload: RemoteTransportUploadHandler,
+    pub on_state: RemoteTransportStateHandler,
+    pub on_pairing: RemoteTransportPairingHandler,
+    pub on_authorize: RemoteTransportAuthorizationHandler,
+    pub on_web_tunnel_tcp_connect: Option<WebTunnelTcpConnectHandler>,
+    pub on_log: Option<RemoteTransportLogHandler>,
+}
 
 #[cfg(target_os = "android")]
 static ANDROID_JNI_CONTEXT_INSTALLED: AtomicBool = AtomicBool::new(false);
@@ -77,6 +88,9 @@ pub trait RemoteTransport: Send + Sync {
         self.send(data, device_id)
     }
     fn send_terminal_upload(&self, _upload: RemoteTransportUpload) -> bool {
+        false
+    }
+    fn set_device_credentials(&self, _device_id: &str, _device_token: &str) -> bool {
         false
     }
     fn iroh_candidate(&self) -> Option<(String, String)> {
@@ -152,25 +166,12 @@ pub struct RemoteTransportFactory;
 impl RemoteTransportFactory {
     pub async fn connect_host(
         config: &RemoteHostTransportConfig,
-        on_message: RemoteTransportMessageHandler,
-        on_upload: RemoteTransportUploadHandler,
-        on_state: RemoteTransportStateHandler,
-        on_pairing: RemoteTransportPairingHandler,
-        on_web_tunnel_tcp_connect: Option<WebTunnelTcpConnectHandler>,
-        on_log: Option<RemoteTransportLogHandler>,
+        handlers: RemoteHostTransportHandlers,
     ) -> Result<Arc<dyn RemoteTransport>, String> {
         install_rustls_crypto_provider();
-        RemoteIrohHostTransport::connect(
-            config,
-            on_message,
-            on_upload,
-            on_state,
-            on_pairing,
-            on_web_tunnel_tcp_connect,
-            on_log,
-        )
-        .await
-        .map(|transport| transport as Arc<dyn RemoteTransport>)
+        RemoteIrohHostTransport::connect(config, handlers)
+            .await
+            .map(|transport| transport as Arc<dyn RemoteTransport>)
     }
 
     pub async fn connect_controller(

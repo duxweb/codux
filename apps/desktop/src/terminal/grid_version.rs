@@ -24,8 +24,8 @@ fn terminal_content_row_signatures(content: &TerminalContent) -> Vec<(i32, u64)>
     let mut hashers: HashMap<i32, DefaultHasher> = HashMap::new();
     for indexed in &content.cells {
         let line = indexed.line();
-        let hasher = hashers.entry(line).or_insert_with(DefaultHasher::new);
-        if !order.last().is_some_and(|last| *last == line) && !order.contains(&line) {
+        let hasher = hashers.entry(line).or_default();
+        if order.last().is_none_or(|last| *last != line) && !order.contains(&line) {
             order.push(line);
         }
         terminal_cell_hash(&indexed.cell, hasher);

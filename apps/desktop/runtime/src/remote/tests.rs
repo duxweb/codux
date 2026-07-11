@@ -573,7 +573,7 @@ fn remote_terminal_snapshot_payload_uses_compact_terminal_identity_shape() {
 
 #[test]
 fn remote_terminal_order_uses_runtime_order_before_id() {
-    let mut terminals = vec![
+    let mut terminals = [
         json!({
             "id": "term-2",
             "createdAt": "2026-01-01T00:00:02Z",

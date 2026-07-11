@@ -19,13 +19,11 @@ pub(super) fn resolve_hook_event(
 pub(super) fn resolve_hook_event_with_claude_cache(
     event: AIHookEventPayload,
     current_session: Option<&AISessionSnapshot>,
-    mut claude_cache: Option<&mut ClaudeProbeCache>,
+    claude_cache: Option<&mut ClaudeProbeCache>,
 ) -> AIHookEventPayload {
     match canonical_tool_name(&event.tool).as_deref() {
         Some("codex") => resolve_codex_hook_event(event, current_session),
-        Some("claude") => {
-            resolve_claude_hook_event(event, current_session, claude_cache.as_deref_mut())
-        }
+        Some("claude") => resolve_claude_hook_event(event, current_session, claude_cache),
         Some("kiro") => resolve_project_probe_hook_event(event, current_session, "kiro"),
         Some("codewhale") => resolve_project_probe_hook_event(event, current_session, "codewhale"),
         _ => {

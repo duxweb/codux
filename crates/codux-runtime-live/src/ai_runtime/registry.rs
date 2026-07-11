@@ -76,9 +76,7 @@ impl AIRuntimeRegistry {
             Ok(screens) => screens.get(terminal_id).cloned(),
             Err(_) => None,
         };
-        let Some(screen) = weak.and_then(|weak| weak.upgrade()) else {
-            return None;
-        };
+        let screen = weak.and_then(|weak| weak.upgrade())?;
         // Skip the keyframe string (cells-only); wait for the worker reply
         // outside the lock, mirroring `TerminalPtySession::screen_snapshot`.
         let request = screen.lock().snapshot_request(false);

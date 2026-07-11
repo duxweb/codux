@@ -64,6 +64,7 @@ impl RuntimeService {
         let workspace_ids = self.project_workspace_ids_for_root(&project_id);
         let snapshot =
             ProjectStore::new(self.support_dir.clone()).close_project_snapshot(project_id.clone())?;
+        self.remote_host.remove_project_state(&project_id);
         self.cleanup_project_workspace_data(&workspace_ids);
         self.project_activity.remove_project(&project_id);
         if let Some(next_project_id) = snapshot.selected_project_id.as_deref() {
@@ -144,6 +145,7 @@ impl RuntimeService {
     pub fn close_project(&self, project_id: &str) -> Result<Option<String>, String> {
         let workspace_ids = self.project_workspace_ids_for_root(project_id);
         let next_project_id = ProjectStore::new(self.support_dir.clone()).close_project(project_id)?;
+        self.remote_host.remove_project_state(project_id);
         self.cleanup_project_workspace_data(&workspace_ids);
         self.project_activity.remove_project(project_id);
         if let Some(next_project_id) = next_project_id.as_deref() {

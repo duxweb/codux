@@ -96,6 +96,9 @@ extension _HomePageProtocol on HomeController {
             _terminalBufferCapability = TerminalBufferCapability.fromHostInfo(
               payload,
             );
+            _resourceSubscriptionCoordinator.configure(
+              RemoteResourceSubscriptionCapability.fromHostInfo(payload),
+            );
             if (payload['name'] != null) {
               _updateDevice(
                 target.deviceId,
@@ -147,10 +150,10 @@ extension _HomePageProtocol on HomeController {
         case final type when type == RemoteMessageType.aiStats:
           final payload = message.payload;
           if (payload is Map &&
-              _remoteStateVersions.accept(
+              _remoteStateVersions.acceptProjectPayload(
                 'ai.stats',
-                projectId: payload['projectId']?.toString(),
-                version: remoteStateVersionFromPayload(payload),
+                payload,
+                currentProjectId: _selectedProjectId,
               )) {
             final statsPayload = Map<String, dynamic>.from(payload);
             _applyState(() {
@@ -160,10 +163,10 @@ extension _HomePageProtocol on HomeController {
           }
         case final type when type == RemoteMessageType.gitStatus:
           final payload = message.payload;
-          final accepted = _remoteStateVersions.accept(
+          final accepted = _remoteStateVersions.acceptProjectPayload(
             'git.status',
-            projectId: payload is Map ? payload['projectId']?.toString() : null,
-            version: remoteStateVersionFromPayload(payload),
+            payload,
+            currentProjectId: _selectedProjectId,
           );
           if (accepted) {
             final status = remoteGitStatusFromPayload(message.payload);
@@ -284,6 +287,7 @@ extension _HomePageProtocol on HomeController {
     // only requests once per selected project.
     _requestAISessions();
     _refreshAIStats();
+    _requestWorktreeList();
     unawaited(_cacheProjects(next));
   }
 
@@ -328,14 +332,11 @@ extension _HomePageProtocol on HomeController {
 
   void _handleWorktreeList(RelayEnvelope message) {
     _markHostResponsive('worktree.list');
-    // Guard only the list BROADCAST (it can be a stale/duplicate push); the
-    // worktree.updated mutation reply is left unguarded so a create->select flow
-    // is never dropped.
     final payload = message.payload;
-    if (!_remoteStateVersions.accept(
+    if (!_remoteStateVersions.acceptProjectPayload(
       'worktrees',
-      projectId: payload is Map ? payload['projectId']?.toString() : null,
-      version: remoteStateVersionFromPayload(payload),
+      payload,
+      currentProjectId: _selectedProjectId,
     )) {
       return;
     }
@@ -343,6 +344,13 @@ extension _HomePageProtocol on HomeController {
   }
 
   void _handleWorktreeUpdated(RelayEnvelope message) {
+    if (!_remoteStateVersions.acceptProjectPayload(
+      'worktrees',
+      message.payload,
+      currentProjectId: _selectedProjectId,
+    )) {
+      return;
+    }
     _applyWorktreeState(message, allowRuntimeSelection: true);
   }
 

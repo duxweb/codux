@@ -1,10 +1,12 @@
-impl AIUsageStore {
-    pub fn default() -> Self {
+impl Default for AIUsageStore {
+    fn default() -> Self {
         Self {
             database_path: default_database_path(),
         }
     }
+}
 
+impl AIUsageStore {
     pub fn at_path(database_path: PathBuf) -> Self {
         Self { database_path }
     }

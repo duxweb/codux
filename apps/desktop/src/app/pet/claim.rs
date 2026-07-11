@@ -81,7 +81,6 @@ impl CoduxApp {
                                         &self.state.support_dir,
                                         &self.pet_custom_pets,
                                         &language,
-                                        window,
                                         cx,
                                     )
                                     .into_any_element()
@@ -122,14 +121,16 @@ impl CoduxApp {
                         .flex()
                         .flex_col()
                         .child(div().min_h_0().flex_1().child(pet_claim_preview(
-                            &preview_pet,
-                            selected_species == "bundled:random",
-                            &self.runtime.source_root,
-                            &self.state.support_dir,
-                            &self.pet_custom_pets,
-                            selected_catalog_item.as_ref(),
-                            &language,
-                            preview_sprite_frame,
+                            PetClaimPreviewInput {
+                                pet: &preview_pet,
+                                random: selected_species == "bundled:random",
+                                runtime_asset_root: &self.runtime.source_root,
+                                support_dir: &self.state.support_dir,
+                                custom_pets: &self.pet_custom_pets,
+                                catalog_item: selected_catalog_item.as_ref(),
+                                language: &language,
+                                sprite_frame: preview_sprite_frame,
+                            },
                             cx,
                         )))
                         .child(div().px(px(20.0)).pb(px(16.0)).child(
@@ -182,13 +183,15 @@ impl CoduxApp {
                 .overflow_y_scrollbar()
                 .p(px(16.0))
                 .child(workspace_pet_install_form(
-                    &self.pet_install_url,
-                    &self.pet_install_display_name,
-                    self.pet_install_preview.as_ref(),
-                    self.pet_install_error.as_deref(),
-                    self.pet_install_previewing,
-                    self.pet_installing,
-                    &language,
+                    WorkspacePetInstallInput {
+                        install_url: &self.pet_install_url,
+                        install_display_name: &self.pet_install_display_name,
+                        install_preview: self.pet_install_preview.as_ref(),
+                        install_error: self.pet_install_error.as_deref(),
+                        install_previewing: self.pet_install_previewing,
+                        installing: self.pet_installing,
+                        language: &language,
+                    },
                     window,
                     cx,
                 )),
@@ -249,7 +252,6 @@ fn pet_claim_option_row(
     support_dir: &Path,
     custom_pets: &[PetCustomPet],
     language: &str,
-    _window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let selected = selected_species == item.species;
@@ -417,17 +419,31 @@ fn pet_claim_random_thumb(cx: &mut Context<CoduxApp>) -> AnyElement {
         .into_any_element()
 }
 
-fn pet_claim_preview(
-    pet: &PetSummary,
+struct PetClaimPreviewInput<'a> {
+    pet: &'a PetSummary,
     random: bool,
-    runtime_asset_root: &Path,
-    support_dir: &Path,
-    custom_pets: &[PetCustomPet],
-    catalog_item: Option<&PetCatalogItem>,
-    language: &str,
+    runtime_asset_root: &'a Path,
+    support_dir: &'a Path,
+    custom_pets: &'a [PetCustomPet],
+    catalog_item: Option<&'a PetCatalogItem>,
+    language: &'a str,
     sprite_frame: usize,
+}
+
+fn pet_claim_preview(
+    input: PetClaimPreviewInput<'_>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let PetClaimPreviewInput {
+        pet,
+        random,
+        runtime_asset_root,
+        support_dir,
+        custom_pets,
+        catalog_item,
+        language,
+        sprite_frame,
+    } = input;
     let sprite_path = pet_sprite_path(runtime_asset_root, support_dir, pet, custom_pets);
     let title = if random {
         pet_catalog_text(language, "pet.claim.random.title", "Random")

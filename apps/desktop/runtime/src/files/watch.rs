@@ -101,11 +101,11 @@ impl FileWatchManager {
             .watchers
             .lock()
             .map_err(|_| "File watcher lock is poisoned.".to_string())?;
-        if let Some(existing) = watchers.get_mut(&key) {
-            if existing.ref_count > 1 {
-                existing.ref_count -= 1;
-                return Ok(());
-            }
+        if let Some(existing) = watchers.get_mut(&key)
+            && existing.ref_count > 1
+        {
+            existing.ref_count -= 1;
+            return Ok(());
         }
         watchers.remove(&key);
         Ok(())

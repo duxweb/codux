@@ -656,13 +656,15 @@ impl CoduxApp {
         let pane_view = slot.pane.as_ref().map(|pane| pane.view.clone());
         let app_entity = cx.entity();
         let float_view = terminal_float_window(
-            title.clone(),
-            app_entity,
-            project_id,
-            tab_view_id,
-            pane_index,
-            split_location,
-            slot,
+            TerminalFloatRequest {
+                title: title.clone(),
+                app_entity,
+                project_id,
+                tab_view_id,
+                pane_index,
+                split_location,
+                slot,
+            },
             cx,
         );
         let close_view = float_view.clone();

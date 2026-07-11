@@ -2,23 +2,37 @@ use super::overlays::remote_add_dropdown;
 use super::relay::settings_remote_relay_custom_fields;
 use super::*;
 
+pub(in crate::app::settings) struct SettingsRemotePaneInput<'a> {
+    pub(in crate::app::settings) settings: &'a SettingsSummary,
+    pub(in crate::app::settings) remote: &'a RemoteSummary,
+    pub(in crate::app::settings) saved_hosts: &'a [codux_runtime::remote::SavedRemoteHost],
+    pub(in crate::app::settings) link_states:
+        &'a std::collections::HashMap<String, codux_runtime::remote::ControllerLinkState>,
+    pub(in crate::app::settings) link_paths:
+        &'a std::collections::HashMap<String, codux_runtime::remote::ControllerLinkPath>,
+    pub(in crate::app::settings) language: &'a str,
+    pub(in crate::app::settings) remote_reconnecting: bool,
+    pub(in crate::app::settings) remote_pairing_creating: bool,
+}
+
 pub(in crate::app::settings) fn settings_remote_pane(
-    settings: &SettingsSummary,
-    remote: &RemoteSummary,
-    saved_hosts: &[codux_runtime::remote::SavedRemoteHost],
-    link_states: &std::collections::HashMap<String, codux_runtime::remote::ControllerLinkState>,
-    link_paths: &std::collections::HashMap<String, codux_runtime::remote::ControllerLinkPath>,
-    _selected_device_id: Option<&str>,
-    language: &str,
-    remote_reconnecting: bool,
-    remote_pairing_creating: bool,
-    _window: &mut Window,
+    input: SettingsRemotePaneInput<'_>,
+    window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
+    let SettingsRemotePaneInput {
+        settings,
+        remote,
+        saved_hosts,
+        link_states,
+        link_paths,
+        language,
+        remote_reconnecting,
+        remote_pairing_creating,
+    } = input;
     let mut device_rows: Vec<AnyElement> = remote
         .device_list
         .iter()
-        .cloned()
         .map(|device| {
             let device_id = device.id.clone();
             let remove_id = device.id.clone();
@@ -256,7 +270,7 @@ pub(in crate::app::settings) fn settings_remote_pane(
                         // relay row (one card slot), and only when "custom" — so
                         // there's no empty slot drawing a stray separator.
                         let custom = (settings.remote_relay_preset == "custom").then(|| {
-                            settings_remote_relay_custom_fields(settings, _window, cx, language)
+                            settings_remote_relay_custom_fields(settings, window, cx, language)
                         });
                         let relay_row = settings_row(
                             settings_text(language, "settings.remote.relay_mode", "Relay Network"),
@@ -269,7 +283,7 @@ pub(in crate::app::settings) fn settings_remote_pane(
                                 "settings-remote-relay-preset",
                                 settings.remote_relay_preset.as_str(),
                                 remote_relay_preset_options(language),
-                                _window,
+                                window,
                                 cx,
                                 language,
                                 |app, value, window, cx| {

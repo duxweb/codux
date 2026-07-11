@@ -1,4 +1,4 @@
-use super::developer::settings_runtime_tool_block;
+use super::developer::{RuntimeToolBlockInput, settings_runtime_tool_block};
 use super::options::*;
 use super::widgets::*;
 use super::*;
@@ -49,154 +49,170 @@ pub(super) fn settings_ai_pane(
     let mut runtime_tool_rows = Vec::new();
     runtime_tool_rows.extend(vec![
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "Codex"),
+                tool_key: "codex",
+                model_key: "codexModel",
+                permission: &permissions.codex,
+                model: &permissions.codex_model,
+                placeholder: "gpt-5.5",
+                include_permission: true,
+                include_codex_effort: true,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "Codex"),
-            "codex",
-            "codexModel",
-            &permissions.codex,
-            &permissions.codex_model,
-            "gpt-5.5",
-            true,
-            true,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "Claude Code"),
+                tool_key: "claudeCode",
+                model_key: "claudeCodeModel",
+                permission: &permissions.claude_code,
+                model: &permissions.claude_code_model,
+                placeholder: "claude-sonnet-4.5",
+                include_permission: true,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "Claude Code"),
-            "claudeCode",
-            "claudeCodeModel",
-            &permissions.claude_code,
-            &permissions.claude_code_model,
-            "claude-sonnet-4.5",
-            true,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "Agy"),
+                tool_key: "agy",
+                model_key: "agyModel",
+                permission: &permissions.agy,
+                model: &permissions.agy_model,
+                placeholder: "gemini-2.5-pro",
+                include_permission: true,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "Agy"),
-            "agy",
-            "agyModel",
-            &permissions.agy,
-            &permissions.agy_model,
-            "gemini-2.5-pro",
-            true,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "OpenCode"),
+                tool_key: "opencode",
+                model_key: "opencodeModel",
+                permission: &permissions.opencode,
+                model: &permissions.opencode_model,
+                placeholder: "gpt-5.5",
+                include_permission: true,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "OpenCode"),
-            "opencode",
-            "opencodeModel",
-            &permissions.opencode,
-            &permissions.opencode_model,
-            "gpt-5.5",
-            true,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "Kiro"),
+                tool_key: "kiro",
+                model_key: "kiroModel",
+                permission: &permissions.kiro,
+                model: &permissions.kiro_model,
+                placeholder: "auto",
+                include_permission: false,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "Kiro"),
-            "kiro",
-            "kiroModel",
-            &permissions.kiro,
-            &permissions.kiro_model,
-            "auto",
-            false,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "CodeWhale"),
+                tool_key: "codewhale",
+                model_key: "codewhaleModel",
+                permission: &permissions.codewhale,
+                model: &permissions.codewhale_model,
+                placeholder: "deepseek-chat",
+                include_permission: true,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "CodeWhale"),
-            "codewhale",
-            "codewhaleModel",
-            &permissions.codewhale,
-            &permissions.codewhale_model,
-            "deepseek-chat",
-            true,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "Kimi Code"),
+                tool_key: "kimi",
+                model_key: "kimiModel",
+                permission: &permissions.kimi,
+                model: &permissions.kimi_model,
+                placeholder: "kimi-k2",
+                include_permission: false,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "Kimi Code"),
-            "kimi",
-            "kimiModel",
-            &permissions.kimi,
-            &permissions.kimi_model,
-            "kimi-k2",
-            false,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),
         settings_runtime_tool_block(
-            settings_text(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
+                .replace("%@", "MiMo-Code"),
+                tool_key: "mimo",
+                model_key: "mimoModel",
+                permission: &permissions.mimo,
+                model: &permissions.mimo_model,
+                placeholder: "kimi-k2",
+                include_permission: true,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
                 language,
-                "settings.ai.tool.configuration_format",
-                "%@ Configuration",
-            )
-            .replace("%@", "MiMo-Code"),
-            "mimo",
-            "mimoModel",
-            &permissions.mimo,
-            &permissions.mimo_model,
-            "kimi-k2",
-            true,
-            false,
-            &permissions.codex_effort,
-            language,
+            },
             window,
             cx,
         ),

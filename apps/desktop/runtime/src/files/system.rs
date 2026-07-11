@@ -7,7 +7,7 @@ pub(super) fn move_to_trash(path: &Path) -> Result<(), String> {
             "tell application \"Finder\" to delete POSIX file \"{}\"",
             apple_script_string(path)
         );
-        return run_command_status("osascript", &["-e", &script], "move item to Trash");
+        run_command_status("osascript", &["-e", &script], "move item to Trash")
     }
 
     #[cfg(target_os = "windows")]
@@ -60,7 +60,7 @@ pub(super) fn move_to_trash(path: &Path) -> Result<(), String> {
 pub(super) fn reveal_path(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return run_spawn_command("open", &["-R", &path.display().to_string()]);
+        run_spawn_command("open", &["-R", &path.display().to_string()])
     }
     #[cfg(target_os = "windows")]
     {
@@ -76,7 +76,7 @@ pub(super) fn reveal_path(path: &Path) -> Result<(), String> {
 pub(super) fn open_path(path: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return run_spawn_command("open", &[&path.display().to_string()]);
+        run_spawn_command("open", &[&path.display().to_string()])
     }
     #[cfg(target_os = "windows")]
     {

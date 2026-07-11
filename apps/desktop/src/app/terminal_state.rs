@@ -229,7 +229,7 @@ pub(in crate::app) fn structural_terminal_layout(
         .split_tree
         .as_ref()
         .map(|tree| top_grid_from_split_tree(tree, layout.top_panes.len()))
-        .unwrap_or_else(TerminalTopGrid::default);
+        .unwrap_or_default();
     layout.top_ratios = terminal_top_ratios_from_grid(&layout.top_grid);
     layout.active_terminal_id.clear();
     layout
@@ -557,7 +557,7 @@ pub(in crate::app) fn terminal_split_tree_update_ratios(
 fn normalize_app_split_tree(tree: TerminalSplitNode, pane_count: usize) -> TerminalSplitNode {
     let fallback = top_grid_from_split_tree(&tree, pane_count);
     normalize_split_tree(Some(tree), &fallback, &vec![1.0; pane_count], pane_count)
-        .unwrap_or_else(|| TerminalSplitNode::Leaf { pane: 0 })
+        .unwrap_or(TerminalSplitNode::Leaf { pane: 0 })
 }
 
 fn split_axis_for_direction(direction: TerminalSplitDirection) -> SplitAxis {
@@ -903,19 +903,33 @@ fn restored_terminal_output_bytes(
         .unwrap_or_default()
 }
 
+pub(in crate::app) struct SpawnTerminalTabsInput<'a> {
+    pub(in crate::app) plan: &'a TerminalRestorePlan,
+    pub(in crate::app) terminal_manager: Arc<TerminalManager>,
+    pub(in crate::app) launch_context: Option<&'a TerminalLaunchContext>,
+    pub(in crate::app) base_pty_config: &'a TerminalPtyConfig,
+    pub(in crate::app) terminal_config: TerminalConfig,
+    pub(in crate::app) terminal_pane_registry: &'a HashMap<String, TerminalPane>,
+    pub(in crate::app) pending_out:
+        Option<&'a mut Vec<(TerminalPtyConfig, crate::terminal::PendingTerminalAttach)>>,
+}
+
 pub(in crate::app) fn spawn_terminal_tabs<C>(
-    plan: &TerminalRestorePlan,
-    terminal_manager: Arc<TerminalManager>,
-    launch_context: Option<&TerminalLaunchContext>,
-    base_pty_config: &TerminalPtyConfig,
-    terminal_config: TerminalConfig,
-    terminal_pane_registry: &HashMap<String, TerminalPane>,
-    mut pending_out: Option<&mut Vec<(TerminalPtyConfig, crate::terminal::PendingTerminalAttach)>>,
+    input: SpawnTerminalTabsInput<'_>,
     cx: &mut C,
 ) -> Result<(Vec<TerminalTab>, usize, usize)>
 where
     C: gpui::AppContext,
 {
+    let SpawnTerminalTabsInput {
+        plan,
+        terminal_manager,
+        launch_context,
+        base_pty_config,
+        terminal_config,
+        terminal_pane_registry,
+        mut pending_out,
+    } = input;
     let (mut tabs, active_terminal_id, next_id) =
         restore_terminal_tabs_skeleton(plan, launch_context);
     for tab_index in 0..tabs.len() {
@@ -972,21 +986,21 @@ where
         // pending pane and defer — opening it inline would block the UI thread
         // on a network round-trip. Local terminals (and the boot path, which has
         // no pending sink yet) spawn the PTY synchronously as before.
-        if pty_config.host_device_id.is_some() {
-            if let Some(out) = pending_out.as_deref_mut() {
-                let (pane, attach) = TerminalPane::pending_with_restored_output(
-                    cx,
-                    pty_config.clone(),
-                    terminal_config.clone(),
-                    Some(TerminalOutputSnapshot {
-                        bytes: slot.restored_output_bytes,
-                        tail: slot.restored_output_tail.clone(),
-                    }),
-                );
-                slot.pane = Some(pane);
-                out.push((pty_config, attach));
-                continue;
-            }
+        if pty_config.host_device_id.is_some()
+            && let Some(out) = pending_out.as_deref_mut()
+        {
+            let (pane, attach) = TerminalPane::pending_with_restored_output(
+                cx,
+                pty_config.clone(),
+                terminal_config.clone(),
+                Some(TerminalOutputSnapshot {
+                    bytes: slot.restored_output_bytes,
+                    tail: slot.restored_output_tail.clone(),
+                }),
+            );
+            slot.pane = Some(pane);
+            out.push((pty_config, attach));
+            continue;
         }
         slot.pane = Some(TerminalPane::spawn_with_pty_config(
             cx,
@@ -1148,8 +1162,7 @@ fn worktree_row_context_name(worktree: &WorktreeInfo) -> String {
     } else {
         branch
             .split('/')
-            .filter(|segment| !segment.is_empty())
-            .next_back()
+            .rfind(|segment| !segment.is_empty())
             .unwrap_or(branch)
             .to_string()
     }

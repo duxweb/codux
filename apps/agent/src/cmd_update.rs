@@ -215,12 +215,7 @@ fn release_tag_is_beta(tag_name: &str) -> bool {
 
 /// Choose the release asset for this OS + architecture.
 fn pick_asset<'a>(assets: &'a [Asset], version: &str) -> Result<&'a Asset, String> {
-    let os = match std::env::consts::OS {
-        "macos" => "macos",
-        "linux" => "linux",
-        "windows" => "windows",
-        other => other,
-    };
+    let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH; // x86_64 / aarch64
     let extension = if os == "windows" { ".exe" } else { "" };
     let expected = format!("codux-agent-{version}-{os}-{arch}{extension}");
@@ -388,12 +383,7 @@ mod tests {
     }
 
     fn current_agent_asset_name(version: &str) -> String {
-        let os = match std::env::consts::OS {
-            "macos" => "macos",
-            "linux" => "linux",
-            "windows" => "windows",
-            other => other,
-        };
+        let os = std::env::consts::OS;
         let extension = if os == "windows" { ".exe" } else { "" };
         format!(
             "codux-agent-{version}-{os}-{}{extension}",
@@ -402,12 +392,7 @@ mod tests {
     }
 
     fn current_legacy_agent_asset_name() -> String {
-        let os = match std::env::consts::OS {
-            "macos" => "macos",
-            "linux" => "linux",
-            "windows" => "windows",
-            other => other,
-        };
+        let os = std::env::consts::OS;
         let extension = if os == "windows" { ".exe" } else { "" };
         format!("codux-{os}-{}{extension}", std::env::consts::ARCH)
     }

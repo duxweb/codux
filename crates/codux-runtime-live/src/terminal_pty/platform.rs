@@ -109,10 +109,10 @@ pub(super) fn capture_shell_environment_uncached(
         .iter()
         .chain(UNIX_PASSTHROUGH_ENV_KEYS.iter())
     {
-        if let Ok(value) = std::env::var(key) {
-            if !value.is_empty() {
-                capture.env(key, value);
-            }
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            capture.env(key, value);
         }
     }
     let output = capture.output().ok()?;

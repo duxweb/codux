@@ -21,7 +21,8 @@ fn ensure_detected_sessions_creates_idle_session_without_hook_or_active_binding(
     let detected =
         std::collections::HashMap::from([("terminal-1".to_string(), "codex".to_string())]);
 
-    let mutation = store.ensure_detected_sessions(&[terminal.clone()], &detected, 1000.0);
+    let mutation =
+        store.ensure_detected_sessions(std::slice::from_ref(&terminal), &detected, 1000.0);
     assert!(mutation.did_change);
 
     let snapshot = store.snapshot();
@@ -55,7 +56,7 @@ fn ensure_detected_sessions_switches_same_terminal_to_new_tool() {
     assert!(
         store
             .ensure_detected_sessions(
-                &[terminal.clone()],
+                std::slice::from_ref(&terminal),
                 &std::collections::HashMap::from([(
                     "terminal-1".to_string(),
                     "opencode".to_string(),
@@ -133,7 +134,7 @@ fn ensure_detected_sessions_refreshes_existing_idle_kiro_session() {
 
     assert!(
         store
-            .ensure_detected_sessions(&[terminal.clone()], &detected, 1000.0)
+            .ensure_detected_sessions(std::slice::from_ref(&terminal), &detected, 1000.0)
             .did_change
     );
     assert!(

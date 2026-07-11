@@ -1,6 +1,6 @@
 use super::{
     MemoryProjectMigrationRequest, MemoryService, MemorySummary, MemorySummaryRow,
-    MemorySummaryUpdateRequest, now_seconds,
+    MemorySummaryUpdateRequest, apply::MemorySummaryUpsert, now_seconds,
 };
 use crate::extraction::MemoryScope;
 use rusqlite::{OptionalExtension, params};
@@ -90,12 +90,14 @@ impl MemoryService {
         let conn = self.open_connection()?;
         let updated = self.upsert_summary(
             &conn,
-            MemoryScope::from_str(&existing.scope),
-            existing.project_id.as_deref(),
-            existing.tool_id.as_deref(),
-            content,
-            &existing.source_entry_ids,
-            request.max_versions.unwrap_or(20).max(1),
+            MemorySummaryUpsert {
+                scope: MemoryScope::from_token(&existing.scope),
+                project_id: existing.project_id.as_deref(),
+                tool_id: existing.tool_id.as_deref(),
+                content,
+                source_entry_ids: &existing.source_entry_ids,
+                max_versions: request.max_versions.unwrap_or(20).max(1),
+            },
         )?;
         Ok(MemorySummaryRow {
             id: updated.id,

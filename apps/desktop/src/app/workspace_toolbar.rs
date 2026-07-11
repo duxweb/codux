@@ -2,7 +2,7 @@ use super::*;
 use crate::app::{
     ui_helpers::{titlebar_drag_area, with_codux_tooltip},
     workspace_daily_level::workspace_level_button,
-    workspace_pet_widgets::workspace_pet_button,
+    workspace_pet_widgets::{WorkspacePetButtonInput, workspace_pet_button},
     workspace_shared::{
         workspace_header_badge_button_content, workspace_header_button, workspace_i18n,
     },
@@ -41,24 +41,18 @@ impl CoduxApp {
             });
         let show_server_info_button = has_project_context
             && (remote_project_device_id.is_none() || connected_remote_project_device_id.is_some());
-        let pet_sprite_frame = self.visible_pet_sprite_frame(PET_IDLE_FRAME_COUNT);
         let pet_button = if self.state.settings.pet_enabled {
             if has_project_context {
                 workspace_pet_button(
-                    &self.state.pet,
-                    Some(&pet_snapshot),
-                    &self.pet_custom_pets,
-                    &self.runtime.source_root,
-                    &self.state.support_dir,
-                    &self.state.settings.language,
-                    &self.pet_install_url,
-                    &self.pet_install_display_name,
-                    self.pet_install_preview.as_ref(),
-                    self.pet_install_error.as_deref(),
-                    self.pet_install_previewing,
-                    self.pet_installing,
-                    self.pet_name_editing,
-                    pet_sprite_frame,
+                    WorkspacePetButtonInput {
+                        pet: &self.state.pet,
+                        pet_snapshot: Some(&pet_snapshot),
+                        custom_pets: &self.pet_custom_pets,
+                        runtime_asset_root: &self.runtime.source_root,
+                        support_dir: &self.state.support_dir,
+                        language: &self.state.settings.language,
+                        pet_name_editing: self.pet_name_editing,
+                    },
                     window,
                     cx,
                 )
@@ -143,7 +137,7 @@ impl CoduxApp {
                         ))
                         .child(workspace_assistant_button(
                             "SSH",
-                            AssistantPanel::SSH,
+                            AssistantPanel::Ssh,
                             self.assistant_panel,
                             has_project_context,
                             cx,
@@ -364,7 +358,7 @@ fn workspace_assistant_button(
         match panel {
             AssistantPanel::AIStats => "workspace-assistant-ai",
             AssistantPanel::ServerInfo => "workspace-assistant-server",
-            AssistantPanel::SSH => "workspace-assistant-ssh",
+            AssistantPanel::Ssh => "workspace-assistant-ssh",
             AssistantPanel::DB => "workspace-assistant-db",
             AssistantPanel::FileManager => "workspace-assistant-files",
             AssistantPanel::Git => "workspace-assistant-git",
@@ -399,7 +393,7 @@ fn workspace_assistant_button(
                     Icon::new(match panel {
                         AssistantPanel::AIStats => HeroIconName::CpuChip,
                         AssistantPanel::ServerInfo => HeroIconName::ServerStack,
-                        AssistantPanel::SSH => HeroIconName::CommandLine,
+                        AssistantPanel::Ssh => HeroIconName::CommandLine,
                         AssistantPanel::DB => HeroIconName::CircleStack,
                         AssistantPanel::FileManager => HeroIconName::Folder,
                         AssistantPanel::Git => HeroIconName::Share,
@@ -418,7 +412,7 @@ fn workspace_assistant_button(
         match panel {
             AssistantPanel::AIStats => "workspace-assistant-ai-tooltip",
             AssistantPanel::ServerInfo => "workspace-assistant-server-tooltip",
-            AssistantPanel::SSH => "workspace-assistant-ssh-tooltip",
+            AssistantPanel::Ssh => "workspace-assistant-ssh-tooltip",
             AssistantPanel::DB => "workspace-assistant-db-tooltip",
             AssistantPanel::FileManager => "workspace-assistant-files-tooltip",
             AssistantPanel::Git => "workspace-assistant-git-tooltip",

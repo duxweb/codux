@@ -370,7 +370,7 @@ fn git_context_menu_item(label: String, icon: HeroIconName) -> PopupMenuItem {
             .line_height(rems(1.125))
             .text_color(cx.theme().foreground)
             .child(
-                Icon::new(icon.clone())
+                Icon::new(icon)
                     .size_3p5()
                     .text_color(cx.theme().muted_foreground),
             )

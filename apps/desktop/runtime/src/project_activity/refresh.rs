@@ -3,8 +3,8 @@ impl ProjectActivityCoordinator {
         self.mark_project_summary(project);
         let mut tracked_project = TrackedProject::from(project.clone());
         let now = Instant::now();
-        if let Ok(mut guard) = self.projects.lock() {
-            if let Some(tracked) = guard.get_mut(&project.id) {
+        if let Ok(mut guard) = self.projects.lock()
+            && let Some(tracked) = guard.get_mut(&project.id) {
                 let minimum_remote_interval = Duration::from_secs(MIN_GIT_REFRESH_SECONDS);
                 if tracked
                     .last_remote_git_refresh
@@ -24,7 +24,6 @@ impl ProjectActivityCoordinator {
                 tracked.last_remote_git_refresh = Some(now);
                 tracked_project = tracked.clone();
             }
-        }
         self.git_jobs.submit(GitJob::Refresh {
             project: tracked_project,
             fetch_remote: true,
@@ -56,8 +55,8 @@ impl ProjectActivityCoordinator {
         let now = Instant::now();
         let mut should_refresh = true;
         let mut should_refresh_sidecars = true;
-        if let Ok(mut guard) = self.projects.lock() {
-            if let Some(tracked) = guard.get_mut(&project.id) {
+        if let Ok(mut guard) = self.projects.lock()
+            && let Some(tracked) = guard.get_mut(&project.id) {
                 should_refresh = tracked
                     .last_git_changed_refresh
                     .map(|last| now.duration_since(last) >= Duration::from_millis(1200))
@@ -71,7 +70,6 @@ impl ProjectActivityCoordinator {
                     tracked.last_git_refresh = Some(now);
                 }
             }
-        }
         if let Ok(mut events) = self.events.lock() {
             events.push_back(ProjectActivityEvent::GitChanged {
                 project_path,
@@ -103,11 +101,10 @@ impl ProjectActivityCoordinator {
     pub fn refresh_ai_once(&self, project: ProjectSummary) {
         self.mark_project_summary(&project);
         let _ = self.mark_ai_activation(&project.id);
-        if let Ok(mut guard) = self.projects.lock() {
-            if let Some(tracked) = guard.get_mut(&project.id) {
+        if let Ok(mut guard) = self.projects.lock()
+            && let Some(tracked) = guard.get_mut(&project.id) {
                 tracked.last_ai_refresh = Some(Instant::now());
             }
-        }
         let ai_history = self.ai_history.clone();
         thread::spawn(move || {
             let request: AIHistoryProjectRequest = project.clone().into();
@@ -137,11 +134,10 @@ impl ProjectActivityCoordinator {
             }
             for project in due_projects {
                 let now = Instant::now();
-                if let Ok(mut guard) = self.projects.lock() {
-                    if let Some(tracked) = guard.get_mut(&project.id) {
+                if let Ok(mut guard) = self.projects.lock()
+                    && let Some(tracked) = guard.get_mut(&project.id) {
                         tracked.last_remote_git_refresh = Some(now);
                     }
-                }
                 self.git_jobs.submit(GitJob::Refresh {
                     project,
                     fetch_remote: true,

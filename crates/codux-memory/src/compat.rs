@@ -89,7 +89,7 @@ impl MemoryService {
         let conn = self.open_connection()?;
         let scope = super::normalize_scope(&request.scope);
         let project_id = (scope == "project")
-            .then(|| request.project_id.as_deref())
+            .then_some(request.project_id.as_deref())
             .flatten();
         let limit = request.limit.unwrap_or(100).clamp(1, 1000);
         Ok(MemoryManagementSnapshot {

@@ -11,6 +11,13 @@ impl RemoteService {
     pub(super) fn save_raw_settings(&self, settings: &Map<String, Value>) -> Result<(), String> {
         ConfigStore::for_file(self.settings_path.clone()).save_snapshot(settings)
     }
+
+    pub(super) fn update_raw_settings_sync<R>(
+        &self,
+        update: impl FnOnce(&mut Map<String, Value>) -> Result<R, String>,
+    ) -> Result<R, String> {
+        ConfigStore::for_file(self.settings_path.clone()).update_sync(update)
+    }
 }
 
 pub(crate) fn remote_settings_mut(

@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 use std::{
     fs,
+    io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -169,6 +170,29 @@ pub fn file_read_payload(path: &str) -> Result<Value, String> {
         "content": content,
         "size": content.len(),
     }))
+}
+
+pub fn file_read_blob_bytes(path: &str) -> Result<Vec<u8>, String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("File path is required.".to_string());
+    }
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let metadata = file.metadata().map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err("Cannot open a directory as a file.".to_string());
+    }
+    if metadata.len() > codux_protocol::REMOTE_BLOB_MAX_BYTES as u64 {
+        return Err("Blob size is not supported.".to_string());
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(codux_protocol::REMOTE_BLOB_MAX_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() > codux_protocol::REMOTE_BLOB_MAX_BYTES {
+        return Err("Blob size is not supported.".to_string());
+    }
+    Ok(bytes)
 }
 
 pub fn file_write(path: &str, content: &str) -> Result<(), String> {
@@ -356,6 +380,37 @@ mod tests {
             ssh_entries
                 .iter()
                 .any(|entry| entry["name"].as_str() == Some(".ssh"))
+        );
+
+        fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn blob_read_rejects_missing_directory_and_oversized_files() {
+        let dir = std::env::temp_dir().join(format!(
+            "codux-runtime-core-blob-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("blob test dir");
+        let oversized = dir.join("oversized.bin");
+        let file = fs::File::create(&oversized).expect("oversized file");
+        file.set_len(codux_protocol::REMOTE_BLOB_MAX_BYTES as u64 + 1)
+            .expect("oversized length");
+
+        assert_eq!(
+            file_read_blob_bytes("").unwrap_err(),
+            "File path is required."
+        );
+        assert_eq!(
+            file_read_blob_bytes(dir.to_str().unwrap()).unwrap_err(),
+            "Cannot open a directory as a file."
+        );
+        assert_eq!(
+            file_read_blob_bytes(oversized.to_str().unwrap()).unwrap_err(),
+            "Blob size is not supported."
         );
 
         fs::remove_dir_all(dir).ok();

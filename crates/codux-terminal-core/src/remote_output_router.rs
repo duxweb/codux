@@ -295,14 +295,13 @@ impl RemoteTerminalOutputRouter {
             .active_buffer_request_by_session
             .get(session_id)
             .cloned()
+            && active != request_id
         {
-            if active != request_id {
-                if !replace_active {
-                    return false;
-                }
-                self.restore_buffer_request_ids
-                    .remove(&buffer_request_key(session_id, &active));
+            if !replace_active {
+                return false;
             }
+            self.restore_buffer_request_ids
+                .remove(&buffer_request_key(session_id, &active));
         }
         self.active_buffer_request_by_session
             .insert(session_id.to_string(), request_id.to_string());
@@ -492,10 +491,9 @@ impl RemoteTerminalOutputRouter {
         }
         if is_buffer_flag
             && had_cached_output_at_start
-            && self
+            && !self
                 .active_buffer_request_by_session
-                .get(session_id)
-                .is_none()
+                .contains_key(session_id)
         {
             let payload_offset =
                 payload_int(&payload, "startOffset").or_else(|| payload_int(&payload, "offset"));
@@ -984,6 +982,12 @@ fn decode_data(payload: &Value) -> String {
 mod tests {
     use super::*;
 
+    #[derive(Clone, Copy)]
+    struct BufferFlags {
+        truncated: bool,
+        tail: bool,
+    }
+
     fn kinds(effects: &[RemoteTerminalOutputEffect]) -> Vec<&'static str> {
         effects.iter().map(|effect| effect.kind.as_str()).collect()
     }
@@ -1002,8 +1006,10 @@ mod tests {
             data,
             offset,
             buffer_length,
-            truncated,
-            false,
+            BufferFlags {
+                truncated,
+                tail: false,
+            },
             output_seq,
             request_id,
         )
@@ -1014,8 +1020,7 @@ mod tests {
         data: &str,
         offset: i64,
         buffer_length: i64,
-        truncated: bool,
-        tail: bool,
+        flags: BufferFlags,
         output_seq: i64,
         request_id: Option<&str>,
     ) -> Value {
@@ -1024,8 +1029,8 @@ mod tests {
             "buffer": true,
             "offset": offset,
             "bufferLength": buffer_length,
-            "truncated": truncated,
-            "tail": tail,
+            "truncated": flags.truncated,
+            "tail": flags.tail,
             "outputSeq": output_seq,
         });
         if let Some(request_id) = request_id {
@@ -1256,8 +1261,10 @@ mod tests {
                 "",
                 0,
                 0,
-                false,
-                true,
+                BufferFlags {
+                    truncated: false,
+                    tail: true,
+                },
                 11,
                 Some("refresh-empty"),
             ),
@@ -1309,7 +1316,18 @@ mod tests {
         router.bind_session("session-1", true);
 
         let empty = router.accept(
-            &buffer_with_tail("session-1", "", 0, 0, false, true, 11, Some("empty-tail")),
+            &buffer_with_tail(
+                "session-1",
+                "",
+                0,
+                0,
+                BufferFlags {
+                    truncated: false,
+                    tail: true,
+                },
+                11,
+                Some("empty-tail"),
+            ),
             Some("session-1"),
         );
 
@@ -1337,7 +1355,18 @@ mod tests {
         assert_eq!(router.content("session-1"), None);
 
         let empty = router.accept(
-            &buffer_with_tail("session-1", "", 0, 0, false, true, 11, Some("empty-tail")),
+            &buffer_with_tail(
+                "session-1",
+                "",
+                0,
+                0,
+                BufferFlags {
+                    truncated: false,
+                    tail: true,
+                },
+                11,
+                Some("empty-tail"),
+            ),
             Some("session-1"),
         );
 

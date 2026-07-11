@@ -18,6 +18,15 @@ pub use types::{
     StoredMemorySummary,
 };
 
+pub(crate) struct MemorySummaryUpsert<'a> {
+    pub(crate) scope: MemoryScope,
+    pub(crate) project_id: Option<&'a str>,
+    pub(crate) tool_id: Option<&'a str>,
+    pub(crate) content: &'a str,
+    pub(crate) source_entry_ids: &'a [String],
+    pub(crate) max_versions: i32,
+}
+
 const DEFAULT_MEMORY_MODULE: &str = "general";
 const MEMORY_WRITE_CANDIDATE_LIMIT: i64 = 8;
 const MEMORY_MERGE_SIMILARITY_THRESHOLD: f64 = 0.64;
@@ -149,12 +158,14 @@ impl MemoryService {
             };
             let summary = self.upsert_summary(
                 conn,
-                MemoryScope::User,
-                None,
-                None,
-                &content,
-                &merged_ids,
-                settings.max_summary_versions,
+                MemorySummaryUpsert {
+                    scope: MemoryScope::User,
+                    project_id: None,
+                    tool_id: None,
+                    content: &content,
+                    source_entry_ids: &merged_ids,
+                    max_versions: settings.max_summary_versions,
+                },
             )?;
             self.mark_entries_merged(conn, &merged_ids, &summary.id)?;
             self.merge_stale_working_entries(

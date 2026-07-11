@@ -9,8 +9,8 @@ use serde_json::Value;
 use crate::projects::agent_data_dir;
 
 /// Serve an `ai.session` query. Returns `{op, result}` where `result` is the
-/// op's JSON (or null on error, mirroring the engine's own fallbacks).
-pub fn ai_session_payload(payload: &Value) -> Value {
+/// operation's JSON value.
+pub fn ai_session_payload(payload: &Value) -> Result<Value, String> {
     let project_path = payload
         .get("projectPath")
         .and_then(Value::as_str)

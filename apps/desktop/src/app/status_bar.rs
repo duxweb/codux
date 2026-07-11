@@ -307,26 +307,30 @@ fn status_bar_content(
                         cx,
                     ))
                     .child(status_sync_action_button(
-                        app_entity.clone(),
-                        status_text(&snapshot.language, "git.remote.pull", "Pull"),
-                        snapshot.git.incoming,
-                        snapshot.theme_is_light,
-                        theme::ACCENT,
-                        "status-pull",
-                        pull_running,
-                        git_operation_running,
+                        StatusSyncAction {
+                            app_entity: app_entity.clone(),
+                            label: status_text(&snapshot.language, "git.remote.pull", "Pull"),
+                            count: snapshot.git.incoming,
+                            theme_is_light: snapshot.theme_is_light,
+                            accent: theme::ACCENT,
+                            id: "status-pull",
+                            loading: pull_running,
+                            disabled: git_operation_running,
+                        },
                         cx,
                         |app, _event, window, cx| app.pull_project_git(window, cx),
                     ))
                     .child(status_sync_action_button(
-                        app_entity,
-                        status_text(&snapshot.language, "git.remote.push", "Push"),
-                        snapshot.git.outgoing,
-                        snapshot.theme_is_light,
-                        theme::GREEN,
-                        "status-push",
-                        push_running,
-                        git_operation_running,
+                        StatusSyncAction {
+                            app_entity,
+                            label: status_text(&snapshot.language, "git.remote.push", "Push"),
+                            count: snapshot.git.outgoing,
+                            theme_is_light: snapshot.theme_is_light,
+                            accent: theme::GREEN,
+                            id: "status-push",
+                            loading: push_running,
+                            disabled: git_operation_running,
+                        },
                         cx,
                         |app, _event, window, cx| app.push_project_git(window, cx),
                     ))
@@ -370,7 +374,7 @@ fn status_runtime_ready_segment(
         )
 }
 
-fn status_sync_action_button(
+struct StatusSyncAction {
     app_entity: gpui::Entity<CoduxApp>,
     label: String,
     count: i64,
@@ -379,9 +383,23 @@ fn status_sync_action_button(
     id: &'static str,
     loading: bool,
     disabled: bool,
+}
+
+fn status_sync_action_button(
+    action: StatusSyncAction,
     cx: &mut Context<StatusBarView>,
     on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
+    let StatusSyncAction {
+        app_entity,
+        label,
+        count,
+        theme_is_light,
+        accent,
+        id,
+        loading,
+        disabled,
+    } = action;
     let count = count.max(0);
     let count_bg = if theme_is_light { 0xFFFFFF } else { 0x000000 };
     let count_text = if theme_is_light { 0x111111 } else { 0xA8ADB8 };

@@ -1,5 +1,11 @@
 use super::*;
 
+type TerminalPtySpawnResult = (
+    TerminalPtySession,
+    Box<dyn Write + Send>,
+    Box<dyn Read + Send>,
+);
+
 pub struct TerminalPtySession {
     pub(super) id: String,
     pub(super) stdin_writer: Arc<parking_lot::Mutex<Box<dyn Write + Send>>>,
@@ -33,11 +39,11 @@ pub struct TerminalPtySessionHandle {
 }
 
 impl TerminalPtySession {
-    pub fn spawn(
+    pub(super) fn spawn(
         config: TerminalPtyConfig,
         context: Option<&TerminalLaunchContext>,
         event_sink: Option<(Option<String>, EventSink)>,
-    ) -> Result<(Self, Box<dyn Write + Send>, Box<dyn Read + Send>)> {
+    ) -> Result<TerminalPtySpawnResult> {
         let id = config
             .terminal_id
             .clone()
@@ -212,12 +218,14 @@ impl TerminalPtySession {
         let terminal_reader = CaptureReader::new(
             id.clone(),
             process.reader,
-            output_capture.clone(),
-            history.clone(),
-            screen.clone(),
-            output_subscribers.clone(),
-            event_subscribers.clone(),
-            info.clone(),
+            CaptureReaderShared {
+                output_capture: output_capture.clone(),
+                history: history.clone(),
+                screen: screen.clone(),
+                output_subscribers: output_subscribers.clone(),
+                event_subscribers: event_subscribers.clone(),
+                info: info.clone(),
+            },
         );
         Ok((
             Self {

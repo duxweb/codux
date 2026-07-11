@@ -13,4 +13,4 @@ mod switch_load;
 mod terminal_restore;
 mod worktree_load;
 
-pub(in crate::app) use file_picker::merge_ai_history_summary;
+pub(in crate::app) use file_picker::{FilePickerOpenRequest, merge_ai_history_summary};

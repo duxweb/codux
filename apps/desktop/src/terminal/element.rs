@@ -40,8 +40,10 @@ impl Element for TerminalElement {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let mut style = Style::default();
-        style.size = Size::full();
+        let style = Style {
+            size: Size::full(),
+            ..Default::default()
+        };
         (window.request_layout(style, [], cx), ())
     }
 
@@ -120,13 +122,15 @@ impl Element for TerminalElement {
         trace_terminal_paint_snapshot(&snapshot, self.cursor_visible);
         let selection = self.model.read(cx).selection_range();
         let paint_state = self.renderer.prepare_paint(
-            bounds,
-            self.padding,
-            &snapshot,
-            selection,
-            self.hover_link.as_ref(),
-            self.cursor_visible,
-            self.cursor_focused,
+            TerminalPaintRequest {
+                bounds,
+                padding: self.padding,
+                content: &snapshot,
+                selection,
+                hover_link: self.hover_link.as_ref(),
+                cursor_visible: self.cursor_visible,
+                cursor_focused: self.cursor_focused,
+            },
             window,
         );
         self.layout

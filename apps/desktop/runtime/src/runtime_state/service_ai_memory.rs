@@ -22,14 +22,18 @@ impl RuntimeService {
         let mut args = serde_json::Map::new();
         args.insert("sessionId".to_string(), session_id.into());
         if let Some(result) = self.remote_ai_session(project_path, "detail", args) {
-            return result
-                .ok()
-                .and_then(|value| serde_json::from_value(value).ok())
-                .unwrap_or_else(|| AISessionDetail {
+            return match result {
+                Ok(value) => serde_json::from_value(value).unwrap_or_else(|error| AISessionDetail {
                     id: session_id.to_string(),
-                    error: Some("Unable to load remote session detail.".to_string()),
+                    error: Some(error.to_string()),
                     ..Default::default()
-                });
+                }),
+                Err(error) => AISessionDetail {
+                    id: session_id.to_string(),
+                    error: Some(error),
+                    ..Default::default()
+                },
+            };
         }
         AIHistoryService::new(self.support_dir.clone())
             .project_session_detail(project_path, session_id)
@@ -48,9 +52,10 @@ impl RuntimeService {
         args.insert("projectId".to_string(), request.project_id.clone().into());
         args.insert("projectName".to_string(), request.project_name.clone().into());
         args.insert("sessionId".to_string(), request.session_id.clone().into());
-        if let Ok(target) = serde_json::to_value(request.target_tool) {
-            args.insert("targetTool".to_string(), target);
-        }
+        args.insert(
+            "targetTool".to_string(),
+            serde_json::to_value(request.target_tool).map_err(|error| error.to_string())?,
+        );
         if let Some(result) = self.remote_ai_session(&request.project_path, "fork", args) {
             return result.and_then(|value| {
                 serde_json::from_value(value).map_err(|error| error.to_string())
@@ -97,14 +102,19 @@ impl RuntimeService {
     }
 
     pub fn reload_memory(&self, project_id: Option<&str>) -> MemorySummary {
-        if let Some(pid) = project_id {
-            if let Some(result) = self.remote_memory_read(pid, "summary", Default::default()) {
-                return result
-                    .ok()
-                    .and_then(|value| serde_json::from_value(value).ok())
-                    .unwrap_or_default();
+        if let Some(pid) = project_id
+            && let Some(result) = self.remote_memory_read(pid, "summary", Default::default()) {
+                return match result {
+                    Ok(value) => serde_json::from_value(value).unwrap_or_else(|error| MemorySummary {
+                        error: Some(error.to_string()),
+                        ..Default::default()
+                    }),
+                    Err(error) => MemorySummary {
+                        error: Some(error),
+                        ..Default::default()
+                    },
+                };
             }
-        }
         load_memory(&self.support_dir, project_id)
     }
 
@@ -402,7 +412,15 @@ impl RuntimeService {
         project_id: Option<&str>,
         tab: &str,
     ) -> MemoryManagerSnapshot {
-        load_memory_manager(&self.support_dir, projects, scope, project_id, tab)
+        self.memory_manager_snapshot(
+            projects,
+            MemoryManagerSnapshotRequest {
+                scope: scope.to_string(),
+                project_id: project_id.map(str::to_string),
+                tab: tab.to_string(),
+                limit: Some(500),
+            },
+        )
     }
 
     pub fn memory_management_snapshot(
@@ -443,10 +461,18 @@ impl RuntimeService {
                 args.insert("limit".to_string(), limit.into());
             }
             if let Some(result) = self.remote_memory_read(&pid, "manager", args) {
-                return result
-                    .ok()
-                    .and_then(|value| serde_json::from_value(value).ok())
-                    .unwrap_or_default();
+                return match result {
+                    Ok(value) => serde_json::from_value(value).unwrap_or_else(|error| {
+                        MemoryManagerSnapshot {
+                            error: Some(error.to_string()),
+                            ..Default::default()
+                        }
+                    }),
+                    Err(error) => MemoryManagerSnapshot {
+                        error: Some(error),
+                        ..Default::default()
+                    },
+                };
             }
         }
         MemoryService::new(self.support_dir.clone())

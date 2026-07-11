@@ -1,5 +1,14 @@
 use super::*;
 
+struct ProjectGitRepositoryResult {
+    project_id: String,
+    project_path: String,
+    action: String,
+    result: Result<GitSummary, String>,
+    refresh_files: bool,
+    success_message: String,
+}
+
 impl CoduxApp {
     pub(in crate::app) fn init_project_git(
         &mut self,
@@ -48,12 +57,14 @@ impl CoduxApp {
 
             let _ = this.update(cx, |app, cx| {
                 app.apply_project_git_repository_result(
-                    project_id,
-                    project_path,
-                    action,
-                    result,
-                    false,
-                    "Git repository initialized with git2".to_string(),
+                    ProjectGitRepositoryResult {
+                        project_id,
+                        project_path,
+                        action,
+                        result,
+                        refresh_files: false,
+                        success_message: "Git repository initialized with git2".to_string(),
+                    },
                     cx,
                 );
             });
@@ -313,12 +324,14 @@ impl CoduxApp {
                     );
                 }
                 app.apply_project_git_repository_result(
-                    project_id,
-                    project_path,
-                    action,
-                    result,
-                    true,
-                    format!("Git repository cloned for {project_name}"),
+                    ProjectGitRepositoryResult {
+                        project_id,
+                        project_path,
+                        action,
+                        result,
+                        refresh_files: true,
+                        success_message: format!("Git repository cloned for {project_name}"),
+                    },
                     cx,
                 );
                 if should_close {
@@ -486,12 +499,14 @@ impl CoduxApp {
                     });
                 }
                 app.apply_project_git_repository_result(
-                    project_id,
-                    project_path,
-                    action,
-                    result,
-                    true,
-                    format!("Git repository cloned for {project_name}"),
+                    ProjectGitRepositoryResult {
+                        project_id,
+                        project_path,
+                        action,
+                        result,
+                        refresh_files: true,
+                        success_message: format!("Git repository cloned for {project_name}"),
+                    },
                     cx,
                 );
                 if should_close {
@@ -503,16 +518,19 @@ impl CoduxApp {
         self.invalidate_git_panel(cx);
     }
 
-    pub(in crate::app) fn apply_project_git_repository_result(
+    fn apply_project_git_repository_result(
         &mut self,
-        project_id: String,
-        project_path: String,
-        action: String,
-        result: Result<GitSummary, String>,
-        refresh_files: bool,
-        success_message: String,
+        event: ProjectGitRepositoryResult,
         cx: &mut Context<Self>,
     ) {
+        let ProjectGitRepositoryResult {
+            project_id,
+            project_path,
+            action,
+            result,
+            refresh_files,
+            success_message,
+        } = event;
         if self
             .git_running_operation
             .as_ref()

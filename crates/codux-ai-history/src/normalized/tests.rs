@@ -644,12 +644,11 @@ runtime launch context
         assert_eq!(snapshot.sessions.len(), 1);
         assert_eq!(snapshot.sessions[0].last_tool.as_deref(), Some("kiro"));
         assert_eq!(snapshot.sessions[0].request_count, 1);
-        assert_eq!(
+        assert!(
             snapshot
                 .tool_breakdown
                 .iter()
-                .any(|item| item.key == "kiro"),
-            true
+                .any(|item| item.key == "kiro")
         );
         let _ = fs::remove_dir_all(root);
     }

@@ -23,7 +23,7 @@ pub struct RemoteSummary {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RemoteHostEvent {
-    Summary(RemoteSummary),
+    Summary(Box<RemoteSummary>),
     TerminalLayoutChanged(RemoteTerminalLayoutChanged),
 }
 

@@ -39,9 +39,6 @@ pub(in crate::app) struct ProjectColumnView {
     pub(in crate::app) project_list_state: gpui::Entity<ProjectListState>,
     pub(in crate::app) collapsed: bool,
     pub(in crate::app) language: String,
-    pub(in crate::app) has_project: bool,
-    pub(in crate::app) has_projects: bool,
-    pub(in crate::app) has_worktree: bool,
     pub(in crate::app) scroll_handle: UniformListScrollHandle,
     pub(in crate::app) _observe_project_list_state: Option<Subscription>,
 }
@@ -168,8 +165,8 @@ impl Render for ProjectColumnView {
                     .flex_1()
                     .min_h_0()
                     .px(if collapsed { px(7.0) } else { px(10.0) })
-                    .pt(if collapsed { px(10.0) } else { px(10.0) })
-                    .pb(if collapsed { px(10.0) } else { px(10.0) })
+                    .pt(px(10.0))
+                    .pb(px(10.0))
                     .relative()
                     .overflow_hidden()
                     .child(codux_uniform_list(
@@ -196,15 +193,17 @@ impl Render for ProjectColumnView {
                                 .w_full()
                                 .pb(px(4.0))
                                 .child(project_row(
-                                    project,
-                                    active,
-                                    app_entity.clone(),
-                                    project_id,
-                                    project_order.clone(),
-                                    lifecycle_state,
-                                    link_state,
-                                    collapsed,
-                                    row_menu_labels.clone(),
+                                    ProjectRowInput {
+                                        project,
+                                        active,
+                                        app_entity: app_entity.clone(),
+                                        project_id,
+                                        project_order: project_order.clone(),
+                                        lifecycle_state,
+                                        link_state,
+                                        collapsed,
+                                        labels: row_menu_labels.clone(),
+                                    },
                                     window,
                                     cx,
                                 ))
@@ -215,9 +214,6 @@ impl Render for ProjectColumnView {
             .child(project_tools_snapshot(
                 collapsed,
                 self.language.as_str(),
-                self.has_project,
-                self.has_projects,
-                self.has_worktree,
                 self.app_entity.clone(),
                 window,
                 cx,
@@ -278,9 +274,6 @@ fn project_column_header(collapsed: bool) -> impl IntoElement {
 fn project_tools_snapshot(
     collapsed: bool,
     language: &str,
-    has_project: bool,
-    has_projects: bool,
-    has_worktree: bool,
     app_entity: gpui::Entity<CoduxApp>,
     window: &mut Window,
     cx: &mut Context<ProjectColumnView>,
@@ -300,34 +293,31 @@ fn project_tools_snapshot(
         base.flex_col()
             .items_center()
             .child(project_tool_button(
-                HeroIconName::Plus,
-                None,
-                add_project_label,
-                "project-add-footer",
-                app_entity.clone(),
+                ProjectToolButtonProps {
+                    icon: HeroIconName::Plus,
+                    label: None,
+                    tooltip: add_project_label,
+                    id: "project-add-footer",
+                    app_entity: app_entity.clone(),
+                },
                 window,
                 cx,
                 |app, _event, window, cx| app.open_project_create_window(window, cx),
             ))
             .child(project_tool_button(
-                HeroIconName::Cog6Tooth,
-                None,
-                settings_label,
-                "project-settings-footer",
-                app_entity.clone(),
+                ProjectToolButtonProps {
+                    icon: HeroIconName::Cog6Tooth,
+                    label: None,
+                    tooltip: settings_label,
+                    id: "project-settings-footer",
+                    app_entity: app_entity.clone(),
+                },
                 window,
                 cx,
                 |app, _event, window, cx| app.open_settings_window(window, cx),
             ))
             .child(project_more_button(
-                None,
-                more_label,
-                language,
-                has_project,
-                has_projects,
-                has_worktree,
-                app_entity,
-                cx,
+                None, more_label, language, app_entity, cx,
             ))
             .into_any_element()
     } else {
@@ -347,21 +337,25 @@ fn project_tools_snapshot(
                 cx,
             ))
             .child(project_tool_button(
-                HeroIconName::Plus,
-                Some(add_project_label.clone()),
-                add_project_label,
-                "project-add-footer",
-                app_entity.clone(),
+                ProjectToolButtonProps {
+                    icon: HeroIconName::Plus,
+                    label: Some(add_project_label.clone()),
+                    tooltip: add_project_label,
+                    id: "project-add-footer",
+                    app_entity: app_entity.clone(),
+                },
                 window,
                 cx,
                 |app, _event, window, cx| app.open_project_create_window(window, cx),
             ))
             .child(project_tool_button(
-                HeroIconName::Cog6Tooth,
-                Some(settings_label.clone()),
-                settings_label,
-                "project-settings-footer",
-                app_entity.clone(),
+                ProjectToolButtonProps {
+                    icon: HeroIconName::Cog6Tooth,
+                    label: Some(settings_label.clone()),
+                    tooltip: settings_label,
+                    id: "project-settings-footer",
+                    app_entity: app_entity.clone(),
+                },
                 window,
                 cx,
                 |app, _event, window, cx| app.open_settings_window(window, cx),
@@ -370,9 +364,6 @@ fn project_tools_snapshot(
                 Some(more_label.clone()),
                 more_label,
                 language,
-                has_project,
-                has_projects,
-                has_worktree,
                 app_entity,
                 cx,
             ))
@@ -380,16 +371,27 @@ fn project_tools_snapshot(
     }
 }
 
-fn project_tool_button(
+struct ProjectToolButtonProps {
     icon: HeroIconName,
     label: Option<String>,
     tooltip: String,
     id: &'static str,
     app_entity: gpui::Entity<CoduxApp>,
+}
+
+fn project_tool_button(
+    props: ProjectToolButtonProps,
     window: &mut Window,
     cx: &mut Context<ProjectColumnView>,
     on_click: impl Fn(&mut CoduxApp, &gpui::ClickEvent, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
+    let ProjectToolButtonProps {
+        icon,
+        label,
+        tooltip,
+        id,
+        app_entity,
+    } = props;
     let has_label = label.is_some();
     let button = Button::new(SharedString::from(format!("project-tool-{id}")))
         .ghost()
@@ -475,9 +477,6 @@ fn project_more_button(
     label: Option<String>,
     tooltip: String,
     language: &str,
-    _has_project: bool,
-    _has_projects: bool,
-    _has_worktree: bool,
     app_entity: gpui::Entity<CoduxApp>,
     cx: &mut Context<ProjectColumnView>,
 ) -> impl IntoElement {
@@ -687,21 +686,34 @@ fn project_column_toggle_button(
     .into_any_element()
 }
 
-fn project_row(
+struct ProjectRowInput {
     project: ProjectInfo,
     active: bool,
     app_entity: gpui::Entity<CoduxApp>,
     project_id: String,
     project_order: Vec<String>,
     lifecycle_state: Option<AgentLifecycleState>,
-    // `None` ⇒ local project (no badge). `Some(link)` ⇒ remote project; the inner
-    // `Option` is the link state (`None` ⇒ remote but not yet connected).
     link_state: Option<Option<ControllerLinkState>>,
     collapsed: bool,
     labels: ProjectRowMenuLabels,
+}
+
+fn project_row(
+    input: ProjectRowInput,
     window: &mut Window,
     cx: &mut Context<ProjectColumnView>,
 ) -> AnyElement {
+    let ProjectRowInput {
+        project,
+        active,
+        app_entity,
+        project_id,
+        project_order,
+        lifecycle_state,
+        link_state,
+        collapsed,
+        labels,
+    } = input;
     let menu_project_id = project.id.clone();
     let menu_project_name = project.name.clone();
     let menu_project_path = project.path.clone();

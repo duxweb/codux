@@ -1,5 +1,5 @@
 fn claude_project_log_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
-    let directory_name = project_path.replace('/', "-").replace('.', "-");
+    let directory_name = project_path.replace(['/', '.'], "-");
     directory_files(
         &home.join(".claude").join("projects").join(directory_name),
         "jsonl",
@@ -88,11 +88,11 @@ fn codex_rollout_file_belongs_to_project(file_path: &Path, project_path: &str) -
         };
         let row_type = row.get("type").and_then(|value| value.as_str());
         let payload = row.get("payload").unwrap_or(&Value::Null);
-        if matches!(row_type, Some("session_meta") | Some("turn_context")) {
-            if let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str()) {
-                matches_project = paths_equivalent(Some(cwd), project_path);
-                return false;
-            }
+        if matches!(row_type, Some("session_meta") | Some("turn_context"))
+            && let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str())
+        {
+            matches_project = paths_equivalent(Some(cwd), project_path);
+            return false;
         }
         line_count < 20
     });
@@ -309,8 +309,8 @@ fn kiro_history_timestamps(value: &Value) -> Vec<f64> {
             }
         }
     }
-    if timestamps.is_empty() {
-        if let Some(value) = value
+    if timestamps.is_empty()
+        && let Some(value) = value
             .get("updatedAt")
             .or_else(|| value.get("updated_at"))
             .and_then(|v| {
@@ -318,9 +318,8 @@ fn kiro_history_timestamps(value: &Value) -> Vec<f64> {
                     .or_else(|| v.as_i64().map(|value| value as f64))
                     .or_else(|| v.as_str().and_then(parse_iso8601_seconds))
             })
-        {
-            timestamps.push(value);
-        }
+    {
+        timestamps.push(value);
     }
     timestamps.sort_by(|left, right| left.total_cmp(right));
     timestamps

@@ -344,7 +344,6 @@ impl CoduxApp {
             self.selected_git_file = None;
             self.selected_git_files.clear();
             self.clear_git_review_derived_content();
-            return;
         }
     }
 

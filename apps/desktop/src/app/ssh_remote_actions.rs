@@ -1,4 +1,5 @@
 use super::ai_runtime_status::AgentLifecycleState;
+use super::project_actions::FilePickerOpenRequest;
 use super::*;
 use crate::app::app_events::{
     ChildWindowUpdateEvent, current_memory_update_event, publish_pet_update,
@@ -280,11 +281,13 @@ impl CoduxApp {
                 .map(|parent| parent.to_string_lossy().to_string())
         };
         self.open_file_picker_window(
-            FilePickerMode::OpenFile,
-            FilePickerTarget::SshPrivateKeyPath,
-            None,
-            start_path,
-            None,
+            FilePickerOpenRequest {
+                mode: FilePickerMode::OpenFile,
+                target: FilePickerTarget::SshPrivateKeyPath,
+                device_id: None,
+                start_path,
+                default_filename: None,
+            },
             window,
             cx,
         );
@@ -1209,7 +1212,7 @@ impl CoduxApp {
             match event {
                 RemoteHostEvent::Summary(remote) => {
                     remote_summary_events += 1;
-                    self.state.remote = remote.clone();
+                    self.state.remote = remote.as_ref().clone();
                     if self.remote_reconnecting && self.state.remote.status != "connecting" {
                         self.remote_reconnecting = false;
                     }
@@ -1244,7 +1247,7 @@ impl CoduxApp {
         // and nothing currently tracked — skip the scheduled/periodic rebuild
         // entirely instead of re-summarizing an empty snapshot every 30s.
         let should_refresh_ai_state = !drained.events.is_empty()
-            || ((include_scheduled_tick || self.ai_runtime_state_save_tick % 30 == 0)
+            || ((include_scheduled_tick || self.ai_runtime_state_save_tick.is_multiple_of(30))
                 && !self.state.ai_runtime_state.sessions.is_empty());
         let mut ai_activity_changed = false;
         if should_refresh_ai_state {
@@ -1502,7 +1505,7 @@ impl CoduxApp {
             .iter()
             .filter_map(|event| match event {
                 codux_runtime::ai_runtime::AIRuntimeSupervisorEvent::Completion { completion } => {
-                    Some(completion.clone())
+                    Some(completion.as_ref().clone())
                 }
                 _ => None,
             })

@@ -1,18 +1,34 @@
 use super::*;
 
+pub(super) struct PetDexCurrentCardInput<'a> {
+    pub(super) pet: &'a PetSummary,
+    pub(super) custom_pet: Option<&'a PetCustomPet>,
+    pub(super) catalog_item: Option<&'a PetCatalogItem>,
+    pub(super) runtime_asset_root: &'a Path,
+    pub(super) support_dir: &'a Path,
+    pub(super) custom_pets: &'a [PetCustomPet],
+    pub(super) stats: &'a PetStats,
+    pub(super) total_xp: i64,
+    pub(super) claimed_at: Option<i64>,
+    pub(super) language: &'a str,
+}
+
 pub(super) fn pet_dex_current_card(
-    pet: &PetSummary,
-    custom_pet: Option<&PetCustomPet>,
-    catalog_item: Option<&PetCatalogItem>,
-    runtime_asset_root: &Path,
-    support_dir: &Path,
-    custom_pets: &[PetCustomPet],
-    stats: &PetStats,
-    total_xp: i64,
-    claimed_at: Option<i64>,
-    language: &str,
+    input: PetDexCurrentCardInput<'_>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let PetDexCurrentCardInput {
+        pet,
+        custom_pet,
+        catalog_item,
+        runtime_asset_root,
+        support_dir,
+        custom_pets,
+        stats,
+        total_xp,
+        claimed_at,
+        language,
+    } = input;
     let sprite_path = pet_sprite_path(runtime_asset_root, support_dir, pet, custom_pets);
     let name = if pet.claimed {
         pet.display_name.clone()
@@ -236,17 +252,30 @@ pub(super) fn pet_trait_bar(
         )
 }
 
+pub(super) struct PetDexSidebarOverview {
+    pub(super) current_name: String,
+    pub(super) current_level: String,
+    pub(super) archived_count: usize,
+    pub(super) archived_subtitle: String,
+    pub(super) unlocked_count: usize,
+    pub(super) total_count: usize,
+    pub(super) collection_subtitle: String,
+}
+
 pub(super) fn pet_dex_sidebar_overview(
     language: &str,
-    current_name: String,
-    current_level: String,
-    archived_count: usize,
-    archived_subtitle: String,
-    unlocked_count: usize,
-    total_count: usize,
-    collection_subtitle: String,
+    overview: PetDexSidebarOverview,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let PetDexSidebarOverview {
+        current_name,
+        current_level,
+        archived_count,
+        archived_subtitle,
+        unlocked_count,
+        total_count,
+        collection_subtitle,
+    } = overview;
     div()
         .child(
             div()

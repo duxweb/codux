@@ -31,7 +31,7 @@ extension _HomePageSync on HomeController {
           _terminalOutputController.hasSequenceGap(sessionId) ||
           _terminalBindingCoordinator.isSessionBaselineStale(sessionId);
       if (_transportConnected && _remoteProtocolReady && needsBaseline) {
-        final requested = _terminalBindingCoordinator.subscribeSessionBaseline(
+        final requested = _terminalBindingCoordinator.subscribeSession(
           sessionId: sessionId,
           reason: 'mount-$reason',
           capability: _terminalBufferCapability,
@@ -44,13 +44,21 @@ extension _HomePageSync on HomeController {
       return;
     }
     final projectId = _selectedProjectId;
-    if (projectId == null) return;
-    _terminalBindingCoordinator.replaceProjectSubscription(
-      projectId: projectId,
+    if (projectId != null) {
+      _terminalBindingCoordinator.replaceProjectSubscription(
+        projectId: projectId,
+        reason: 'mount-$reason',
+      );
+    }
+    if (!_transportConnected || !_remoteProtocolReady) return;
+    final requested = _terminalBindingCoordinator.subscribeSession(
+      sessionId: sessionId,
       reason: 'mount-$reason',
       capability: _terminalBufferCapability,
-      activeSessionId: _sessionId,
     );
+    if (requested) {
+      _trackTerminalBaselineRequest(sessionId);
+    }
   }
 
   bool _restoreTerminalSessionFromCache(String sessionId) {
@@ -77,8 +85,12 @@ extension _HomePageSync on HomeController {
       _remoteSync.resetProjectListRetry();
     }
     if (!_remoteSync.shouldRequestProjectList(force: resetRetry)) return;
+    final envelope = _resourceSubscriptionCoordinator.globalEnvelope(
+      resource: RemoteResourceType.projects,
+      fallback: RelayEnvelope(type: RemoteMessageType.projectList),
+    );
     _send(
-      RelayEnvelope(type: RemoteMessageType.projectList),
+      envelope,
       onResult: (_, result) {
         if (result != RemoteEnvelopeSendResult.delivered ||
             _projectListLoaded) {
@@ -149,7 +161,12 @@ extension _HomePageSync on HomeController {
         _worktreeListLoading = true;
       });
     }
-    _send(_worktreeController.listEnvelope(project));
+    _resourceSubscriptionCoordinator.requestProject(
+      resource: RemoteResourceType.worktrees,
+      projectId: project.id,
+      fallback: _worktreeController.listEnvelope(project),
+      extraPayload: {'projectPath': project.path},
+    );
   }
 
   void _ensureSelectedProjectWorktrees({bool loading = false}) {
@@ -257,25 +274,17 @@ extension _HomePageSync on HomeController {
 
   void _resubscribeVisibleTerminal({required String reason}) {
     if (!_terminalViewportClaimable) return;
-    _terminalBindingCoordinator.resubscribeVisibleTerminal(
+    final requested = _terminalBindingCoordinator.resubscribeVisibleTerminal(
       transportConnected: _transportConnected,
       protocolReady: _remoteProtocolReady,
       activeSessionId: _sessionId,
       selectedProjectId: _selectedProjectId,
       capability: _terminalBufferCapability,
       reason: reason,
-      ensureBoundBaseline: (sessionId, baselineRequested) {
-        if (baselineRequested) {
-          _trackTerminalBaselineRequest(sessionId);
-        }
-        _terminalBindingCoordinator.ensureBoundTerminalHasBaseline(
-          sessionId: sessionId,
-          baselineRequested: baselineRequested,
-          reason: reason,
-          capability: _terminalBufferCapability,
-        );
-      },
     );
+    if (requested && _sessionId != null) {
+      _trackTerminalBaselineRequest(_sessionId!);
+    }
   }
 
   void _syncRuntimeViewState() {
@@ -390,5 +399,4 @@ extension _HomePageSync on HomeController {
     );
     _applyRuntimePlan(plan, reason: 'missing-terminal');
   }
-
 }

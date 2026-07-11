@@ -387,12 +387,14 @@ pub(super) fn file_editor_toolbar(
                     "file-editor-save",
                     HeroIconName::CheckCircle,
                     file_editor_i18n(app_entity.clone(), cx, "common.save", "Save"),
-                    if active_dirty {
-                        color(theme::GREEN)
-                    } else {
-                        cx.theme().secondary_foreground
-                    },
-                    !active_dirty || read_only,
+                    (
+                        if active_dirty {
+                            color(theme::GREEN)
+                        } else {
+                            cx.theme().secondary_foreground
+                        },
+                        !active_dirty || read_only,
+                    ),
                     cx,
                     |view, _event, window, cx| {
                         let app_entity = view.app_entity.clone();
@@ -406,8 +408,7 @@ pub(super) fn file_editor_toolbar(
                     "file-editor-undo",
                     HeroIconName::ArrowUturnLeft,
                     file_editor_i18n(app_entity.clone(), cx, "common.undo", "Undo"),
-                    cx.theme().secondary_foreground,
-                    read_only,
+                    (cx.theme().secondary_foreground, read_only),
                     cx,
                     |view, _event, window, cx| {
                         view.dispatch_active_file_editor_action(Undo, window, cx);
@@ -418,8 +419,7 @@ pub(super) fn file_editor_toolbar(
                     "file-editor-redo",
                     HeroIconName::ArrowUturnRight,
                     file_editor_i18n(app_entity.clone(), cx, "common.redo", "Redo"),
-                    cx.theme().secondary_foreground,
-                    read_only,
+                    (cx.theme().secondary_foreground, read_only),
                     cx,
                     |view, _event, window, cx| {
                         view.dispatch_active_file_editor_action(Redo, window, cx);
@@ -435,8 +435,7 @@ pub(super) fn file_editor_toolbar(
                         "shortcut.editor.search",
                         "Search File",
                     ),
-                    cx.theme().secondary_foreground,
-                    false,
+                    (cx.theme().secondary_foreground, false),
                     cx,
                     |view, _event, window, cx| {
                         view.dispatch_active_file_editor_action(Search, window, cx);
@@ -447,8 +446,7 @@ pub(super) fn file_editor_toolbar(
                     "file-editor-copy-path",
                     HeroIconName::ClipboardDocument,
                     file_editor_i18n(app_entity.clone(), cx, "files.panel.copy_path", "Copy Path"),
-                    cx.theme().secondary_foreground,
-                    false,
+                    (cx.theme().secondary_foreground, false),
                     cx,
                     |view, _event, _window, cx| {
                         let app_entity = view.app_entity.clone();
@@ -462,8 +460,7 @@ pub(super) fn file_editor_toolbar(
                     "file-editor-reload",
                     HeroIconName::ArrowPath,
                     file_editor_i18n(app_entity.clone(), cx, "common.reload", "Reload"),
-                    cx.theme().secondary_foreground,
-                    false,
+                    (cx.theme().secondary_foreground, false),
                     cx,
                     |view, _event, window, cx| {
                         let app_entity = view.app_entity.clone();
@@ -482,8 +479,7 @@ pub(super) fn file_editor_toolbar(
                         "files.panel.reveal_finder",
                         "Show in File Manager",
                     ),
-                    cx.theme().secondary_foreground,
-                    false,
+                    (cx.theme().secondary_foreground, false),
                     cx,
                     |view, _event, _window, cx| {
                         let app_entity = view.app_entity.clone();
@@ -508,8 +504,7 @@ fn file_editor_toolbar_button(
     id: &'static str,
     icon: HeroIconName,
     tooltip: String,
-    icon_color: gpui::Hsla,
-    disabled: bool,
+    state: (gpui::Hsla, bool),
     cx: &mut Context<FileEditorToolbarView>,
     on_click: impl Fn(
         &mut FileEditorToolbarView,
@@ -518,6 +513,7 @@ fn file_editor_toolbar_button(
         &mut Context<FileEditorToolbarView>,
     ) + 'static,
 ) -> impl IntoElement {
+    let (icon_color, disabled) = state;
     codux_tooltip_container(app_entity, id, tooltip).child(
         Button::new(id)
             .compact()

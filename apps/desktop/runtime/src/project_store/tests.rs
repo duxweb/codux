@@ -2,7 +2,7 @@ use super::*;
 use serde_json::{Value, json};
 use std::{
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -331,7 +331,7 @@ fn temp_dir(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("codux-gpui-{label}-{nanos}"))
 }
 
-fn state_value(support_dir: &PathBuf) -> Value {
+fn state_value(support_dir: &Path) -> Value {
     Value::Object(crate::config::raw_state_snapshot(
         &support_dir.join("state.json"),
     ))

@@ -13,25 +13,30 @@ use gpui_component::{
     progress::Progress,
 };
 
+pub(in crate::app) struct WorkspacePetButtonInput<'a> {
+    pub(in crate::app) pet: &'a PetSummary,
+    pub(in crate::app) pet_snapshot: Option<&'a PetSnapshot>,
+    pub(in crate::app) custom_pets: &'a [PetCustomPet],
+    pub(in crate::app) runtime_asset_root: &'a std::path::Path,
+    pub(in crate::app) support_dir: &'a std::path::Path,
+    pub(in crate::app) language: &'a str,
+    pub(in crate::app) pet_name_editing: bool,
+}
+
 pub(in crate::app) fn workspace_pet_button(
-    pet: &PetSummary,
-    pet_snapshot: Option<&PetSnapshot>,
-    custom_pets: &[PetCustomPet],
-    runtime_asset_root: &std::path::Path,
-    support_dir: &std::path::Path,
-    language: &str,
-    _install_url: &str,
-    _install_display_name: &str,
-    _install_preview: Option<&PetCustomPetInstallPreview>,
-    _install_error: Option<&str>,
-    _install_previewing: bool,
-    _installing: bool,
-    pet_name_editing: bool,
-    pet_sprite_frame: usize,
+    input: WorkspacePetButtonInput<'_>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let app_entity = cx.entity();
+    let WorkspacePetButtonInput {
+        pet,
+        pet_snapshot,
+        custom_pets,
+        runtime_asset_root,
+        support_dir,
+        language,
+        pet_name_editing,
+    } = input;
     let pet = pet.clone();
     let language = language.to_string();
     let pet_snapshot = pet_snapshot.cloned();
@@ -65,9 +70,7 @@ pub(in crate::app) fn workspace_pet_button(
         pet_snapshot,
         pet_sprite_path,
         pet_name_editing,
-        pet_sprite_frame,
         language.clone(),
-        app_entity.clone(),
         window,
         cx,
     );
@@ -154,12 +157,11 @@ fn workspace_pet_popover_content(
     pet_snapshot: Option<PetSnapshot>,
     pet_sprite_path: ImageSource,
     pet_name_editing: bool,
-    _pet_sprite_frame: usize,
     language: String,
-    app_entity: gpui::Entity<CoduxApp>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let app_entity = cx.entity();
     let name = if pet.claimed && !pet.display_name.is_empty() {
         pet.display_name.clone()
     } else {
@@ -639,7 +641,7 @@ fn workspace_pet_name_row(
         .child(workspace_pet_rename_action_button(
             "pet-rename-current",
             HeroIconName::Check,
-            workspace_i18n(&language, "pet.name.save", "Save pet name").into(),
+            workspace_i18n(language, "pet.name.save", "Save pet name").into(),
             cx,
             move |app, _event, window, cx| {
                 let custom_name = save_state.read(cx).value().to_string();
@@ -649,24 +651,37 @@ fn workspace_pet_name_row(
         .child(workspace_pet_rename_action_button(
             "pet-rename-cancel",
             HeroIconName::XMark,
-            workspace_i18n(&language, "common.cancel", "Cancel").into(),
+            workspace_i18n(language, "common.cancel", "Cancel").into(),
             cx,
             |app, _event, window, cx| app.cancel_current_pet_rename(window, cx),
         ))
         .into_any_element()
 }
 
+pub(in crate::app) struct WorkspacePetInstallInput<'a> {
+    pub(in crate::app) install_url: &'a str,
+    pub(in crate::app) install_display_name: &'a str,
+    pub(in crate::app) install_preview: Option<&'a PetCustomPetInstallPreview>,
+    pub(in crate::app) install_error: Option<&'a str>,
+    pub(in crate::app) install_previewing: bool,
+    pub(in crate::app) installing: bool,
+    pub(in crate::app) language: &'a str,
+}
+
 pub(in crate::app) fn workspace_pet_install_form(
-    install_url: &str,
-    install_display_name: &str,
-    install_preview: Option<&PetCustomPetInstallPreview>,
-    install_error: Option<&str>,
-    install_previewing: bool,
-    installing: bool,
-    language: &str,
+    input: WorkspacePetInstallInput<'_>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let WorkspacePetInstallInput {
+        install_url,
+        install_display_name,
+        install_preview,
+        install_error,
+        install_previewing,
+        installing,
+        language,
+    } = input;
     let url_value = install_url.to_string();
     let name_value = install_display_name.to_string();
     let url_placeholder = workspace_i18n(
@@ -727,7 +742,7 @@ pub(in crate::app) fn workspace_pet_install_form(
                         .line_height(rems(1.0))
                         .text_color(color(theme::TEXT_MUTED))
                         .child(workspace_i18n(
-                            &language,
+                            language,
                             "pet.custom.install.url.label",
                             "Petdex Page URL",
                         )),
@@ -745,13 +760,12 @@ pub(in crate::app) fn workspace_pet_install_form(
                         .child(workspace_pet_install_action_button(
                             Button::new("pet-custom-market").ghost(),
                             workspace_i18n(
-                                &language,
+                                language,
                                 "pet.custom.market.title",
                                 "Petdex Marketplace",
                             )
                             .into(),
-                            workspace_i18n(&language, "pet.custom.market.action", "Get Pets")
-                                .into(),
+                            workspace_i18n(language, "pet.custom.market.action", "Get Pets").into(),
                             HeroIconName::ArrowTopRightOnSquare,
                             cx,
                             |app, _event, window, cx| app.open_pet_market(window, cx),
@@ -766,27 +780,27 @@ pub(in crate::app) fn workspace_pet_install_form(
                                         || installing,
                                 ),
                             workspace_i18n(
-                                &language,
+                                language,
                                 "pet.custom.install.preview.label",
                                 "Pet Preview",
                             )
                             .into(),
                             if install_previewing {
                                 workspace_i18n(
-                                    &language,
+                                    language,
                                     "pet.custom.install.resolving",
                                     "Reading Petdex page...",
                                 )
                                 .into()
                             } else if install_preview.is_some() {
                                 workspace_i18n(
-                                    &language,
+                                    language,
                                     "pet.custom.install.resolve_again",
                                     "Parse Again",
                                 )
                                 .into()
                             } else {
-                                workspace_i18n(&language, "pet.custom.install.resolve", "Parse")
+                                workspace_i18n(language, "pet.custom.install.resolve", "Parse")
                                     .into()
                             },
                             HeroIconName::Eye,
@@ -800,7 +814,7 @@ pub(in crate::app) fn workspace_pet_install_form(
                 preview,
                 &name_state,
                 installing,
-                &language,
+                language,
                 cx,
             ))
         })
@@ -816,7 +830,7 @@ pub(in crate::app) fn workspace_pet_install_form(
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(color(theme::ACCENT))
                     .child(workspace_i18n(
-                        &language,
+                        language,
                         "pet.custom.install.installing.detail",
                         "Downloading, unpacking, and validating the pet package.",
                     )),
@@ -842,7 +856,7 @@ fn workspace_pet_install_preview(
         img(PathBuf::from(path))
             .size_full()
             .object_fit(ObjectFit::Cover)
-            .with_fallback(|| workspace_pet_install_preview_fallback())
+            .with_fallback(workspace_pet_install_preview_fallback)
             .into_any_element()
     } else if let Some(url) = preview
         .image_url
@@ -852,7 +866,7 @@ fn workspace_pet_install_preview(
         img(url.clone())
             .size_full()
             .object_fit(ObjectFit::Cover)
-            .with_fallback(|| workspace_pet_install_preview_fallback())
+            .with_fallback(workspace_pet_install_preview_fallback)
             .into_any_element()
     } else {
         workspace_pet_install_preview_fallback()

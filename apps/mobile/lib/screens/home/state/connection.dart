@@ -154,7 +154,6 @@ extension _HomePageConnection on HomeController {
     _ensureTerminalForSelectedProject();
     _bindActiveTerminalAfterProtocolReady(reason: 'protocol-ready');
     _drivePendingProjectSelect(reason: 'protocol-ready');
-    _resubscribeVisibleTerminal(reason: 'protocol-ready');
   }
 
   void _failRemoteProtocol(StoredDevice target, Object? payload) {
@@ -173,7 +172,7 @@ extension _HomePageConnection on HomeController {
     unawaited(_closeActiveTransport());
     _terminalInputBatcher.reset();
     _terminalInputSender.clear();
-    _terminalBindingCoordinator.reset();
+    _resetRemoteSubscriptions();
     _viewportOwnerRefreshAfterBaseline.clear();
     _terminalOutputAckSeqBySession.clear();
     _terminalOutputAckAtBySession.clear();
@@ -211,7 +210,7 @@ extension _HomePageConnection on HomeController {
     unawaited(_closeActiveTransport());
     _terminalInputBatcher.reset();
     _terminalInputSender.clear();
-    _terminalBindingCoordinator.reset();
+    _resetRemoteSubscriptions();
     _viewportOwnerRefreshAfterBaseline.clear();
     _terminalOutputAckSeqBySession.clear();
     _terminalOutputAckAtBySession.clear();
@@ -384,7 +383,7 @@ extension _HomePageConnection on HomeController {
     _cancelRemoteSyncTimers();
     _remoteSyncController.resetSyncForCurrentGeneration();
     _remoteRuntime.reset();
-    _terminalBindingCoordinator.reset();
+    _resetRemoteSubscriptions();
     _terminalBaselineResyncRequestedAt.clear();
     _viewportOwnerRefreshAfterBaseline.clear();
     _terminalOutputAckSeqBySession.clear();
@@ -394,10 +393,15 @@ extension _HomePageConnection on HomeController {
     _syncRuntimeViewState();
   }
 
+  void _resetRemoteSubscriptions() {
+    _terminalBindingCoordinator.reset();
+    _resourceSubscriptionCoordinator.reset();
+  }
+
   void _resetRemoteRuntime({bool keepProjects = false}) {
     _remoteRuntimeEpoch += 1;
     _remoteRuntime.reset(keepProjects: keepProjects);
-    _terminalBindingCoordinator.reset();
+    _resetRemoteSubscriptions();
     _terminalBaselineResyncRequestedAt.clear();
     _viewportOwnerRefreshAfterBaseline.clear();
     _terminalOutputAckSeqBySession.clear();
@@ -417,7 +421,7 @@ extension _HomePageConnection on HomeController {
     _cancelRemoteSyncTimers();
     _remoteSyncController.resetSyncForCurrentGeneration();
     _remoteSyncController.resetProtocolReady();
-    _terminalBindingCoordinator.reset();
+    _resetRemoteSubscriptions();
     _terminalBaselineResyncRequestedAt.clear();
     _viewportOwnerRefreshAfterBaseline.clear();
     _terminalOutputAckSeqBySession.clear();
@@ -496,7 +500,7 @@ extension _HomePageConnection on HomeController {
     if (resetRuntime) {
       _terminalOutputController.resetAll();
       _terminalRepaint.tick();
-      _terminalBindingCoordinator.reset();
+      _resetRemoteSubscriptions();
       _terminalBaselineResyncRequestedAt.clear();
       _viewportOwnerRefreshAfterBaseline.clear();
       _terminalOutputAckSeqBySession.clear();
@@ -585,6 +589,8 @@ extension _HomePageConnection on HomeController {
       _resetRemoteRuntime(keepProjects: false);
       _terminalOutputController.resetAll();
       _terminalRepaint.tick();
+    } else {
+      _resetRemoteSubscriptions();
     }
     CoduxLog.info(
       '[codux-flutter-remote] connect start gen=$generation background=$background host=${target.hostId} device=${target.deviceId} transport=${_deviceTransportKind(target)} relay=${_savedDeviceRelayEndpoint(target)}',

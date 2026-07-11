@@ -2,7 +2,7 @@ use super::ui_helpers::{dialog_primary_button, window_close_control};
 use super::{CoduxApp, UiRegion, empty_label};
 use crate::app::{
     AIProviderTestResult,
-    app_select::{CoduxSelectOption, codux_select},
+    app_select::{CoduxSelectConfig, CoduxSelectOption, codux_select},
     scroll_compat::ScrollableElement,
 };
 use crate::heroicons::HeroIconName;
@@ -66,8 +66,8 @@ use self::{
     notifications::settings_notifications_pane,
     pet::settings_pet_pane,
     remote::{
-        remote_connect_overlay, remote_pairing_overlay, remote_pending_pairing_overlay,
-        settings_remote_pane,
+        SettingsRemotePaneInput, remote_connect_overlay, remote_pairing_overlay,
+        remote_pending_pairing_overlay, settings_remote_pane,
     },
     shortcuts::settings_shortcuts_pane,
 };
@@ -407,15 +407,16 @@ fn settings_pane_body(
             let link_states = app.runtime_service.remote_controller_link_states();
             let link_paths = app.runtime_service.remote_controller_link_paths();
             settings_remote_pane(
-                &app.state.settings,
-                &app.state.remote,
-                &saved_hosts,
-                &link_states,
-                &link_paths,
-                app.selected_remote_device_id.as_deref(),
-                app.state.settings.language.as_str(),
-                app.remote_reconnecting,
-                app.remote_pairing_creating,
+                SettingsRemotePaneInput {
+                    settings: &app.state.settings,
+                    remote: &app.state.remote,
+                    saved_hosts: &saved_hosts,
+                    link_states: &link_states,
+                    link_paths: &link_paths,
+                    language: app.state.settings.language.as_str(),
+                    remote_reconnecting: app.remote_reconnecting,
+                    remote_pairing_creating: app.remote_pairing_creating,
+                },
                 window,
                 cx,
             )

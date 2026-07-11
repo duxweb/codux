@@ -17,6 +17,13 @@ pub(in crate::app) fn db_section(
     let copy_label = translate(&locale, "db.profile.copy_command", "Copy Command");
     let read_only_label = translate(&locale, "db.profile.mode.read_only", "read-only");
     let read_write_label = translate(&locale, "db.profile.mode.read_write", "read-write");
+    let profile_labels = DbProfileLabels {
+        edit: edit_label,
+        remove: remove_label,
+        copy: copy_label,
+        read_only: read_only_label,
+        read_write: read_write_label,
+    };
     let profiles = Rc::new(db.profiles.clone());
     let selected_profile_id = selected_profile_id.map(str::to_string);
     let error_row = db.error.as_ref().map(|error| {
@@ -66,11 +73,7 @@ pub(in crate::app) fn db_section(
                             db_profile_row(
                                 profile,
                                 selected_profile_id.as_deref(),
-                                edit_label.clone(),
-                                remove_label.clone(),
-                                copy_label.clone(),
-                                read_only_label.clone(),
-                                read_write_label.clone(),
+                                &profile_labels,
                                 cx,
                             )
                             .into_any_element()
@@ -113,16 +116,25 @@ fn db_empty_state(label: String, cx: &mut Context<CoduxApp>) -> impl IntoElement
         )
 }
 
+struct DbProfileLabels {
+    edit: String,
+    remove: String,
+    copy: String,
+    read_only: String,
+    read_write: String,
+}
+
 fn db_profile_row(
     profile: DBProfileSummary,
     selected_profile_id: Option<&str>,
-    edit_label: String,
-    remove_label: String,
-    copy_label: String,
-    read_only_label: String,
-    read_write_label: String,
+    labels: &DbProfileLabels,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let edit_label = labels.edit.clone();
+    let remove_label = labels.remove.clone();
+    let copy_label = labels.copy.clone();
+    let read_only_label = labels.read_only.clone();
+    let read_write_label = labels.read_write.clone();
     let active = selected_profile_id
         .map(|id| id == profile.id)
         .unwrap_or(false);

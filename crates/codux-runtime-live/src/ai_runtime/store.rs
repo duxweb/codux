@@ -294,27 +294,25 @@ impl AIRuntimeStateStore {
             return AIRuntimeStateMutation::default();
         };
         let did_change = apply_runtime_snapshot_unlocked(&mut core, terminal_id, snapshot);
-        if did_change {
-            if let Some(session) = core.sessions.get(terminal_id) {
-                super::runtime_log_line(
-                    "runtime-state",
-                    &format!(
-                        "snapshot terminal={} state={} completed={} interrupted={} updated_at={:.3} response_state={} snapshot_completed_at={} snapshot_updated_at={:.3} snapshot_completed={} snapshot_interrupted={}",
-                        session.terminal_id,
-                        session.state,
-                        session.has_completed_turn,
-                        session.was_interrupted,
-                        session.updated_at,
-                        snapshot_response_state.as_deref().unwrap_or("none"),
-                        snapshot_completed_at
-                            .map(|value| format!("{value:.3}"))
-                            .unwrap_or_else(|| "none".to_string()),
-                        snapshot_updated_at,
-                        snapshot_has_completed,
-                        snapshot_was_interrupted
-                    ),
-                );
-            }
+        if did_change && let Some(session) = core.sessions.get(terminal_id) {
+            super::runtime_log_line(
+                "runtime-state",
+                &format!(
+                    "snapshot terminal={} state={} completed={} interrupted={} updated_at={:.3} response_state={} snapshot_completed_at={} snapshot_updated_at={:.3} snapshot_completed={} snapshot_interrupted={}",
+                    session.terminal_id,
+                    session.state,
+                    session.has_completed_turn,
+                    session.was_interrupted,
+                    session.updated_at,
+                    snapshot_response_state.as_deref().unwrap_or("none"),
+                    snapshot_completed_at
+                        .map(|value| format!("{value:.3}"))
+                        .unwrap_or_else(|| "none".to_string()),
+                    snapshot_updated_at,
+                    snapshot_has_completed,
+                    snapshot_was_interrupted
+                ),
+            );
         }
         mutation_from_change(did_change, &mut core)
     }
@@ -566,10 +564,10 @@ impl AIRuntimeStateStore {
         let stale_ids = core
             .sessions
             .iter()
-            .filter_map(|(terminal_id, session)| {
-                (!live_terminal_ids.contains(terminal_id.as_str()) && session.state != "idle")
-                    .then(|| terminal_id.clone())
+            .filter(|(terminal_id, session)| {
+                !live_terminal_ids.contains(terminal_id.as_str()) && session.state != "idle"
             })
+            .map(|(terminal_id, _)| terminal_id.clone())
             .collect::<Vec<_>>();
         for terminal_id in stale_ids {
             if let Some(session) = core.sessions.get(&terminal_id).cloned() {
@@ -586,12 +584,12 @@ impl AIRuntimeStateStore {
         let expired_ids = core
             .sessions
             .iter()
-            .filter_map(|(terminal_id, session)| {
-                (!live_terminal_ids.contains(terminal_id.as_str())
+            .filter(|(terminal_id, session)| {
+                !live_terminal_ids.contains(terminal_id.as_str())
                     && session.state == "idle"
-                    && now - session.updated_at > IDLE_SESSION_RETENTION_SECONDS)
-                    .then(|| terminal_id.clone())
+                    && now - session.updated_at > IDLE_SESSION_RETENTION_SECONDS
             })
+            .map(|(terminal_id, _)| terminal_id.clone())
             .collect::<Vec<_>>();
         for terminal_id in expired_ids {
             core.sessions.remove(&terminal_id);

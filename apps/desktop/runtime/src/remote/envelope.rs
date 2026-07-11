@@ -15,6 +15,7 @@ impl RemoteService {
         kind: &str,
         device_id: Option<&str>,
         session_id: Option<&str>,
+        request_id: Option<&str>,
         payload: Value,
         send_seq_by_device: &mut HashMap<String, i64>,
     ) -> Option<String> {
@@ -29,6 +30,7 @@ impl RemoteService {
             kind: kind.to_string(),
             device_id: device_id.map(str::to_string),
             session_id: session_id.map(str::to_string),
+            request_id: request_id.map(str::to_string),
             seq,
             payload,
         };

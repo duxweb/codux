@@ -26,7 +26,7 @@ pub(super) enum PetDexVirtualRow {
         message: String,
     },
     LegacyRow {
-        record: PetLegacyRecord,
+        record: Box<PetLegacyRecord>,
         sprite_path: ImageSource,
         language: String,
     },
@@ -102,7 +102,7 @@ impl PetDexVirtualRow {
                 .px(px(20.0))
                 .pt(px(8.0))
                 .child(pet_legacy_row(
-                    record.clone(),
+                    record.as_ref().clone(),
                     sprite_path.clone(),
                     language.clone(),
                     cx,

@@ -107,9 +107,10 @@ impl AIRuntimeBridge {
     }
 
     /// The runtime is non-intrusive by design: it never installs hooks into the
-    /// CLIs' own config files. Live state comes from process-tree tool detection
-    /// + transcript probes + screen scraping. This only strips any codux hook
+    /// CLIs' own config files. Live state comes from process-tree tool detection,
+    /// transcript probes, and screen scraping. This only strips any codux hook
     /// entries a prior build left behind, leaving each CLI genuinely hookless.
+    ///
     /// Idempotent and no-write once clean, so it is safe to run on every start.
     fn strip_managed_hook_configs(&self, phase: &str) -> Result<(), String> {
         let _guard = self

@@ -53,6 +53,8 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   // Unified versioned state-sync: per-(resource,project,session) latest-wins
   // guard shared by every replicated resource handler (git, worktrees, ...).
   final RemoteStateVersions _remoteStateVersions = RemoteStateVersions();
+  late final RemoteResourceSubscriptionCoordinator
+  _resourceSubscriptionCoordinator;
   final RemoteTerminalOutputController _terminalOutputController =
       RemoteTerminalOutputController(maxBufferChars: _terminalBufferMaxChars);
   late final RemoteTerminalBindingCoordinator _terminalBindingCoordinator;
@@ -398,10 +400,12 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     _terminalBindingCoordinator = RemoteTerminalBindingCoordinator(
       outputController: _terminalOutputController,
       send: _send,
-      terminalById: _terminalById,
       nextRequestId: _nextTerminalBufferRequestId,
       viewportSize: _terminalBaselineViewportSize,
       maxCharsLimit: _terminalBufferMaxChars,
+    );
+    _resourceSubscriptionCoordinator = RemoteResourceSubscriptionCoordinator(
+      send: _send,
     );
     _networkRouteRefreshController = RemoteNetworkRouteRefreshController(
       onPauseLatency: _pauseLatencyProbe,
@@ -664,6 +668,7 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
       runtime: _remoteRuntime,
       projectController: _projectController,
       projectFileController: _projectFileController,
+      resourceSubscriptions: _resourceSubscriptionCoordinator,
     );
   }
 

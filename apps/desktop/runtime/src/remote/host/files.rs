@@ -17,18 +17,87 @@ pub(crate) fn remote_file_rename(path: &str, new_path: &str) -> Result<(), Strin
 }
 
 impl RemoteHostRuntime {
+    pub(super) fn handle_file_read_blob(self: &Arc<Self>, envelope: &RemoteEnvelope) {
+        let path = envelope
+            .payload
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let runtime = Arc::clone(self);
+        let envelope = envelope.clone();
+        crate::async_runtime::spawn(async move {
+            let result = match runtime_file::file_read_blob_bytes(&path) {
+                Ok(bytes) => {
+                    let transport = runtime
+                        .transport
+                        .lock()
+                        .ok()
+                        .and_then(|transport| transport.clone());
+                    match transport {
+                        Some(transport) => match transport.publish_blob(bytes).await {
+                            Ok(ticket) => json!({ "ticket": ticket }),
+                            Err(error) => json!({ "error": error }),
+                        },
+                        None => json!({ "error": "transport unavailable" }),
+                    }
+                }
+                Err(error) => json!({ "error": error.to_string() }),
+            };
+            runtime.reply(&envelope, REMOTE_FILE_BLOB, result);
+        });
+    }
+
+    pub(super) fn handle_file_write_blob(self: &Arc<Self>, envelope: &RemoteEnvelope) {
+        let directory = envelope
+            .payload
+            .get("directory")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let name = envelope
+            .payload
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let ticket = envelope
+            .payload
+            .get("ticket")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let runtime = Arc::clone(self);
+        let envelope = envelope.clone();
+        crate::async_runtime::spawn(async move {
+            let transport = runtime
+                .transport
+                .lock()
+                .ok()
+                .and_then(|transport| transport.clone());
+            let result = match transport {
+                Some(transport) => transport.fetch_blob(&ticket).await,
+                None => Err("transport unavailable".to_string()),
+            };
+            match result.and_then(|bytes| runtime_file::file_write_bytes(&directory, &name, &bytes))
+            {
+                Ok(path) => runtime.reply(
+                    &envelope,
+                    REMOTE_FILE_BYTES_WRITTEN,
+                    json!({ "path": path }),
+                ),
+                Err(error) => runtime.send_error(&envelope, &error),
+            }
+        });
+    }
+
     pub(super) fn handle_file_read(&self, envelope: &RemoteEnvelope) {
         let Some(path) = envelope.payload.get("path").and_then(Value::as_str) else {
             self.send_error(envelope, "File path is required.");
             return;
         };
         match remote_file_read(path) {
-            Ok(payload) => self.send(
-                REMOTE_FILE_READ,
-                envelope.device_id.as_deref(),
-                None,
-                payload,
-            ),
+            Ok(payload) => self.reply(envelope, REMOTE_FILE_READ, payload),
             Err(error) => self.send_error(envelope, &error),
         }
     }
@@ -43,12 +112,7 @@ impl RemoteHostRuntime {
             return;
         };
         match remote_file_write(path, content) {
-            Ok(()) => self.send(
-                REMOTE_FILE_WRITTEN,
-                envelope.device_id.as_deref(),
-                None,
-                json!({ "path": path }),
-            ),
+            Ok(()) => self.reply(envelope, REMOTE_FILE_WRITTEN, json!({ "path": path })),
             Err(error) => self.send_error(envelope, &error),
         }
     }
@@ -63,10 +127,9 @@ impl RemoteHostRuntime {
             return;
         };
         match remote_file_rename(path, new_path) {
-            Ok(()) => self.send(
+            Ok(()) => self.reply(
+                envelope,
                 REMOTE_FILE_RENAMED,
-                envelope.device_id.as_deref(),
-                None,
                 json!({ "path": path, "newPath": new_path }),
             ),
             Err(error) => self.send_error(envelope, &error),
@@ -79,12 +142,7 @@ impl RemoteHostRuntime {
             return;
         };
         match fs::remove_file(path).or_else(|_| fs::remove_dir_all(path)) {
-            Ok(()) => self.send(
-                REMOTE_FILE_DELETED,
-                envelope.device_id.as_deref(),
-                None,
-                json!({ "path": path }),
-            ),
+            Ok(()) => self.reply(envelope, REMOTE_FILE_DELETED, json!({ "path": path })),
             Err(error) => self.send_error(envelope, &error.to_string()),
         }
     }
@@ -95,10 +153,9 @@ impl RemoteHostRuntime {
             return;
         };
         match runtime_file::file_make_directory(path) {
-            Ok(()) => self.send(
+            Ok(()) => self.reply(
+                envelope,
                 REMOTE_FILE_DIRECTORY_CREATED,
-                envelope.device_id.as_deref(),
-                None,
                 json!({ "path": path }),
             ),
             Err(error) => self.send_error(envelope, &error),
@@ -117,12 +174,7 @@ impl RemoteHostRuntime {
             .and_then(Value::as_str)
             .unwrap_or_default();
         match runtime_file::file_copy(path, target) {
-            Ok(new_path) => self.send(
-                REMOTE_FILE_COPIED,
-                envelope.device_id.as_deref(),
-                None,
-                json!({ "path": new_path }),
-            ),
+            Ok(new_path) => self.reply(envelope, REMOTE_FILE_COPIED, json!({ "path": new_path })),
             Err(error) => self.send_error(envelope, &error),
         }
     }
@@ -144,12 +196,7 @@ impl RemoteHostRuntime {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         match runtime_file::file_move(path, target, overwrite) {
-            Ok(new_path) => self.send(
-                REMOTE_FILE_MOVED,
-                envelope.device_id.as_deref(),
-                None,
-                json!({ "path": new_path }),
-            ),
+            Ok(new_path) => self.reply(envelope, REMOTE_FILE_MOVED, json!({ "path": new_path })),
             Err(error) => self.send_error(envelope, &error),
         }
     }
@@ -177,10 +224,9 @@ impl RemoteHostRuntime {
             })
             .unwrap_or_default();
         match runtime_file::file_write_bytes(directory, name, &bytes) {
-            Ok(new_path) => self.send(
+            Ok(new_path) => self.reply(
+                envelope,
                 REMOTE_FILE_BYTES_WRITTEN,
-                envelope.device_id.as_deref(),
-                None,
                 json!({ "path": new_path }),
             ),
             Err(error) => self.send_error(envelope, &error),

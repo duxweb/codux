@@ -59,14 +59,13 @@ fn remove_worktrees(snapshot: &mut Map<String, Value>, project_id: &str) -> Hash
             .and_then(|worktree| worktree.get("projectId"))
             .and_then(Value::as_str)
             == Some(project_id);
-        if should_remove {
-            if let Some(id) = worktree
+        if should_remove
+            && let Some(id) = worktree
                 .as_object()
                 .and_then(|worktree| worktree.get("id"))
                 .and_then(Value::as_str)
-            {
-                removed.insert(id.to_string());
-            }
+        {
+            removed.insert(id.to_string());
         }
         !should_remove
     });

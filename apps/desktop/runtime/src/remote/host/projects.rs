@@ -30,13 +30,12 @@ impl RemoteHostRuntime {
         }) {
             Ok(baseline) => {
                 let project_id = baseline.selected_project_id.unwrap_or_default();
-                self.send(
+                self.reply(
+                    envelope,
                     REMOTE_PROJECT_UPDATED,
-                    envelope.device_id.as_deref(),
-                    None,
                     json!({ "action": "add", "projectId": project_id }),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.broadcast_project_and_terminal_lists(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -69,13 +68,12 @@ impl RemoteHostRuntime {
             },
         ) {
             Ok(_) => {
-                self.send(
+                self.reply(
+                    envelope,
                     REMOTE_PROJECT_UPDATED,
-                    envelope.device_id.as_deref(),
-                    None,
                     json!({ "action": "edit", "projectId": project_id }),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.broadcast_project_and_terminal_lists(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -88,14 +86,13 @@ impl RemoteHostRuntime {
         };
         match ProjectStore::new(self.support_dir.clone()).close_project(project_id) {
             Ok(_) => {
-                self.clear_remote_project_scope_for_project(project_id);
-                self.send(
+                self.remove_project_state(project_id);
+                self.reply(
+                    envelope,
                     REMOTE_PROJECT_UPDATED,
-                    envelope.device_id.as_deref(),
-                    None,
                     json!({ "action": "remove", "projectId": project_id }),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.broadcast_project_and_terminal_lists(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -119,10 +116,9 @@ impl RemoteHostRuntime {
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty());
         let device_id = envelope.device_id.as_deref();
-        let previous_project_id = self.remote_project_scope_id(device_id);
         match self.remote_project_scope_with_worktree(project_id, preferred_worktree_id) {
             Ok(scope) => {
-                if let Err(error) = self.ensure_remote_project_terminal(&scope, device_id) {
+                if let Err(error) = self.ensure_remote_project_terminal(&scope) {
                     crate::runtime_trace::runtime_trace(
                         "remote",
                         &format!(
@@ -133,20 +129,13 @@ impl RemoteHostRuntime {
                     self.send_error(envelope, &error);
                     return;
                 }
-                if previous_project_id.as_deref() != Some(scope.project_id.as_str()) {
-                    if let Some(previous_project_id) = previous_project_id.as_deref() {
-                        self.remove_project_terminal_viewers(previous_project_id, device_id);
-                    }
-                }
                 self.set_remote_project_scope(device_id, &scope.project_id);
-                self.register_project_terminal_viewers(&scope.project_id, device_id);
-                self.send(
+                self.reply(
+                    envelope,
                     REMOTE_PROJECT_SELECTED,
-                    envelope.device_id.as_deref(),
-                    None,
                     json!({ "projectId": scope.project_id, "worktreeId": scope.worktree_id }),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.send_project_and_terminal_snapshots(envelope.device_id.as_deref());
                 crate::runtime_trace::runtime_trace(
                     "remote",
                     &format!(

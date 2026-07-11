@@ -57,21 +57,33 @@ impl CoduxConfig {
 
     /// Fill in a useful display name and stable identity if absent. Returns
     /// whether anything was generated, so the caller can persist.
-    pub fn ensure_identity(&mut self) -> bool {
+    pub fn ensure_identity(&mut self) -> Result<bool, String> {
+        let host_id = self
+            .host_id
+            .trim()
+            .is_empty()
+            .then(|| random_hex(6))
+            .transpose()?;
+        let host_token = self
+            .host_token
+            .trim()
+            .is_empty()
+            .then(|| random_hex(32))
+            .transpose()?;
         let mut generated = false;
         if is_placeholder_device_name(&self.device_name) {
             self.device_name = default_device_name();
             generated = true;
         }
-        if self.host_id.trim().is_empty() {
-            self.host_id = format!("codux-{}", random_hex(6));
+        if let Some(host_id) = host_id {
+            self.host_id = format!("codux-{host_id}");
             generated = true;
         }
-        if self.host_token.trim().is_empty() {
-            self.host_token = random_hex(32);
+        if let Some(host_token) = host_token {
+            self.host_token = host_token;
             generated = true;
         }
-        generated
+        Ok(generated)
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -82,19 +94,11 @@ impl CoduxConfig {
 }
 
 /// A lowercase hex string of `bytes` random bytes (2 chars per byte).
-pub fn random_hex(bytes: usize) -> String {
+pub fn random_hex(bytes: usize) -> Result<String, String> {
     let mut buf = vec![0u8; bytes];
-    if getrandom::getrandom(&mut buf).is_err() {
-        // Fallback: time-seeded, only reached if the OS RNG is unavailable.
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        for (index, slot) in buf.iter_mut().enumerate() {
-            *slot = ((nanos >> (index % 16 * 8)) as u8) ^ (index as u8).wrapping_mul(31);
-        }
-    }
-    buf.iter().map(|byte| format!("{byte:02x}")).collect()
+    getrandom::getrandom(&mut buf)
+        .map_err(|error| format!("operating system random source unavailable: {error}"))?;
+    Ok(buf.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 /// A sensible default device name (the machine's hostname).

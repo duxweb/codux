@@ -149,15 +149,15 @@ fn print_opencode_session_state() -> Result<(), String> {
     let Some(root) = read_json_file(&path) else {
         return Ok(());
     };
-    if let Some(external) = root.get("externalSessionID").and_then(Value::as_str) {
-        if !external.is_empty() {
-            println!("{external}");
-        }
+    if let Some(external) = root.get("externalSessionID").and_then(Value::as_str)
+        && !external.is_empty()
+    {
+        println!("{external}");
     }
-    if let Some(model) = root.get("model").and_then(Value::as_str) {
-        if !model.is_empty() {
-            println!("{model}");
-        }
+    if let Some(model) = root.get("model").and_then(Value::as_str)
+        && !model.is_empty()
+    {
+        println!("{model}");
     }
     Ok(())
 }
@@ -576,10 +576,10 @@ fn notification_type(root: &Value) -> Option<String> {
 fn first_string(value: &Value, keys: &[&str]) -> Option<String> {
     let object = value.as_object()?;
     for key in keys {
-        if let Some(value) = object.get(*key).and_then(Value::as_str) {
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
+        if let Some(value) = object.get(*key).and_then(Value::as_str)
+            && !value.is_empty()
+        {
+            return Some(value.to_string());
         }
     }
     None
@@ -591,10 +591,10 @@ fn find_first_string_recursive(root: &Value, keys: &[&str]) -> Option<String> {
         match value {
             Value::Object(object) => {
                 for key in keys {
-                    if let Some(value) = object.get(*key).and_then(Value::as_str) {
-                        if !value.is_empty() {
-                            return Some(value.to_string());
-                        }
+                    if let Some(value) = object.get(*key).and_then(Value::as_str)
+                        && !value.is_empty()
+                    {
+                        return Some(value.to_string());
                     }
                 }
                 stack.extend(object.values());
@@ -618,10 +618,11 @@ fn find_first_integer_recursive(root: &Value, keys: &[&str]) -> Option<i64> {
                     if let Some(number) = value.as_i64() {
                         return Some(number);
                     }
-                    if let Some(number) = value.as_f64() {
-                        if number.is_finite() && number.fract() == 0.0 {
-                            return Some(number as i64);
-                        }
+                    if let Some(number) = value.as_f64()
+                        && number.is_finite()
+                        && number.fract() == 0.0
+                    {
+                        return Some(number as i64);
                     }
                 }
                 stack.extend(object.values());
@@ -1038,7 +1039,7 @@ fn skip_sql_quoted_string(
 
 fn skip_sql_line_comment(characters: &mut std::iter::Peekable<std::str::CharIndices<'_>>) {
     let _ = characters.next();
-    while let Some((_, character)) = characters.next() {
+    for (_, character) in characters.by_ref() {
         if character == '\n' {
             break;
         }
@@ -1048,7 +1049,7 @@ fn skip_sql_line_comment(characters: &mut std::iter::Peekable<std::str::CharIndi
 fn skip_sql_block_comment(characters: &mut std::iter::Peekable<std::str::CharIndices<'_>>) {
     let _ = characters.next();
     let mut previous = '\0';
-    while let Some((_, character)) = characters.next() {
+    for (_, character) in characters.by_ref() {
         if previous == '*' && character == '/' {
             break;
         }

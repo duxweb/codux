@@ -272,14 +272,12 @@ fn parse_codex_runtime_line(
         if project_path
             .map(|project| payload.cwd.as_deref() == Some(project))
             .unwrap_or(true)
-        {
-            if let Some(model) = payload
+            && let Some(model) = payload
                 .model
                 .as_deref()
                 .and_then(|value| normalized_string(Some(value)))
-            {
-                state.model = Some(model);
-            }
+        {
+            state.model = Some(model);
         }
         return;
     }
@@ -362,17 +360,16 @@ fn update_codex_turn_state(
         let user_message_at = timestamp.or(state.updated_at);
         if user_message_at > state.last_user_message_at {
             state.last_user_message_at = user_message_at;
-            if let Some(user_message_at) = user_message_at {
-                if state
+            if let Some(user_message_at) = user_message_at
+                && state
                     .completed_at
                     .is_some_and(|completed_at| user_message_at > completed_at)
-                {
-                    state.started_at = Some(user_message_at);
-                    *usage_at_turn_start = latest_cumulative_usage.clone();
-                    state.completed_at = None;
-                    state.was_interrupted = false;
-                    state.has_completed_turn = false;
-                }
+            {
+                state.started_at = Some(user_message_at);
+                *usage_at_turn_start = latest_cumulative_usage.clone();
+                state.completed_at = None;
+                state.was_interrupted = false;
+                state.has_completed_turn = false;
             }
         }
     }

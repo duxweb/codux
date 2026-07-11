@@ -243,7 +243,7 @@ fn detected_idle_session_does_not_suppress_sibling_completion() {
         std::collections::HashMap::from([("terminal-b".to_string(), "claude".to_string())]);
     assert!(
         store
-            .ensure_detected_sessions(&[idle_terminal.clone()], &detected, 1000.0)
+            .ensure_detected_sessions(std::slice::from_ref(&idle_terminal), &detected, 1000.0)
             .did_change
     );
     assert!(

@@ -6,7 +6,10 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
     thread,
     time::Duration,
 };
@@ -18,6 +21,8 @@ static CONFIG_DOCUMENT_STORES: OnceLock<Mutex<HashMap<PathBuf, Arc<ConfigDocumen
 pub struct ConfigStore {
     path: PathBuf,
     snapshot: Arc<RwLock<Map<String, Value>>>,
+    revision: AtomicU64,
+    write_lock: Arc<Mutex<()>>,
     write_tx: flume::Sender<()>,
 }
 
@@ -45,6 +50,10 @@ impl ConfigStore {
 
     pub fn snapshot(&self) -> Map<String, Value> {
         self.snapshot.read().clone()
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision.load(Ordering::Acquire)
     }
 
     pub fn get(&self, key: &str) -> Option<Value> {
@@ -100,8 +109,25 @@ impl ConfigStore {
     }
 
     pub fn save_snapshot(&self, snapshot: &Map<String, Value>) -> Result<(), String> {
-        *self.snapshot.write() = snapshot.clone();
+        {
+            let _write_guard = self.write_lock.lock();
+            *self.snapshot.write() = snapshot.clone();
+            self.revision.fetch_add(1, Ordering::Release);
+        }
         self.schedule_write()
+    }
+
+    pub fn update_sync<R>(
+        &self,
+        update: impl FnOnce(&mut Map<String, Value>) -> Result<R, String>,
+    ) -> Result<R, String> {
+        let _write_guard = self.write_lock.lock();
+        let mut next = self.snapshot.read().clone();
+        let result = update(&mut next)?;
+        write_snapshot(&self.path, &next)?;
+        *self.snapshot.write() = next;
+        self.revision.fetch_add(1, Ordering::Release);
+        Ok(result)
     }
 
     pub fn update<R>(
@@ -109,8 +135,12 @@ impl ConfigStore {
         update: impl FnOnce(&mut Map<String, Value>) -> Result<R, String>,
     ) -> Result<R, String> {
         let result = {
-            let mut snapshot = self.snapshot.write();
-            update(&mut snapshot)?
+            let _write_guard = self.write_lock.lock();
+            let mut next = self.snapshot.read().clone();
+            let result = update(&mut next)?;
+            *self.snapshot.write() = next;
+            self.revision.fetch_add(1, Ordering::Release);
+            result
         };
         self.schedule_write()?;
         Ok(result)
@@ -122,11 +152,14 @@ impl ConfigStore {
         let (write_tx, write_rx) = flume::bounded::<()>(1);
         let writer_snapshot = snapshot.clone();
         let writer_path = path.clone();
+        let write_lock = Arc::new(Mutex::new(()));
+        let writer_lock = Arc::clone(&write_lock);
         thread::Builder::new()
             .name("codux-state-json-writer".to_string())
             .spawn(move || {
                 while write_rx.recv().is_ok() {
                     while write_rx.recv_timeout(Duration::from_millis(80)).is_ok() {}
+                    let _write_guard = writer_lock.lock();
                     let snapshot = writer_snapshot.read().clone();
                     if let Err(error) = write_snapshot(&writer_path, &snapshot) {
                         crate::runtime_trace::runtime_trace(
@@ -141,6 +174,8 @@ impl ConfigStore {
         Arc::new(Self {
             path,
             snapshot,
+            revision: AtomicU64::new(0),
+            write_lock,
             write_tx,
         })
     }
@@ -149,6 +184,7 @@ impl ConfigStore {
         match self.write_tx.try_send(()) {
             Ok(()) | Err(flume::TrySendError::Full(_)) => Ok(()),
             Err(flume::TrySendError::Disconnected(_)) => {
+                let _write_guard = self.write_lock.lock();
                 let snapshot = self.snapshot.read().clone();
                 write_snapshot(&self.path, &snapshot)
             }
@@ -159,6 +195,7 @@ impl ConfigStore {
 pub fn flush_all_config_writes() {
     if let Some(stores) = CONFIG_STORES.get() {
         for store in stores.lock().values() {
+            let _write_guard = store.write_lock.lock();
             let snapshot = store.snapshot.read().clone();
             if let Err(error) = write_snapshot(&store.path, &snapshot) {
                 crate::runtime_trace::runtime_trace(
@@ -170,6 +207,7 @@ pub fn flush_all_config_writes() {
     }
     if let Some(stores) = CONFIG_DOCUMENT_STORES.get() {
         for store in stores.lock().values() {
+            let _write_guard = store.write_lock.lock();
             let snapshot = store.snapshot.read().clone();
             if let Err(error) = write_value_snapshot(&store.path, &snapshot) {
                 crate::runtime_trace::runtime_trace(
@@ -184,6 +222,7 @@ pub fn flush_all_config_writes() {
 pub struct ConfigDocumentStore {
     path: PathBuf,
     snapshot: Arc<RwLock<Value>>,
+    write_lock: Arc<Mutex<()>>,
     write_tx: flume::Sender<()>,
 }
 
@@ -211,7 +250,10 @@ impl ConfigDocumentStore {
 
     pub fn save_snapshot<T: Serialize>(&self, snapshot: &T) -> Result<(), String> {
         let value = serde_json::to_value(snapshot).map_err(|error| error.to_string())?;
-        *self.snapshot.write() = value;
+        {
+            let _write_guard = self.write_lock.lock();
+            *self.snapshot.write() = value;
+        }
         self.schedule_write()
     }
 
@@ -220,8 +262,11 @@ impl ConfigDocumentStore {
         update: impl FnOnce(&mut Value) -> Result<R, String>,
     ) -> Result<R, String> {
         let result = {
-            let mut snapshot = self.snapshot.write();
-            update(&mut snapshot)?
+            let _write_guard = self.write_lock.lock();
+            let mut next = self.snapshot.read().clone();
+            let result = update(&mut next)?;
+            *self.snapshot.write() = next;
+            result
         };
         self.schedule_write()?;
         Ok(result)
@@ -233,11 +278,14 @@ impl ConfigDocumentStore {
         let (write_tx, write_rx) = flume::bounded::<()>(1);
         let writer_snapshot = snapshot.clone();
         let writer_path = path.clone();
+        let write_lock = Arc::new(Mutex::new(()));
+        let writer_lock = Arc::clone(&write_lock);
         thread::Builder::new()
             .name("codux-config-json-writer".to_string())
             .spawn(move || {
                 while write_rx.recv().is_ok() {
                     while write_rx.recv_timeout(Duration::from_millis(80)).is_ok() {}
+                    let _write_guard = writer_lock.lock();
                     let snapshot = writer_snapshot.read().clone();
                     if let Err(error) = write_value_snapshot(&writer_path, &snapshot) {
                         crate::runtime_trace::runtime_trace(
@@ -252,6 +300,7 @@ impl ConfigDocumentStore {
         Arc::new(Self {
             path,
             snapshot,
+            write_lock,
             write_tx,
         })
     }
@@ -260,6 +309,7 @@ impl ConfigDocumentStore {
         match self.write_tx.try_send(()) {
             Ok(()) | Err(flume::TrySendError::Full(_)) => Ok(()),
             Err(flume::TrySendError::Disconnected(_)) => {
+                let _write_guard = self.write_lock.lock();
                 let snapshot = self.snapshot.read().clone();
                 write_value_snapshot(&self.path, &snapshot)
             }
@@ -394,6 +444,28 @@ mod tests {
     }
 
     #[test]
+    fn document_update_failure_keeps_previous_snapshot() {
+        let path = temp_config_path("document-failure");
+        let store = ConfigDocumentStore::for_file(path.clone());
+        store
+            .save_snapshot(&json!({ "value": "original" }))
+            .unwrap();
+        let original = store.snapshot();
+
+        assert!(
+            store
+                .update::<()>(|snapshot| {
+                    snapshot["value"] = json!("changed");
+                    Err("rejected".to_string())
+                })
+                .is_err()
+        );
+
+        assert_eq!(store.snapshot(), original);
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
     fn raw_state_save_strips_redb_owned_fields() {
         let path = temp_config_path("state-sanitize");
         let mut snapshot = Map::new();
@@ -436,6 +508,62 @@ mod tests {
 
         assert!(content.contains("\"projects\""));
         assert!(content.contains("\"p1\""));
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn flush_all_config_writes_persists_pending_document_snapshot() {
+        let path = temp_config_path("flush-document");
+        let store = ConfigDocumentStore::for_file(path.clone());
+        store
+            .save_snapshot(&json!([{ "id": "profile-1" }]))
+            .expect("save document");
+
+        flush_all_config_writes();
+        let content = fs::read_to_string(&path).expect("flushed document file");
+
+        assert!(content.contains("\"profile-1\""));
+        fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn synchronous_update_failure_keeps_previous_snapshot() {
+        let path = temp_config_path("sync-failure");
+        fs::create_dir_all(&path).expect("create directory at config path");
+        let store = ConfigStore::for_file(path.clone());
+        let original = store.snapshot();
+        assert!(
+            store
+                .update_sync(|snapshot| {
+                    snapshot.insert("remote".to_string(), json!({ "cachedDevices": [] }));
+                    Ok(())
+                })
+                .is_err()
+        );
+        assert_eq!(store.snapshot(), original);
+
+        fs::remove_dir_all(path).ok();
+    }
+
+    #[test]
+    fn asynchronous_update_failure_keeps_previous_snapshot_and_revision() {
+        let path = temp_config_path("async-failure");
+        let store = ConfigStore::for_file(path.clone());
+        store.set("value", json!("original")).unwrap();
+        let original = store.snapshot();
+        let revision = store.revision();
+
+        assert!(
+            store
+                .update::<()>(|snapshot| {
+                    snapshot.insert("value".to_string(), json!("changed"));
+                    Err("rejected".to_string())
+                })
+                .is_err()
+        );
+
+        assert_eq!(store.snapshot(), original);
+        assert_eq!(store.revision(), revision);
         fs::remove_file(path).ok();
     }
 

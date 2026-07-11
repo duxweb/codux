@@ -18,6 +18,12 @@ typedef RemoteTransportEnvelopeHandler =
 typedef RemoteTransportFactory = RemoteTransport Function(StoredDevice device);
 typedef ControllerTransportHandleFactory =
     ControllerTransportEventHandle? Function(Map<String, dynamic> config);
+typedef RemoteTransportPollTimerFactory =
+    Timer Function(Duration delay, void Function() callback);
+
+const int _remoteTransportPollBatchSize = 128;
+const Duration _remoteTransportBusyPollDelay = Duration(milliseconds: 16);
+const Duration _remoteTransportIdlePollDelay = Duration(milliseconds: 100);
 
 class RemoteTransportStateEvent {
   const RemoteTransportStateEvent({
@@ -127,10 +133,14 @@ RemoteTransport createRemoteTransport(StoredDevice device) {
 }
 
 class RustControllerTransport implements RemoteTransport {
-  RustControllerTransport({ControllerTransportHandleFactory? handleFactory})
-    : _handleFactory = handleFactory ?? _connectFfiTransport;
+  RustControllerTransport({
+    ControllerTransportHandleFactory? handleFactory,
+    RemoteTransportPollTimerFactory? pollTimerFactory,
+  }) : _handleFactory = handleFactory ?? _connectFfiTransport,
+       _pollTimerFactory = pollTimerFactory ?? Timer.new;
 
   final ControllerTransportHandleFactory _handleFactory;
+  final RemoteTransportPollTimerFactory _pollTimerFactory;
   ControllerTransportEventHandle? _handle;
   Timer? _pollTimer;
   RemoteTransportStateHandler? _onState;
@@ -163,9 +173,6 @@ class RustControllerTransport implements RemoteTransport {
       throw StateError('Failed to connect remote transport: $detail');
     }
     _handle = handle;
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      _drainEvents(connected: connected);
-    });
     _drainEvents(connected: connected);
     // Must outlast the Rust side's worst-case cold start, or a slow-but-
     // progressing connect gets killed here and retried from scratch (a fresh
@@ -221,10 +228,19 @@ class RustControllerTransport implements RemoteTransport {
     handle?.close();
   }
 
+  void _schedulePoll(Duration delay, {Completer<void>? connected}) {
+    _pollTimer?.cancel();
+    _pollTimer = _pollTimerFactory(delay, () {
+      _pollTimer = null;
+      _drainEvents(connected: connected);
+    });
+  }
+
   void _drainEvents({Completer<void>? connected}) {
     final handle = _handle;
     if (handle == null || handle.isClosed) return;
-    for (var i = 0; i < 128; i++) {
+    var drained = 0;
+    for (; drained < _remoteTransportPollBatchSize; drained += 1) {
       if (!identical(_handle, handle) || handle.isClosed) return;
       Map<String, dynamic>? event;
       try {
@@ -237,7 +253,7 @@ class RustControllerTransport implements RemoteTransport {
         }
         return;
       }
-      if (event == null) return;
+      if (event == null) break;
       final kind = '${event['kind'] ?? ''}';
       if (kind == 'state') {
         final state = '${event['state'] ?? ''}';
@@ -262,6 +278,13 @@ class RustControllerTransport implements RemoteTransport {
         CoduxLog.info('[codux-flutter-transport] ${event['message'] ?? ''}');
       }
     }
+    if (!identical(_handle, handle) || handle.isClosed) return;
+    final delay = drained == _remoteTransportPollBatchSize
+        ? Duration.zero
+        : drained > 0
+        ? _remoteTransportBusyPollDelay
+        : _remoteTransportIdlePollDelay;
+    _schedulePoll(delay, connected: connected);
   }
 }
 

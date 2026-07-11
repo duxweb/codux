@@ -1,17 +1,3 @@
-impl Default for RemoteSettings {
-    fn default() -> Self {
-        Self {
-            is_enabled: false,
-            relay_preset: String::new(),
-            relay_url: String::new(),
-            relay_authentication: String::new(),
-            host_id: String::new(),
-            host_token: String::new(),
-            cached_devices: Vec::new(),
-        }
-    }
-}
-
 impl Default for UpdateSettings {
     fn default() -> Self {
         let channel = default_update_channel();

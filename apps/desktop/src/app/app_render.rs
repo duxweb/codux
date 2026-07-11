@@ -141,16 +141,18 @@ impl Render for CoduxApp {
                 .bg(cx.theme().background)
                 .on_key_down(cx.listener(Self::on_key_down))
                 .child(memory_manager_window_workspace(
-                    &self.state.memory_manager,
-                    self.memory_manager_tab,
-                    &self.memory_manager_scope,
-                    self.memory_manager_project_id.as_deref(),
-                    self.selected_memory_entry_id.as_deref(),
-                    self.selected_memory_summary_id.as_deref(),
-                    self.memory_processing || memory_queue_active,
-                    self.memory_manager_refreshing,
-                    self.memory_project_profile_refreshing,
-                    &self.state.settings.language,
+                    MemoryManagerWindowInput {
+                        manager: &self.state.memory_manager,
+                        active_tab: self.memory_manager_tab,
+                        selected_scope: &self.memory_manager_scope,
+                        selected_project_id: self.memory_manager_project_id.as_deref(),
+                        selected_memory_entry_id: self.selected_memory_entry_id.as_deref(),
+                        selected_memory_summary_id: self.selected_memory_summary_id.as_deref(),
+                        memory_processing: self.memory_processing || memory_queue_active,
+                        memory_refreshing: self.memory_manager_refreshing,
+                        project_profile_refreshing: self.memory_project_profile_refreshing,
+                        language: &self.state.settings.language,
+                    },
                     window,
                     cx,
                 ))
@@ -318,7 +320,7 @@ impl Render for CoduxApp {
             self.main_window_close_handler_registered = true;
             let app_entity = cx.entity();
             window.on_window_should_close(cx, move |_window, cx| {
-                let _ = app_entity.update(cx, |app, cx| {
+                app_entity.update(cx, |app, cx| {
                     app.shutdown_main_window(cx);
                 });
                 true

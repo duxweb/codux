@@ -148,12 +148,11 @@ fn resolve_transcript_for_task_raw(
             }
         }
         "codex" => {
-            if let Some(path) = find_codex_rollout_path(&workspace_path, &task.session_id) {
-                if let Some(text) =
+            if let Some(path) = find_codex_rollout_path(&workspace_path, &task.session_id)
+                && let Some(text) =
                     read_transcript_file(&path.display().to_string(), line_limit, token_limit)
-                {
-                    return Ok(text);
-                }
+            {
+                return Ok(text);
             }
         }
         "opencode" => {

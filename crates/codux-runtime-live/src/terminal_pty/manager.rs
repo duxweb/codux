@@ -83,14 +83,8 @@ impl TerminalManager {
             .clone()
             .filter(|value| !value.trim().is_empty());
         let requested_identity = RequestedTerminalIdentity::from_config(&config, context);
-        if let Some(session) = requested_id
-            .as_deref()
-            .and_then(|id| self.sessions.lock().get(id).cloned())
-        {
-            if session.matches_requested_identity(&requested_identity) {
-                return Ok(session.id().to_string());
-            }
-            self.remove_incompatible_session(&session, &requested_identity);
+        if let Some(session) = self.reusable_session(requested_id.as_deref(), &requested_identity) {
+            return Ok(session.id().to_string());
         }
 
         if let Some(ai_runtime) = &self.ai_runtime {
@@ -141,20 +135,14 @@ impl TerminalManager {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
         let requested_identity = RequestedTerminalIdentity::from_config(&config, context);
-        if let Some(session) = requested_id
-            .as_deref()
-            .and_then(|id| self.sessions.lock().get(id).cloned())
-        {
-            if session.matches_requested_identity(&requested_identity) {
-                if let Some(event_key) = event_key {
-                    session.subscribe_events_keyed(event_key, emit);
-                } else {
-                    session.subscribe_events(emit);
-                }
-                let rx = session.subscribe_output(true);
-                return Ok((session, rx));
+        if let Some(session) = self.reusable_session(requested_id.as_deref(), &requested_identity) {
+            if let Some(event_key) = event_key {
+                session.subscribe_events_keyed(event_key, emit);
+            } else {
+                session.subscribe_events(emit);
             }
-            self.remove_incompatible_session(&session, &requested_identity);
+            let rx = session.subscribe_output(true);
+            return Ok((session, rx));
         }
 
         if let Some(ai_runtime) = &self.ai_runtime {
@@ -414,6 +402,41 @@ impl TerminalManager {
             .get(session_id)
             .cloned()
             .ok_or_else(|| anyhow!("terminal session not found: {session_id}"))
+    }
+
+    fn reusable_session(
+        &self,
+        requested_id: Option<&str>,
+        requested: &RequestedTerminalIdentity,
+    ) -> Option<Arc<TerminalPtySession>> {
+        let session = requested_id.and_then(|id| self.sessions.lock().get(id).cloned())?;
+        if session.has_exited() {
+            self.remove_exited_session(&session);
+            return None;
+        }
+        if session.matches_requested_identity(requested) {
+            return Some(session);
+        }
+        self.remove_incompatible_session(&session, requested);
+        None
+    }
+
+    fn remove_exited_session(&self, session: &Arc<TerminalPtySession>) {
+        let session_id = session.id();
+        let removed = {
+            let mut sessions = self.sessions.lock();
+            if sessions
+                .get(session_id)
+                .is_some_and(|current| Arc::ptr_eq(current, session))
+            {
+                sessions.remove(session_id)
+            } else {
+                None
+            }
+        };
+        if let Some(removed) = removed {
+            self.remove_ai_runtime_terminal(&removed);
+        }
     }
 
     fn remove_incompatible_session(

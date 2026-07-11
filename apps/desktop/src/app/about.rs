@@ -1049,23 +1049,23 @@ fn update_dialog_subtitle(app: &CoduxApp, language: &str) -> String {
         return translate(language, "update.progress.version_format", "Version v%@")
             .replace("%@", current_version);
     }
-    if let Some(status) = &app.update_dialog_status {
-        if app.update_dialog_phase == UpdateDialogPhase::Available {
-            return translate(
-                language,
-                "update.version.summary_format",
-                "Current v%@ · Latest v%@",
-            )
-            .replacen("%@", &status.current_version, 1)
-            .replacen(
-                "%@",
-                status
-                    .latest_version
-                    .as_deref()
-                    .unwrap_or(&status.current_version),
-                1,
-            );
-        }
+    if let Some(status) = &app.update_dialog_status
+        && app.update_dialog_phase == UpdateDialogPhase::Available
+    {
+        return translate(
+            language,
+            "update.version.summary_format",
+            "Current v%@ · Latest v%@",
+        )
+        .replacen("%@", &status.current_version, 1)
+        .replacen(
+            "%@",
+            status
+                .latest_version
+                .as_deref()
+                .unwrap_or(&status.current_version),
+            1,
+        );
     }
     if let Some(progress) = &app.update_dialog_progress
         && let Some(version) = &progress.version

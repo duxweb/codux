@@ -13,12 +13,12 @@ pub(super) fn stored_memory_entry_from_row(
 ) -> rusqlite::Result<StoredMemoryEntry> {
     Ok(StoredMemoryEntry {
         id: row.get(0)?,
-        scope: MemoryScope::from_str(row.get::<_, String>(1)?.as_str()),
+        scope: MemoryScope::from_token(row.get::<_, String>(1)?.as_str()),
         project_id: row.get(2)?,
         tool_id: row.get(3)?,
         module_key: row.get(4)?,
-        tier: MemoryTier::from_str(row.get::<_, String>(5)?.as_str()),
-        kind: MemoryKind::from_str(row.get::<_, String>(6)?.as_str()),
+        tier: MemoryTier::from_token(row.get::<_, String>(5)?.as_str()),
+        kind: MemoryKind::from_token(row.get::<_, String>(6)?.as_str()),
         content: row.get(7)?,
         rationale: row.get(8)?,
         source_tool: row.get(9)?,
@@ -44,7 +44,7 @@ pub(super) fn stored_memory_summary_from_row(
     let source_ids: Option<String> = row.get(6)?;
     Ok(StoredMemorySummary {
         id: row.get(0)?,
-        scope: MemoryScope::from_str(row.get::<_, String>(1)?.as_str()),
+        scope: MemoryScope::from_token(row.get::<_, String>(1)?.as_str()),
         project_id: row.get(2)?,
         tool_id: row.get(3)?,
         content: row.get(4)?,

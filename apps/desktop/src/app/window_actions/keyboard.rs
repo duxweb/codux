@@ -243,7 +243,7 @@ impl CoduxApp {
             return true;
         }
         if shortcut_matches(shortcuts, "assistant.ssh.open", &actual) {
-            self.toggle_assistant_panel(AssistantPanel::SSH, window, cx);
+            self.toggle_assistant_panel(AssistantPanel::Ssh, window, cx);
             return true;
         }
         if shortcut_matches(shortcuts, "terminal.split.create", &actual)

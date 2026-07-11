@@ -329,7 +329,7 @@ impl FilesService {
         let destination = target_directory.join(file_name);
         ensure_within_root(&root, &destination)?;
         if source == destination {
-            return Ok(file_entry(&root, source)?);
+            return file_entry(&root, source);
         }
         if destination.exists() {
             if !overwrite {

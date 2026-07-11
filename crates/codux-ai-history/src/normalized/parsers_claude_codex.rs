@@ -20,17 +20,17 @@ fn parse_claude_history_file_snapshot(
         if cwd_denied {
             return false;
         }
-        let Ok(row) = serde_json::from_str::<Value>(&line) else {
+        let Ok(row) = serde_json::from_str::<Value>(line) else {
             return !stop_on_invalid_json;
         };
-        if !cwd_confirmed {
-            if let Some(cwd) = row.get("cwd").and_then(|value| value.as_str()) {
-                if paths_equivalent(Some(cwd), &project.path) {
-                    cwd_confirmed = true;
-                } else {
-                    cwd_denied = true;
-                    return false;
-                }
+        if !cwd_confirmed
+            && let Some(cwd) = row.get("cwd").and_then(|value| value.as_str())
+        {
+            if paths_equivalent(Some(cwd), &project.path) {
+                cwd_confirmed = true;
+            } else {
+                cwd_denied = true;
+                return false;
             }
         }
         if !cwd_confirmed {
@@ -73,11 +73,10 @@ fn parse_claude_history_file_snapshot(
             .get("uuid")
             .and_then(|value| value.as_str())
             .and_then(normalized_string)
+            && seen_assistant_ids.insert(uuid, true).is_some()
         {
-            if seen_assistant_ids.insert(uuid, true).is_some() {
-                last_processed_offset = end_offset;
-                return true;
-            }
+            last_processed_offset = end_offset;
+            return true;
         }
         let message = row.get("message").unwrap_or(&Value::Null);
         let usage = message.get("usage").unwrap_or(&Value::Null);
@@ -164,48 +163,46 @@ fn parse_codex_history_file_snapshot(
         };
         let row_type = row.get("type").and_then(|value| value.as_str());
         let payload = row.get("payload").unwrap_or(&Value::Null);
-        if row_type == Some("session_meta") {
-            if payload
+        if row_type == Some("session_meta")
+            && payload
                 .get("cwd")
                 .and_then(|value| value.as_str())
                 .map(|cwd| paths_equivalent(Some(cwd), &project.path))
                 .unwrap_or(false)
+        {
+            matched_project = true;
+            if let Some(id) = payload
+                .get("id")
+                .and_then(|value| value.as_str())
+                .and_then(normalized_string)
             {
-                matched_project = true;
-                if let Some(id) = payload
-                    .get("id")
-                    .and_then(|value| value.as_str())
-                    .and_then(normalized_string)
-                {
-                    session_id = id;
-                }
-                session_title = payload
-                    .get("thread_name")
-                    .and_then(|value| value.as_str())
-                    .and_then(normalized_string)
-                    .or_else(|| {
-                        payload
-                            .get("title")
-                            .and_then(|value| value.as_str())
-                            .and_then(normalized_string)
-                    })
-                    .or(session_title.clone());
+                session_id = id;
             }
+            session_title = payload
+                .get("thread_name")
+                .and_then(|value| value.as_str())
+                .and_then(normalized_string)
+                .or_else(|| {
+                    payload
+                        .get("title")
+                        .and_then(|value| value.as_str())
+                        .and_then(normalized_string)
+                })
+                .or(session_title.clone());
         }
-        if row_type == Some("turn_context") {
-            if payload
+        if row_type == Some("turn_context")
+            && payload
                 .get("cwd")
                 .and_then(|value| value.as_str())
                 .map(|cwd| paths_equivalent(Some(cwd), &project.path))
                 .unwrap_or(false)
-            {
-                matched_project = true;
-                model = payload
-                    .get("model")
-                    .and_then(|value| value.as_str())
-                    .and_then(normalized_string)
-                    .or(model.clone());
-            }
+        {
+            matched_project = true;
+            model = payload
+                .get("model")
+                .and_then(|value| value.as_str())
+                .and_then(normalized_string)
+                .or(model.clone());
         }
         if !matched_project {
             last_processed_offset = end_offset;

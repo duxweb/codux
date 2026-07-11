@@ -4,14 +4,7 @@ impl MemoryService {
         memory_settings: &MemorySettings,
         project_id: &str,
         query: &str,
-    ) -> Result<
-        (
-            Option<PromptMemorySummary>,
-            Vec<PromptMemoryEntry>,
-            Vec<PromptMemoryEntry>,
-        ),
-        String,
-    > {
+    ) -> Result<PromptMemoryContext, String> {
         self.ensure_queue_schema()?;
         let conn = self.open_connection()?;
         let user_summary = if memory_settings.allow_cross_project_user_recall {
@@ -57,7 +50,11 @@ impl MemoryService {
             query,
             memory_settings.recall_use_fts,
         )?;
-        Ok((user_summary, user_memories, project_memories))
+        Ok(PromptMemoryContext {
+            user_summary,
+            user_memories,
+            project_memories,
+        })
     }
 
     fn update_task_status(

@@ -55,10 +55,10 @@ impl RemoteHostRuntime {
                             .get("projectId")
                             .and_then(Value::as_str)
                             .map(str::to_string);
-                        self.broadcast_resource_payload(
+                        self.reply_resource_payload(
+                            envelope,
                             REMOTE_AI_STATS,
                             REMOTE_RESOURCE_AI_STATS,
-                            envelope.device_id.as_deref(),
                             payload_project_id.as_deref(),
                             None,
                             payload,
@@ -102,6 +102,22 @@ impl RemoteHostRuntime {
             }
             watchers.retain(|_, devices| !devices.is_empty());
         }
+    }
+
+    pub(super) fn remove_ai_stats_watcher(&self, project_id: Option<&str>, device_id: &str) {
+        let Ok(mut watchers) = self.ai_stats_watchers.lock() else {
+            return;
+        };
+        if let Some(project_id) = project_id {
+            if let Some(devices) = watchers.get_mut(project_id) {
+                devices.remove(device_id);
+            }
+        } else {
+            for devices in watchers.values_mut() {
+                devices.remove(device_id);
+            }
+        }
+        watchers.retain(|_, devices| !devices.is_empty());
     }
 
     /// Re-push fresh `ai.stats` to every watcher. Called when the live AI runtime
@@ -226,12 +242,7 @@ impl RemoteHostRuntime {
         };
         match self.ai_history.project_state(request) {
             Ok(state) => match serde_json::to_value(state) {
-                Ok(payload) => self.send(
-                    REMOTE_AI_STATE,
-                    envelope.device_id.as_deref(),
-                    None,
-                    payload,
-                ),
+                Ok(payload) => self.reply(envelope, REMOTE_AI_STATE, payload),
                 Err(error) => self.send_error(envelope, &error.to_string()),
             },
             Err(error) => self.send_error(envelope, &error),
@@ -263,12 +274,13 @@ impl RemoteHostRuntime {
             })
             .unwrap_or_default();
         let service = codux_ai_sessions::AIHistoryService::new(self.support_dir.clone());
-        let result = codux_ai_sessions::session_op_result(&service, &project_path, payload);
-        self.send(
-            REMOTE_AI_SESSION_RESULT,
-            envelope.device_id.as_deref(),
-            None,
-            json!({ "op": op, "result": result }),
-        );
+        match codux_ai_sessions::session_op_result(&service, &project_path, payload) {
+            Ok(result) => self.reply(
+                envelope,
+                REMOTE_AI_SESSION_RESULT,
+                json!({ "op": op, "result": result }),
+            ),
+            Err(error) => self.send_error(envelope, &error),
+        }
     }
 }

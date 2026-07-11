@@ -16,10 +16,10 @@ impl RemoteHostRuntime {
             return;
         };
         let summary = crate::git::GitService::status(&project_path);
-        self.broadcast_resource_payload(
+        self.reply_resource_payload(
+            envelope,
             REMOTE_GIT_STATUS,
             REMOTE_RESOURCE_GIT_STATUS,
-            envelope.device_id.as_deref(),
             Some(&project_id),
             None,
             remote_git_status_payload(project_id.clone(), project_path, summary),
@@ -42,11 +42,13 @@ impl RemoteHostRuntime {
         match crate::git::wire::invoke(project_path.as_str(), op, &args) {
             Ok(_) => {
                 let summary = crate::git::GitService::status(project_path.as_str());
-                self.send(
+                self.reply_and_broadcast_resource_change(
+                    envelope,
                     REMOTE_GIT_STATUS,
-                    envelope.device_id.as_deref(),
+                    REMOTE_RESOURCE_GIT_STATUS,
+                    Some(&project_id),
                     None,
-                    remote_git_status_payload(project_id, project_path, summary),
+                    remote_git_status_payload(project_id.clone(), project_path, summary),
                 );
             }
             Err(error) => self.send_error(envelope, &error),
@@ -108,10 +110,9 @@ impl RemoteHostRuntime {
             crate::git::wire::read(&project_path, op, &args)
         };
         match result {
-            Ok(result) => self.send(
+            Ok(result) => self.reply(
+                envelope,
                 REMOTE_GIT_READ,
-                envelope.device_id.as_deref(),
-                None,
                 json!({ "op": op, "result": result }),
             ),
             Err(error) => self.send_error(envelope, &error),

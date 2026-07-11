@@ -71,28 +71,29 @@ impl MemoryService {
             });
         }
 
-        if let Some(existing) = existing.as_ref() {
-            if !force_llm && !project_profile_llm_refresh_due(existing, &generated) {
-                if !project_profile_fingerprints_match(
-                    &existing.source_fingerprint,
-                    &generated.source_fingerprint,
-                ) {
-                    let profile = self
-                        .upsert_project_profile(generated.clone())
-                        .ok()
-                        .unwrap_or(generated);
-                    return Some(MemoryProjectProfileRefreshResult {
-                        profile,
-                        used_llm: false,
-                        fallback_reason: Some("Repository fingerprint changed before LLM refresh was due; stored local scan.".to_string()),
-                    });
-                }
+        if let Some(existing) = existing.as_ref()
+            && !force_llm
+            && !project_profile_llm_refresh_due(existing, &generated)
+        {
+            if !project_profile_fingerprints_match(
+                &existing.source_fingerprint,
+                &generated.source_fingerprint,
+            ) {
+                let profile = self
+                    .upsert_project_profile(generated.clone())
+                    .ok()
+                    .unwrap_or(generated);
                 return Some(MemoryProjectProfileRefreshResult {
-                    profile: existing.clone(),
-                    used_llm: existing.source_fingerprint.starts_with("llm-v1:"),
-                    fallback_reason: None,
+                    profile,
+                    used_llm: false,
+                    fallback_reason: Some("Repository fingerprint changed before LLM refresh was due; stored local scan.".to_string()),
                 });
             }
+            return Some(MemoryProjectProfileRefreshResult {
+                profile: existing.clone(),
+                used_llm: existing.source_fingerprint.starts_with("llm-v1:"),
+                fallback_reason: None,
+            });
         }
 
         let Some(provider) = select_memory_provider(settings, None).cloned() else {

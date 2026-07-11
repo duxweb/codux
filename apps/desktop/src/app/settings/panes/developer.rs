@@ -54,20 +54,36 @@ pub(super) fn settings_developer_pane(
     .into_any_element()
 }
 
+pub(super) struct RuntimeToolBlockInput<'a> {
+    pub(super) label: String,
+    pub(super) tool_key: &'static str,
+    pub(super) model_key: &'static str,
+    pub(super) permission: &'a str,
+    pub(super) model: &'a str,
+    pub(super) placeholder: &'static str,
+    pub(super) include_permission: bool,
+    pub(super) include_codex_effort: bool,
+    pub(super) codex_effort: &'a str,
+    pub(super) language: &'a str,
+}
+
 pub(super) fn settings_runtime_tool_block(
-    label: String,
-    tool_key: &'static str,
-    model_key: &'static str,
-    permission: &str,
-    model: &str,
-    placeholder: &'static str,
-    include_permission: bool,
-    include_codex_effort: bool,
-    codex_effort: &str,
-    language: &str,
+    input: RuntimeToolBlockInput<'_>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
+    let RuntimeToolBlockInput {
+        label,
+        tool_key,
+        model_key,
+        permission,
+        model,
+        placeholder,
+        include_permission,
+        include_codex_effort,
+        codex_effort,
+        language,
+    } = input;
     let mut children = vec![
         div()
             .text_size(rems(0.875))

@@ -327,8 +327,7 @@ fn sanitize_provider_response(text: &str, preserve_formatting: bool) -> String {
 
 /// Collapse a provider response (or error) to a single trimmed line, capped.
 pub fn sanitize_response_line(text: &str) -> String {
-    text.replace('\r', " ")
-        .replace('\n', " ")
+    text.replace(['\r', '\n'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

@@ -199,6 +199,12 @@ impl CoduxApp {
         let visible_entries = self.project_editor_browse_entries.len()
             + usize::from(self.project_editor_browse_parent.is_some())
             + usize::from(self.file_picker_new_folder_active);
+        let entry_labels = FilePickerEntryLabels {
+            open: tr("common.open", "Open"),
+            choose: tr("common.choose", "Choose"),
+            rename: tr("common.rename", "Rename"),
+            delete: tr("common.delete", "Delete"),
+        };
         if let Some(parent) = self.project_editor_browse_parent.clone() {
             list = list.child(file_picker_entry_row(
                 RemoteBrowseEntry {
@@ -208,10 +214,7 @@ impl CoduxApp {
                 },
                 self.file_picker_active_path.as_deref() == Some(parent.as_str()),
                 mode,
-                tr("common.open", "Open"),
-                tr("common.choose", "Choose"),
-                tr("common.rename", "Rename"),
-                tr("common.delete", "Delete"),
+                &entry_labels,
                 cx,
                 false,
             ));
@@ -269,10 +272,7 @@ impl CoduxApp {
                     entry.clone(),
                     selected,
                     mode,
-                    tr("common.open", "Open"),
-                    tr("common.choose", "Choose"),
-                    tr("common.rename", "Rename"),
-                    tr("common.delete", "Delete"),
+                    &entry_labels,
                     cx,
                     true,
                 ));
@@ -565,17 +565,25 @@ fn file_picker_rename_row(
         .into_any_element()
 }
 
+struct FilePickerEntryLabels {
+    open: String,
+    choose: String,
+    rename: String,
+    delete: String,
+}
+
 fn file_picker_entry_row(
     entry: RemoteBrowseEntry,
     selected: bool,
     mode: FilePickerMode,
-    open_label: String,
-    choose_label: String,
-    rename_label: String,
-    delete_label: String,
+    labels: &FilePickerEntryLabels,
     cx: &mut Context<CoduxApp>,
     allow_mutations: bool,
 ) -> AnyElement {
+    let open_label = labels.open.clone();
+    let choose_label = labels.choose.clone();
+    let rename_label = labels.rename.clone();
+    let delete_label = labels.delete.clone();
     let id = format!("file-picker-{}", entry.path);
     let label = entry.name.clone();
     let is_dir = entry.is_dir;
@@ -1067,7 +1075,7 @@ fn project_editor_symbol_field(
                             let next = (id != "none").then(|| id.to_string());
                             app.set_project_editor_badge_symbol(next, window, cx);
                         }))
-                        .child(match symbol.icon.clone() {
+                        .child(match symbol.icon {
                             Some(icon) => Icon::new(icon)
                                 .size_4()
                                 .text_color(color(accent))

@@ -329,10 +329,10 @@ pub(super) fn append_passthrough_env(values: &mut HashMap<String, String>) {
 
 pub(super) fn append_env_keys(values: &mut HashMap<String, String>, keys: &[&str]) {
     for key in keys {
-        if let Ok(value) = std::env::var(key) {
-            if !value.is_empty() {
-                values.entry((*key).to_string()).or_insert(value);
-            }
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            values.entry((*key).to_string()).or_insert(value);
         }
     }
 }

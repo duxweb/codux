@@ -4,6 +4,8 @@ import '../../models/remote_models.dart';
 import '../../models/workspace_mode.dart';
 import '../../services/remote_project_controller.dart';
 import '../../services/remote_project_file_controller.dart';
+import '../../services/remote_protocol.dart';
+import '../../services/remote_resource_subscription_coordinator.dart';
 import '../../services/remote_runtime_store.dart';
 
 class HomeWorkspaceModeActions {
@@ -26,6 +28,7 @@ class HomeWorkspaceModeActions {
     required this.runtime,
     required this.projectController,
     required this.projectFileController,
+    required this.resourceSubscriptions,
   });
 
   final bool remoteProtocolReady;
@@ -37,7 +40,11 @@ class HomeWorkspaceModeActions {
   final String projectFilesPath;
   final VoidCallback releaseTerminalViewport;
   final void Function(String message) showToast;
-  final void Function(WorkspaceMode mode, {bool terminalReady, bool aiStatsLoading})
+  final void Function(
+    WorkspaceMode mode, {
+    bool terminalReady,
+    bool aiStatsLoading,
+  })
   setModeState;
   final void Function(String path, {required bool loading})
   setProjectFilesState;
@@ -49,6 +56,7 @@ class HomeWorkspaceModeActions {
   final RemoteRuntimeStore runtime;
   final RemoteProjectController projectController;
   final RemoteProjectFileController projectFileController;
+  final RemoteResourceSubscriptionCoordinator resourceSubscriptions;
 
   void requestAIStats(String selectProjectMessage) {
     final project = selectedProject;
@@ -60,29 +68,48 @@ class HomeWorkspaceModeActions {
       releaseTerminalViewport();
     }
     setModeState(WorkspaceMode.stats, aiStatsLoading: true);
-    sendEnvelope(
-      projectController.aiStatsEnvelope(
-        project,
-        worktreeId: selectedWorktreeId,
-      ),
+    final fallback = projectController.aiStatsEnvelope(
+      project,
+      worktreeId: selectedWorktreeId,
+    );
+    resourceSubscriptions.requestProject(
+      resource: RemoteResourceType.aiStats,
+      projectId: project.id,
+      fallback: fallback,
+      extraPayload: {
+        'worktreeId': selectedWorktreeId,
+        'projectPath': project.path,
+      },
     );
   }
 
   void refreshAIStats() {
     final project = selectedProject;
     if (!remoteProtocolReady || project == null) return;
-    sendEnvelope(
-      projectController.aiStatsEnvelope(
-        project,
-        worktreeId: selectedWorktreeId,
-      ),
+    final fallback = projectController.aiStatsEnvelope(
+      project,
+      worktreeId: selectedWorktreeId,
+    );
+    resourceSubscriptions.requestProject(
+      resource: RemoteResourceType.aiStats,
+      projectId: project.id,
+      fallback: fallback,
+      extraPayload: {
+        'worktreeId': selectedWorktreeId,
+        'projectPath': project.path,
+      },
     );
   }
 
   void requestGitStatus() {
     final project = selectedProject;
     if (!remoteProtocolReady || project == null) return;
-    sendEnvelope(projectController.gitStatusEnvelope(project));
+    resourceSubscriptions.requestProject(
+      resource: RemoteResourceType.gitStatus,
+      projectId: project.id,
+      fallback: projectController.gitStatusEnvelope(project),
+      extraPayload: {'projectPath': project.path},
+    );
   }
 
   /// Run a git mutation (stage/unstage/discard/commit/push/...). The host

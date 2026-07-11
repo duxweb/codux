@@ -7,7 +7,6 @@ import 'remote_terminal_output_controller.dart';
 import 'remote_terminal_subscription_controller.dart';
 
 typedef RemoteTerminalSend = bool Function(RelayEnvelope envelope);
-typedef RemoteTerminalLookup = TerminalInfo? Function(String sessionId);
 typedef RemoteTerminalRequestIdFactory = String Function(String scope);
 typedef RemoteTerminalViewportSizeProvider =
     ({int cols, int rows})? Function(String sessionId);
@@ -26,13 +25,11 @@ class RemoteTerminalBindingCoordinator {
   RemoteTerminalBindingCoordinator({
     required RemoteTerminalOutputController outputController,
     required RemoteTerminalSend send,
-    required RemoteTerminalLookup terminalById,
     required RemoteTerminalRequestIdFactory nextRequestId,
     RemoteTerminalViewportSizeProvider? viewportSize,
     int maxCharsLimit = TerminalBufferCapability.mobileMaxChars,
   }) : _outputController = outputController,
        _send = send,
-       _terminalById = terminalById,
        _nextRequestId = nextRequestId,
        _viewportSize = viewportSize,
        _maxCharsLimit = maxCharsLimit;
@@ -41,7 +38,6 @@ class RemoteTerminalBindingCoordinator {
   final RemoteTerminalSubscriptionController _subscriptions =
       RemoteTerminalSubscriptionController();
   final RemoteTerminalSend _send;
-  final RemoteTerminalLookup _terminalById;
   final RemoteTerminalRequestIdFactory _nextRequestId;
   final RemoteTerminalViewportSizeProvider? _viewportSize;
   final int _maxCharsLimit;
@@ -54,8 +50,9 @@ class RemoteTerminalBindingCoordinator {
 
   void markSessionBaselineStale(String sessionId) {
     final cleanSessionId = sessionId.trim();
-    if (cleanSessionId.isEmpty) return;
-    _baselineStaleSessionIds.add(cleanSessionId);
+    if (cleanSessionId.isNotEmpty) {
+      _baselineStaleSessionIds.add(cleanSessionId);
+    }
   }
 
   bool isSessionBaselineStale(String sessionId) {
@@ -64,81 +61,41 @@ class RemoteTerminalBindingCoordinator {
 
   void clearSessionBaselineStale(String? sessionId) {
     final cleanSessionId = sessionId?.trim();
-    if (cleanSessionId == null || cleanSessionId.isEmpty) return;
-    _baselineStaleSessionIds.remove(cleanSessionId);
+    if (cleanSessionId != null && cleanSessionId.isNotEmpty) {
+      _baselineStaleSessionIds.remove(cleanSessionId);
+    }
   }
 
-  bool replaceProjectSubscription({
+  void replaceProjectSubscription({
     required String projectId,
     required String reason,
-    required TerminalBufferCapability capability,
-    required String? activeSessionId,
-    bool baseline = true,
   }) {
-    final maxChars = capability.maxChars.clamp(1, _maxCharsLimit);
-    final requestId = _nextRequestId('project-$projectId');
-    final viewportSize = activeSessionId == null
-        ? null
-        : _viewportSize?.call(activeSessionId);
-    final plan = _subscriptions.replaceProject(
-      projectId,
-      baseline: baseline,
-      maxChars: maxChars,
-      chunkChars: capability.chunking ? capability.chunkChars : null,
-      requestId: requestId,
-      baselineSessionId: activeSessionId,
-      viewportCols: viewportSize?.cols,
-      viewportRows: viewportSize?.rows,
-    );
-    if (!plan.hasWork) return false;
+    final plan = _subscriptions.replaceProject(projectId);
+    if (!plan.hasWork) return;
 
     final unsubscribe = plan.unsubscribe;
     if (unsubscribe != null) {
       CoduxLog.debug(
         '[codux-flutter-terminal] unsubscribe project=${plan.unsubscribeProjectId ?? ''} reason=$reason',
       );
-      _send(unsubscribe);
+      if (!_send(unsubscribe)) {
+        return;
+      }
+      _subscriptions.markProjectUnsubscribed(plan.unsubscribeProjectId ?? '');
     }
 
     final subscribe = plan.subscribe;
-    var baselineRequested = false;
     if (subscribe != null) {
-      final currentTerminal = activeSessionId == null
-          ? null
-          : _terminalById(activeSessionId);
-      final activeBelongsToProject =
-          activeSessionId != null &&
-          activeSessionId.isNotEmpty &&
-          currentTerminal?.projectId == projectId;
-      final commit = _subscriptions.commitFor(plan);
-      if (commit.baseline && activeBelongsToProject) {
-        final started = _outputController.startBufferRequest(
-          activeSessionId,
-          requestId,
-          requireBaseline: true,
-          resetAssembler: true,
-        );
-        if (!started) return false;
-      }
-
       CoduxLog.debug(
         '[codux-flutter-terminal] subscribe project=${plan.subscribeProjectId ?? ''} reason=$reason',
       );
-      final sent = _send(subscribe);
-      if (sent) {
-        _subscriptions.markProjectSubscribed(
-          commit.projectId,
-          baselineRequested: commit.baseline,
-        );
-        baselineRequested = commit.baseline;
-      } else if (commit.baseline && activeBelongsToProject) {
-        _outputController.resetSessionTransient(activeSessionId);
+      if (_send(subscribe)) {
+        _subscriptions.markProjectSubscribed(plan.subscribeProjectId ?? '');
       }
     }
-    return baselineRequested;
   }
 
-  bool subscribeSessionBaseline({
+  bool subscribeSession({
     required String sessionId,
     required String reason,
     required TerminalBufferCapability capability,
@@ -147,15 +104,19 @@ class RemoteTerminalBindingCoordinator {
   }) {
     final cleanSessionId = sessionId.trim();
     if (cleanSessionId.isEmpty) return false;
-    final requestId = _nextRequestId('session-$cleanSessionId');
+    final requestId = baseline
+        ? _nextRequestId('session-$cleanSessionId')
+        : null;
     final maxChars = capability.maxChars.clamp(1, _maxCharsLimit);
-    final viewportSize = _viewportSize?.call(cleanSessionId);
+    final viewportSize = baseline ? _viewportSize?.call(cleanSessionId) : null;
     final envelope = remoteResourceSubscribeEnvelope(
       resource: RemoteResourceType.terminals,
       sessionId: cleanSessionId,
       baseline: baseline,
-      maxChars: maxChars,
-      chunkChars: capability.chunking ? capability.chunkChars : null,
+      maxChars: baseline ? maxChars : null,
+      chunkChars: baseline && capability.chunking
+          ? capability.chunkChars
+          : null,
       requestId: requestId,
       viewportCols: viewportSize?.cols,
       viewportRows: viewportSize?.rows,
@@ -163,7 +124,7 @@ class RemoteTerminalBindingCoordinator {
     if (baseline) {
       final started = _outputController.startBufferRequest(
         cleanSessionId,
-        requestId,
+        requestId!,
         requireBaseline: true,
         resetAssembler: true,
         replaceActive: replaceActive,
@@ -174,70 +135,56 @@ class RemoteTerminalBindingCoordinator {
       '[codux-flutter-terminal] subscribe session=$cleanSessionId reason=$reason baseline=$baseline',
     );
     final sent = _send(envelope);
-    if (!sent && baseline) {
+    if (sent) {
+      _subscriptions.markSessionSubscribed(cleanSessionId);
+    } else if (baseline) {
       _outputController.resetSessionTransient(cleanSessionId);
     }
-    return sent && baseline;
+    return sent;
   }
 
-  void resubscribeVisibleTerminal({
+  void unsubscribeSession(String sessionId, {required String reason}) {
+    final cleanSessionId = sessionId.trim();
+    if (cleanSessionId.isEmpty ||
+        !_subscriptions.isSessionSubscribed(cleanSessionId)) {
+      return;
+    }
+    CoduxLog.debug(
+      '[codux-flutter-terminal] unsubscribe session=$cleanSessionId reason=$reason',
+    );
+    final sent = _send(
+      remoteResourceUnsubscribeEnvelope(
+        resource: RemoteResourceType.terminals,
+        sessionId: cleanSessionId,
+      ),
+    );
+    if (sent) {
+      _subscriptions.removeSession(cleanSessionId);
+      _baselineStaleSessionIds.remove(cleanSessionId);
+    }
+  }
+
+  bool resubscribeVisibleTerminal({
     required bool transportConnected,
     required bool protocolReady,
     required String? activeSessionId,
     required String? selectedProjectId,
     required TerminalBufferCapability capability,
     required String reason,
-    required void Function(String sessionId, bool baselineRequested)
-    ensureBoundBaseline,
   }) {
-    if (!transportConnected || !protocolReady) return;
-    final sessionId = activeSessionId;
-    if (sessionId != null && sessionId.isNotEmpty) {
-      // Cache is only an instant paint source. Whenever the visible terminal
-      // is rebound after foreground/reconnect/path changes, refresh the host
-      // baseline so scrollback and native replay are authoritative even if
-      // the desktop window has not repainted.
-      final requested = subscribeSessionBaseline(
-        sessionId: sessionId,
-        reason: reason,
-        capability: capability,
-        baseline: true,
-      );
-      ensureBoundBaseline(sessionId, requested);
-      return;
+    if (!transportConnected || !protocolReady) return false;
+    final projectId = selectedProjectId?.trim();
+    if (projectId != null && projectId.isNotEmpty) {
+      replaceProjectSubscription(projectId: projectId, reason: reason);
     }
-    final projectId = selectedProjectId;
-    if (projectId == null || projectId.isEmpty) return;
-    _subscriptions.markProjectBaselineStale(projectId);
-    replaceProjectSubscription(
-      projectId: projectId,
+    final sessionId = activeSessionId?.trim();
+    if (sessionId == null || sessionId.isEmpty) return false;
+    return subscribeSession(
+      sessionId: sessionId,
       reason: reason,
       capability: capability,
-      activeSessionId: activeSessionId,
-    );
-  }
-
-  void ensureBoundTerminalHasBaseline({
-    required String sessionId,
-    required bool baselineRequested,
-    required String reason,
-    required TerminalBufferCapability capability,
-  }) {
-    if (baselineRequested || _outputController.hasCachedOutput(sessionId)) {
-      CoduxLog.debug(
-        '[codux-flutter-terminal] baseline satisfied session=$sessionId reason=$reason requested=$baselineRequested',
-      );
-      return;
-    }
-    final terminal = _terminalById(sessionId);
-    if (terminal == null) return;
-    final projectId = terminal.projectId;
-    _subscriptions.markProjectBaselineStale(projectId);
-    replaceProjectSubscription(
-      projectId: projectId,
-      reason: 'empty-pool-$reason',
-      capability: capability,
-      activeSessionId: sessionId,
+      baseline: true,
+      replaceActive: true,
     );
   }
 
@@ -249,37 +196,25 @@ class RemoteTerminalBindingCoordinator {
     required TerminalBufferCapability capability,
     required bool restored,
   }) {
-    var baselineRequested = false;
-    final hasCachedOutput =
+    final projectId = selectedProjectId?.trim();
+    if (projectId != null && projectId.isNotEmpty) {
+      replaceProjectSubscription(projectId: projectId, reason: 'bind-$reason');
+    }
+    final hasUsableCache =
         _outputController.hasCachedOutput(bindSessionId) &&
         !_outputController.hasSequenceGap(bindSessionId) &&
         !_baselineStaleSessionIds.contains(bindSessionId);
-    // A gap-free cached session switched back to must NOT reload its baseline:
-    // replaying the trimmed raw history rebuilds the screen from a truncated,
-    // mid-escape byte window, which for a repainting TUI (codex/claude in the
-    // normal buffer) paints residue, black rows, and stray escape fragments
-    // (e.g. `5;67;78m`) into scrollback. The viewport re-claim/resize on rebind
-    // already pushes a fresh host keyframe, so a gap-free switch stays current
-    // without the reload. Only reload when there's no usable cache, a real
-    // sequence gap, or the plan explicitly asks for a full buffer.
-    final needsFullBuffer = !hasCachedOutput || plan.bindFullBuffer;
-    if (selectedProjectId != null) {
-      baselineRequested = replaceProjectSubscription(
-        projectId: selectedProjectId,
-        reason: 'bind-$reason',
-        capability: capability,
-        activeSessionId: bindSessionId,
-        baseline: needsFullBuffer,
-      );
-    }
-    if (needsFullBuffer && !baselineRequested) {
+    final needsBaseline = !hasUsableCache || plan.bindFullBuffer;
+    if (needsBaseline) {
       _outputController.bindSession(bindSessionId, requireBaseline: true);
-      baselineRequested = subscribeSessionBaseline(
-        sessionId: bindSessionId,
-        reason: 'bind-$reason',
-        capability: capability,
-      );
     }
+    final sent = subscribeSession(
+      sessionId: bindSessionId,
+      reason: 'bind-$reason',
+      capability: capability,
+      baseline: needsBaseline,
+    );
+    final baselineRequested = needsBaseline && sent;
     if (baselineRequested) {
       _baselineStaleSessionIds.remove(bindSessionId);
     }

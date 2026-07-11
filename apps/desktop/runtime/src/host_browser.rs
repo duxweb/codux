@@ -307,17 +307,15 @@ where
             .write_all(format!("{name}: {value}\r\n").as_bytes())
             .await?;
     }
-    if !has_host {
-        if let Some(host) = target_url.host_str() {
-            let host_header = if let Some(port) = target_url.port() {
-                format!("{host}:{port}")
-            } else {
-                host.to_string()
-            };
-            writer
-                .write_all(format!("Host: {host_header}\r\n").as_bytes())
-                .await?;
-        }
+    if !has_host && let Some(host) = target_url.host_str() {
+        let host_header = if let Some(port) = target_url.port() {
+            format!("{host}:{port}")
+        } else {
+            host.to_string()
+        };
+        writer
+            .write_all(format!("Host: {host_header}\r\n").as_bytes())
+            .await?;
     }
     writer.write_all(b"\r\n").await
 }

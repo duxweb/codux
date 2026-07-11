@@ -1,4 +1,4 @@
-use super::app_select::{CoduxSelectOption, codux_select};
+use super::app_select::{CoduxSelectConfig, CoduxSelectOption, codux_select};
 use super::*;
 use gpui_component::input::{Input, InputEvent, InputState};
 
@@ -114,7 +114,7 @@ fn worktree_branch_select(
     label: String,
     value: &str,
     options: Vec<String>,
-    window: &mut Window,
+    _window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let select_id = "worktree-branch-select";
@@ -129,14 +129,15 @@ fn worktree_branch_select(
         .gap(px(6.0))
         .child(worktree_creator_label(label))
         .child(codux_select(
-            select_id,
-            value,
-            options,
-            SharedString::from("Choose"),
-            relative(1.0),
-            px(260.0),
-            false,
-            window,
+            CoduxSelectConfig {
+                id: select_id.to_string(),
+                value: value.to_string(),
+                options,
+                placeholder: SharedString::from("Choose"),
+                width: relative(1.0).into(),
+                menu_width: px(260.0),
+                disabled: false,
+            },
             cx,
             |app, value, _window, cx| {
                 app.worktree_creator_base_branch = value;

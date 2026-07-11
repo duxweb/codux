@@ -120,10 +120,10 @@ impl CoduxApp {
         ) {
             for file in files {
                 rows.push(file.relative_path.clone());
-                if expanded.contains(&file.relative_path) {
-                    if let Some(child_files) = children.get(&file.relative_path) {
-                        push_visible(rows, child_files, children, expanded);
-                    }
+                if expanded.contains(&file.relative_path)
+                    && let Some(child_files) = children.get(&file.relative_path)
+                {
+                    push_visible(rows, child_files, children, expanded);
                 }
             }
         }

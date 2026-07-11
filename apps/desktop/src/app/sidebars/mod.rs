@@ -8,13 +8,14 @@ mod server_info;
 mod ssh;
 
 use ai::ai_stats_sidebar;
-pub(in crate::app) use ai::memory_manager_window_workspace;
+pub(in crate::app) use ai::{MemoryManagerWindowInput, memory_manager_window_workspace};
 pub(in crate::app) use db::db_section;
 pub(in crate::app) use files::{
-    ClipboardFilePayload, FileSidebarKeyAction, clipboard_file_payload, file_tree_rows,
+    ClipboardFilePayload, FileSidebarKeyAction, FileTreeRowsInput, clipboard_file_payload,
+    file_tree_rows,
 };
 pub(in crate::app) use files::{FileTreeRow, file_section};
-pub(in crate::app) use git::git_section;
+pub(in crate::app) use git::{GitSectionInput, git_section};
 pub(in crate::app) use ssh::ssh_section;
 
 pub(in crate::app) use files::{
@@ -31,7 +32,7 @@ pub(in crate::app) use server_info::ServerInfoSidebarView;
 pub(super) enum AssistantPanel {
     AIStats,
     ServerInfo,
-    SSH,
+    Ssh,
     DB,
     FileManager,
     Git,
@@ -306,19 +307,20 @@ impl Render for GitSidebarView {
             let files_panel_view = app.git_files_panel_view(cx);
             let history_panel_view = app.git_history_panel_view(cx);
             git_section(
-                &app.state.git,
-                app.selected_git_branch.as_deref(),
-                app.state
-                    .selected_project
-                    .as_ref()
-                    .and_then(|project| project.git_default_push_remote_name.as_deref()),
-                &app.git_clone_remote_url,
-                &app.state.settings.language,
-                app.git_running_operation.as_ref(),
-                &app.git_commit_message,
-                app.git_commit_message_revision,
-                files_panel_view,
-                history_panel_view,
+                GitSectionInput {
+                    git: &app.state.git,
+                    default_push_remote: app
+                        .state
+                        .selected_project
+                        .as_ref()
+                        .and_then(|project| project.git_default_push_remote_name.as_deref()),
+                    language: &app.state.settings.language,
+                    running_operation: app.git_running_operation.as_ref(),
+                    commit_message: &app.git_commit_message,
+                    commit_message_revision: app.git_commit_message_revision,
+                    files_panel_view,
+                    history_panel_view,
+                },
                 window,
                 cx,
             )
@@ -615,26 +617,20 @@ impl CoduxApp {
             self.file_name_draft_value.clone(),
             self.file_name_draft_select_all,
         ));
-        let rows = Rc::new(file_tree_rows(
-            &self.state.files,
-            &self.file_tree_children,
-            &self.file_tree_expanded_dirs,
-            self.selected_file_entry.as_deref(),
-            &self.selected_file_entries,
-            self.file_name_draft_kind,
-            self.file_name_draft_target.as_deref(),
-            self.file_name_draft_parent.as_deref(),
-            &self.file_name_draft_value,
-            0,
-        ));
+        let rows = Rc::new(file_tree_rows(FileTreeRowsInput {
+            files: &self.state.files,
+            tree_children: &self.file_tree_children,
+            expanded_dirs: &self.file_tree_expanded_dirs,
+            selected_entry: self.selected_file_entry.as_deref(),
+            selected_entries: &self.selected_file_entries,
+            draft_kind: self.file_name_draft_kind,
+            draft_target: self.file_name_draft_target.as_deref(),
+            draft_parent: self.file_name_draft_parent.as_deref(),
+            draft_value: &self.file_name_draft_value,
+            depth: 0,
+        }));
 
         FileSidebarSnapshot {
-            project_name: self
-                .state
-                .selected_project
-                .as_ref()
-                .map(|project| project.name.clone())
-                .unwrap_or_else(|| "Project".to_string()),
             files_empty: self.state.files.is_empty(),
             rows,
             language: self.state.settings.language.clone(),
@@ -659,7 +655,6 @@ impl CoduxApp {
 
 #[derive(Clone)]
 pub(in crate::app) struct FileSidebarSnapshot {
-    project_name: String,
     files_empty: bool,
     rows: Rc<Vec<FileTreeRow>>,
     language: String,
@@ -713,16 +708,8 @@ impl Render for FileSidebarView {
         file_section(
             self.app_entity.clone(),
             self.focus_handle.clone(),
-            &snapshot.project_name,
-            snapshot.files_empty,
-            snapshot.draft_kind,
-            snapshot.draft_parent.as_deref(),
-            &snapshot.draft_value,
-            snapshot.draft_select_all,
-            snapshot.rows.clone(),
+            snapshot,
             self.scroll_handle.clone(),
-            &snapshot.language,
-            snapshot.refreshing,
             window,
             cx,
         )

@@ -1,16 +1,30 @@
 use super::*;
 
+pub(super) struct PetDexVirtualRowsInput<'a> {
+    pub(super) bundled_items: Vec<PetCatalogItem>,
+    pub(super) unlocked_species: &'a HashSet<String>,
+    pub(super) custom_pets: Vec<PetCustomPet>,
+    pub(super) legacy_records: Vec<PetLegacyRecord>,
+    pub(super) runtime_asset_root: &'a Path,
+    pub(super) support_dir: &'a Path,
+    pub(super) sprite_paths: &'a HashMap<String, ImageSource>,
+    pub(super) language: &'a str,
+}
+
 pub(super) fn pet_dex_virtual_rows(
-    bundled_items: Vec<PetCatalogItem>,
-    unlocked_species: &HashSet<String>,
-    custom_pets: Vec<PetCustomPet>,
-    legacy_records: Vec<PetLegacyRecord>,
-    runtime_asset_root: &Path,
-    support_dir: &Path,
-    sprite_paths: &HashMap<String, ImageSource>,
-    language: &str,
+    input: PetDexVirtualRowsInput<'_>,
     window: &mut Window,
 ) -> Vec<PetDexVirtualRow> {
+    let PetDexVirtualRowsInput {
+        bundled_items,
+        unlocked_species,
+        custom_pets,
+        legacy_records,
+        runtime_asset_root,
+        support_dir,
+        sprite_paths,
+        language,
+    } = input;
     let columns = pet_dex_columns(window);
     let mut rows = Vec::new();
     let unlocked_count = bundled_items
@@ -106,7 +120,7 @@ pub(super) fn pet_dex_virtual_rows(
         for record in legacy_records.into_iter().rev() {
             let sprite_path = legacy_pet_sprite_path(runtime_asset_root, support_dir, &record);
             rows.push(PetDexVirtualRow::LegacyRow {
-                record,
+                record: Box::new(record),
                 sprite_path,
                 language: language.to_string(),
             });

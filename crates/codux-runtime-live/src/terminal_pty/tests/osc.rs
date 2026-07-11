@@ -106,7 +106,7 @@ fn oversized_unterminated_osc_is_dropped_and_parser_recovers() {
     let (dir, bridge, terminal_id, mut watcher) = watcher_fixture("terminal-osc-oversized");
 
     let mut oversized = b"\x1b]9;".to_vec();
-    oversized.extend(std::iter::repeat(b'x').take(2048));
+    oversized.extend(std::iter::repeat_n(b'x', 2048));
     push_output(&mut watcher, &terminal_id, &oversized);
     push_output(&mut watcher, &terminal_id, b"\x1b]9;4;3\x07");
 

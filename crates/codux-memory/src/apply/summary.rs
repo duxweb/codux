@@ -1,4 +1,4 @@
-use super::{helpers::*, types::StoredMemorySummary};
+use super::{MemorySummaryUpsert, helpers::*, types::StoredMemorySummary};
 use crate::extraction::MemoryScope;
 use crate::{MemoryService, now_seconds};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -8,13 +8,16 @@ impl MemoryService {
     pub(crate) fn upsert_summary(
         &self,
         conn: &Connection,
-        scope: MemoryScope,
-        project_id: Option<&str>,
-        tool_id: Option<&str>,
-        content: &str,
-        source_entry_ids: &[String],
-        max_versions: i32,
+        input: MemorySummaryUpsert<'_>,
     ) -> Result<StoredMemorySummary, String> {
+        let MemorySummaryUpsert {
+            scope,
+            project_id,
+            tool_id,
+            content,
+            source_entry_ids,
+            max_versions,
+        } = input;
         let content = content.trim();
         if content.is_empty() {
             return Err("summary content cannot be empty".to_string());

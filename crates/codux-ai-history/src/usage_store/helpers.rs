@@ -134,12 +134,12 @@ fn active_duration_by_session_id(events: &[HistoryEvent]) -> HashMap<String, i64
         for event in events {
             match event.role {
                 HistoryRole::User => {
-                    if let (Some(start), Some(end)) = (turn_start, turn_end) {
-                        if end > start {
-                            active_seconds = active_seconds
-                                .saturating_add((end - start).max(0.0).round() as i64)
-                                .min(wall_clock_seconds);
-                        }
+                    if let (Some(start), Some(end)) = (turn_start, turn_end)
+                        && end > start
+                    {
+                        active_seconds = active_seconds
+                            .saturating_add((end - start).max(0.0).round() as i64)
+                            .min(wall_clock_seconds);
                     }
                     turn_start = None;
                     turn_end = None;
@@ -156,12 +156,12 @@ fn active_duration_by_session_id(events: &[HistoryEvent]) -> HashMap<String, i64
                 }
             }
         }
-        if let (Some(start), Some(end)) = (turn_start, turn_end) {
-            if end > start {
-                active_seconds = active_seconds
-                    .saturating_add((end - start).max(0.0).round() as i64)
-                    .min(wall_clock_seconds);
-            }
+        if let (Some(start), Some(end)) = (turn_start, turn_end)
+            && end > start
+        {
+            active_seconds = active_seconds
+                .saturating_add((end - start).max(0.0).round() as i64)
+                .min(wall_clock_seconds);
         }
         result.insert(session_id, active_seconds.min(wall_clock_seconds));
     }

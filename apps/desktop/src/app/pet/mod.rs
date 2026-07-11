@@ -10,7 +10,7 @@ use gpui_component::{
 };
 use std::{ops::Range, rc::Rc, time::Duration};
 
-use crate::app::workspace_pet_widgets::workspace_pet_install_form;
+use crate::app::workspace_pet_widgets::{WorkspacePetInstallInput, workspace_pet_install_form};
 
 mod catalog;
 mod claim;

@@ -88,13 +88,15 @@ impl TerminalPane {
         let view_started_at = Instant::now();
         let view = cx.new(|cx| {
             TerminalView::new(
-                writer,
-                output_rx,
-                session_event_rx,
-                session_event_wake_rx,
-                session.clone(),
-                terminal_config,
-                None,
+                TerminalViewInput {
+                    stdin_writer: writer,
+                    bytes_rx: output_rx,
+                    session_event_rx,
+                    session_event_wake_rx,
+                    session: session.clone(),
+                    config: terminal_config,
+                    restored_output: None,
+                },
                 cx,
             )
         });
@@ -148,13 +150,15 @@ impl TerminalPane {
         let view_started_at = Instant::now();
         let view = cx.new(|cx| {
             TerminalView::new(
-                writer,
-                output_rx,
-                session_event_rx,
-                session_event_wake_rx,
-                session.clone(),
-                terminal_config,
-                restored_output,
+                TerminalViewInput {
+                    stdin_writer: writer,
+                    bytes_rx: output_rx,
+                    session_event_rx,
+                    session_event_wake_rx,
+                    session: session.clone(),
+                    config: terminal_config,
+                    restored_output,
+                },
                 cx,
             )
         });
@@ -282,24 +286,8 @@ impl TerminalPane {
         if let Some(terminal_id) = pre_registered_terminal_id.as_deref() {
             register_remote_output(&controller, terminal_id, &pending.output_tx);
         }
-        // Forward the OSC 10/11 seed colors so the HOST spawn env carries them;
-        // without this a remote ConPTY answers black and TUIs go dark-theme.
-        let remote_env = remote_config.env.as_ref();
-        let osc_fg = remote_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_FG")).cloned();
-        let osc_bg = remote_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_BG")).cloned();
         let session_id = controller
-            .open_terminal(
-                remote_config.cwd.as_deref(),
-                remote_config.command.as_deref(),
-                remote_config.cols,
-                remote_config.rows,
-                remote_config.root_project_id.as_deref(),
-                remote_config.worktree_id.as_deref(),
-                remote_config.title.as_deref(),
-                remote_config.terminal_id.as_deref(),
-                osc_fg.as_deref(),
-                osc_bg.as_deref(),
-            )
+            .open_terminal(&remote_config)
             .map_err(anyhow::Error::msg)?;
         // Register the live-session forwarder BEFORE dropping the stale
         // pre-registration. If the host assigned a different id than we proposed,
@@ -502,21 +490,7 @@ fn restore_remote_session(
     if let Some(terminal_id) = pre_registered_terminal_id {
         register_remote_output(controller, terminal_id, output_tx);
     }
-    let remote_env = config.env.as_ref();
-    let osc_fg = remote_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_FG"));
-    let osc_bg = remote_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_BG"));
-    let result = controller.open_terminal(
-        config.cwd.as_deref(),
-        config.command.as_deref(),
-        config.cols,
-        config.rows,
-        config.root_project_id.as_deref(),
-        config.worktree_id.as_deref(),
-        config.title.as_deref(),
-        config.terminal_id.as_deref(),
-        osc_fg.map(String::as_str),
-        osc_bg.map(String::as_str),
-    );
+    let result = controller.open_terminal(config);
     if result.is_err()
         && let Some(terminal_id) = pre_registered_terminal_id
     {

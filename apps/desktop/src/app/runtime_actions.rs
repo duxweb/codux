@@ -79,9 +79,9 @@ impl CoduxApp {
                 timer.timer(Duration::from_millis(200)).await;
                 ticks = ticks.wrapping_add(1);
                 performance_ticks_until_refresh = performance_ticks_until_refresh.saturating_sub(1);
-                let include_slow_tick = ticks % 5 == 0;
-                let include_project_activity_tick = ticks % 75 == 0;
-                let include_runtime_refresh_tick = ticks % 150 == 0;
+                let include_slow_tick = ticks.is_multiple_of(5);
+                let include_project_activity_tick = ticks.is_multiple_of(75);
+                let include_runtime_refresh_tick = ticks.is_multiple_of(150);
                 let runtime_queue_status = codux_runtime::async_runtime::blocking_queue_status();
                 let runtime_queue_busy =
                     runtime_queue_status.queued > 0 || runtime_queue_status.running > 0;
@@ -204,7 +204,7 @@ impl CoduxApp {
                             runtime_service.summarize_ai_runtime_state_snapshot(&snapshot);
                         Ok((tool_permissions, snapshot, summary))
                     }
-                    Err(error) => Err((tool_permissions, error)),
+                    Err(error) => Err(Box::new((tool_permissions, error))),
                 };
                 runtime_service.runtime_trace_frontend(
                     "startup",
@@ -234,7 +234,8 @@ impl CoduxApp {
                             }
                         );
                     }
-                    Ok(Err((tool_permissions, error))) => {
+                    Ok(Err(error)) => {
+                        let (tool_permissions, error) = *error;
                         app.state.tool_permissions = tool_permissions;
                         app.status_message =
                             format!("runtime ready with AI runtime error: {error}");

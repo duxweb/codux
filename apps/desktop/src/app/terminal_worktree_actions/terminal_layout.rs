@@ -767,13 +767,15 @@ impl CoduxApp {
         let mut pending: Vec<(TerminalPtyConfig, crate::terminal::PendingTerminalAttach)> =
             Vec::new();
         match spawn_terminal_tabs(
-            &restore_plan,
-            self.terminal_manager.clone(),
-            launch_context.as_ref(),
-            &base_pty_config,
-            terminal_config,
-            &self.terminal_pane_registry,
-            Some(&mut pending),
+            SpawnTerminalTabsInput {
+                plan: &restore_plan,
+                terminal_manager: self.terminal_manager.clone(),
+                launch_context: launch_context.as_ref(),
+                base_pty_config: &base_pty_config,
+                terminal_config,
+                terminal_pane_registry: &self.terminal_pane_registry,
+                pending_out: Some(&mut pending),
+            },
             cx,
         ) {
             Ok((terminals, active_terminal_id, next_terminal_index)) => {

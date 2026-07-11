@@ -46,11 +46,10 @@ impl RuntimeService {
         // Mirror terminal status to connected controllers so a viewer of this
         // host renders the same loading/waiting/completed dots.
         for event in &events {
-            if let AIRuntimeSupervisorEvent::TerminalStatus { status } = event {
-                if let Ok(payload) = serde_json::to_value(status) {
+            if let AIRuntimeSupervisorEvent::TerminalStatus { status } = event
+                && let Ok(payload) = serde_json::to_value(status) {
                     self.remote_host.broadcast_terminal_status(payload);
                 }
-            }
         }
         let memory = events
             .iter()

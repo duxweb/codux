@@ -219,7 +219,7 @@ pub(super) fn settings_text_input(
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> AnyElement {
-    settings_text_input_sized(id, value, placeholder, masked, false, window, cx, action)
+    settings_text_input_sized(id, value, placeholder, masked, window, cx, action)
 }
 
 pub(super) fn settings_text_input_sized(
@@ -227,7 +227,6 @@ pub(super) fn settings_text_input_sized(
     value: impl Into<String>,
     placeholder: impl Into<String>,
     masked: bool,
-    full_width: bool,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
@@ -254,8 +253,8 @@ pub(super) fn settings_text_input_sized(
     .detach();
 
     div()
-        .when(full_width, |this| this.w_full().min_w_0())
-        .when(!full_width, |this| this.w_full().min_w_0())
+        .w_full()
+        .min_w_0()
         .child(
             Input::new(&state)
                 .with_size(gpui_component::Size::Medium)
@@ -346,33 +345,34 @@ pub(super) fn settings_select_impl(
     language: &str,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> AnyElement {
-    settings_select_state(id, value, options, false, window, cx, language, action)
+    settings_select_state(id, value, options, (false, language), window, cx, action)
 }
 
 pub(super) fn settings_select_state(
     id: impl Into<String>,
     value: &str,
     options: Vec<(String, SharedString)>,
-    disabled: bool,
-    window: &mut Window,
+    state: (bool, &str),
+    _window: &mut Window,
     cx: &mut Context<CoduxApp>,
-    language: &str,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> AnyElement {
+    let (disabled, language) = state;
     let select_id = format!("settings-select-{}", id.into());
     let options = options
         .into_iter()
         .map(|(value, label)| CoduxSelectOption::new(value, label))
         .collect();
     codux_select(
-        select_id.as_str(),
-        value,
-        options,
-        settings_text(&language, "common.choose", "Choose"),
-        relative(1.0),
-        px(220.0),
-        disabled,
-        window,
+        CoduxSelectConfig {
+            id: select_id,
+            value: value.to_string(),
+            options,
+            placeholder: settings_text(language, "common.choose", "Choose").into(),
+            width: relative(1.0).into(),
+            menu_width: px(220.0),
+            disabled,
+        },
         cx,
         action,
     )

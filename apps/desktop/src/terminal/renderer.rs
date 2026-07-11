@@ -11,6 +11,25 @@ struct TerminalRenderer {
     cache: Arc<Mutex<TerminalRenderCache>>,
 }
 
+struct TerminalPaintRequest<'a> {
+    bounds: Bounds<Pixels>,
+    padding: Edges<Pixels>,
+    content: &'a TerminalContent,
+    selection: Option<SelectionRange>,
+    hover_link: Option<&'a TerminalLink>,
+    cursor_visible: bool,
+    cursor_focused: bool,
+}
+
+struct TerminalSelectionPaint {
+    line: i32,
+    row: usize,
+    origin: Point<Pixels>,
+    columns: usize,
+    content_right: Pixels,
+    selection: SelectionRange,
+}
+
 // Bundled with the app (runtime-assets/fonts/nerd-font-symbols); covers the
 // Nerd Font PUA icons (starship, eza …) that regular families lack.
 const TERMINAL_SYMBOL_FONT_FAMILY: &str = "Symbols Nerd Font Mono";
@@ -142,15 +161,18 @@ impl TerminalRenderer {
 
     fn prepare_paint(
         &self,
-        bounds: Bounds<Pixels>,
-        padding: Edges<Pixels>,
-        content: &TerminalContent,
-        selection: Option<SelectionRange>,
-        hover_link: Option<&TerminalLink>,
-        cursor_visible: bool,
-        cursor_focused: bool,
+        request: TerminalPaintRequest<'_>,
         window: &mut Window,
     ) -> TerminalPaintState {
+        let TerminalPaintRequest {
+            bounds,
+            padding,
+            content,
+            selection,
+            hover_link,
+            cursor_visible,
+            cursor_focused,
+        } = request;
         let default_bg = self.palette.background();
         let origin = Point {
             x: bounds.origin.x + padding.left,
@@ -218,12 +240,14 @@ impl TerminalRenderer {
             for row in visible_rows.clone() {
                 let line = content.line_for_display_row(row);
                 self.prepare_selection(
-                    line,
-                    row,
-                    origin,
-                    content.columns,
-                    content_right,
-                    selection,
+                    TerminalSelectionPaint {
+                        line,
+                        row,
+                        origin,
+                        columns: content.columns,
+                        content_right,
+                        selection,
+                    },
                     &mut background_rects,
                 );
             }
@@ -659,14 +683,17 @@ impl TerminalRenderer {
 
     fn prepare_selection(
         &self,
-        line: i32,
-        row: usize,
-        origin: Point<Pixels>,
-        columns: usize,
-        content_right: Pixels,
-        selection: SelectionRange,
+        request: TerminalSelectionPaint,
         background_rects: &mut Vec<TerminalBackgroundRect>,
     ) {
+        let TerminalSelectionPaint {
+            line,
+            row,
+            origin,
+            columns,
+            content_right,
+            selection,
+        } = request;
         if line < selection.start.line || line > selection.end.line {
             return;
         }

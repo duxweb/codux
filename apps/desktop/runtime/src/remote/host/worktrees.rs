@@ -6,12 +6,7 @@ impl RemoteHostRuntime {
             self.send_error(envelope, "Project id and path are required.");
             return;
         };
-        self.send_worktree_summary(
-            REMOTE_WORKTREE_LIST,
-            envelope.device_id.as_deref(),
-            &project_id,
-            &project_path,
-        );
+        self.reply_worktree_summary(envelope, REMOTE_WORKTREE_LIST, &project_id, &project_path);
     }
 
     pub(super) fn handle_worktree_select(self: &Arc<Self>, envelope: &RemoteEnvelope) {
@@ -35,21 +30,18 @@ impl RemoteHostRuntime {
         }
         summary.selected_worktree_id = Some(worktree_id.to_string());
         self.set_remote_project_scope(envelope.device_id.as_deref(), &project_id);
-        if let Ok(scope) = self.remote_project_scope_for_envelope(envelope, Some(&project_id)) {
-            if let Err(error) =
-                self.ensure_remote_project_terminal(&scope, envelope.device_id.as_deref())
-            {
-                self.send_error(envelope, &error);
-                return;
-            }
+        if let Ok(scope) = self.remote_project_scope_for_envelope(envelope, Some(&project_id))
+            && let Err(error) = self.ensure_remote_project_terminal(&scope)
+        {
+            self.send_error(envelope, &error);
+            return;
         }
-        self.send(
+        self.reply(
+            envelope,
             REMOTE_WORKTREE_UPDATED,
-            envelope.device_id.as_deref(),
-            None,
             remote_worktree_summary_payload(&project_id, summary),
         );
-        self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+        self.send_project_and_terminal_snapshots(envelope.device_id.as_deref());
     }
 
     pub(super) fn handle_worktree_create(&self, envelope: &RemoteEnvelope) {
@@ -79,13 +71,15 @@ impl RemoteHostRuntime {
         match WorktreeService::new(self.support_dir.clone()).create_from_request(request) {
             Ok(baseline) => {
                 let git = crate::git::GitService::status(&project_path);
-                self.broadcast_worktree_update(
+                self.reply_and_broadcast_resource_change(
+                    envelope,
                     REMOTE_WORKTREE_UPDATED,
-                    envelope.device_id.as_deref(),
-                    &project_id,
+                    REMOTE_RESOURCE_WORKTREES,
+                    Some(&project_id),
+                    None,
                     remote_worktree_update_payload(project_id.clone(), baseline, git),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.send_project_and_terminal_snapshots(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -118,13 +112,15 @@ impl RemoteHostRuntime {
         match WorktreeService::new(self.support_dir.clone()).merge_from_request(request) {
             Ok(baseline) => {
                 let git = crate::git::GitService::status(&project_path);
-                self.broadcast_worktree_update(
+                self.reply_and_broadcast_resource_change(
+                    envelope,
                     REMOTE_WORKTREE_UPDATED,
-                    envelope.device_id.as_deref(),
-                    &project_id,
+                    REMOTE_RESOURCE_WORKTREES,
+                    Some(&project_id),
+                    None,
                     remote_worktree_update_payload(project_id.clone(), baseline, git),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.send_project_and_terminal_snapshots(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -153,13 +149,15 @@ impl RemoteHostRuntime {
         match WorktreeService::new(self.support_dir.clone()).remove_from_request(request) {
             Ok(baseline) => {
                 let git = crate::git::GitService::status(&project_path);
-                self.broadcast_worktree_update(
+                self.reply_and_broadcast_resource_change(
+                    envelope,
                     REMOTE_WORKTREE_UPDATED,
-                    envelope.device_id.as_deref(),
-                    &project_id,
+                    REMOTE_RESOURCE_WORKTREES,
+                    Some(&project_id),
+                    None,
                     remote_worktree_update_payload(project_id.clone(), baseline, git),
                 );
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.send_project_and_terminal_snapshots(envelope.device_id.as_deref());
             }
             Err(error) => self.send_error(envelope, &error),
         }
@@ -178,16 +176,16 @@ pub(super) fn remote_worktree_summary_payload(
 ) -> Value {
     let base_branches = remote_worktree_base_branches(&summary.active_git);
     let default_base_branch = remote_default_worktree_base_branch(&summary.active_git);
-    runtime_worktree::worktree_summary_payload(
-        project_id,
-        summary.selected_worktree_id,
-        serde_json::to_value(summary.worktrees).unwrap_or_else(|_| json!([])),
-        serde_json::to_value(summary.tasks).unwrap_or_else(|_| json!([])),
-        summary.available,
+    runtime_worktree::worktree_summary_payload(runtime_worktree::WorktreeSummaryPayload {
+        project_id: project_id.to_string(),
+        selected_worktree_id: summary.selected_worktree_id,
+        worktrees: serde_json::to_value(summary.worktrees).unwrap_or_else(|_| json!([])),
+        tasks: serde_json::to_value(summary.tasks).unwrap_or_else(|_| json!([])),
+        available: summary.available,
         base_branches,
         default_base_branch,
-        summary.error,
-    )
+        error: summary.error,
+    })
 }
 
 pub(super) fn remote_worktree_update_payload(

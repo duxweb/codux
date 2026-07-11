@@ -1,3 +1,4 @@
+use super::FilePickerOpenRequest;
 use super::*;
 
 impl CoduxApp {
@@ -201,11 +202,13 @@ impl CoduxApp {
             (!path.is_empty()).then(|| path.to_string())
         };
         self.open_file_picker_window(
-            FilePickerMode::OpenFolder,
-            FilePickerTarget::ProjectEditorPath,
-            device_id,
-            start,
-            None,
+            FilePickerOpenRequest {
+                mode: FilePickerMode::OpenFolder,
+                target: FilePickerTarget::ProjectEditorPath,
+                device_id,
+                start_path: start,
+                default_filename: None,
+            },
             window,
             cx,
         );

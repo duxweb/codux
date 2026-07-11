@@ -43,14 +43,14 @@ fn remove_managed_codex_hook_trust_blocks(lines: Vec<String>) -> Vec<String> {
     let mut result = Vec::new();
     let mut index = 0;
     while index < lines.len() {
-        if let Some(key) = codex_hook_state_key(&lines[index]) {
-            if is_managed_codex_hook_state_key(&key) {
+        if let Some(key) = codex_hook_state_key(&lines[index])
+            && is_managed_codex_hook_state_key(&key)
+        {
+            index += 1;
+            while index < lines.len() && !is_toml_table_header(&lines[index]) {
                 index += 1;
-                while index < lines.len() && !is_toml_table_header(&lines[index]) {
-                    index += 1;
-                }
-                continue;
             }
+            continue;
         }
         result.push(lines[index].clone());
         index += 1;

@@ -105,6 +105,32 @@ fn project_session_detail_groups_external_session_files() {
 }
 
 #[test]
+fn session_dispatch_preserves_operation_errors() {
+    let support_dir = temp_support_dir("dispatch-errors");
+    create_test_history_db(&support_dir);
+    let service = AIHistoryService::new(support_dir.clone());
+
+    assert_eq!(
+        session_op_result(
+            &service,
+            "/tmp/codux-gpui",
+            &serde_json::json!({ "op": "detail", "sessionId": "missing" }),
+        ),
+        Err("Session not found.".to_string())
+    );
+    assert_eq!(
+        session_op_result(
+            &service,
+            "/tmp/codux-gpui",
+            &serde_json::json!({ "op": "unsupported" }),
+        ),
+        Err("Unsupported AI session operation: unsupported".to_string())
+    );
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn project_summary_includes_tauri_ai_panel_aggregates() {
     let support_dir = temp_support_dir("panel-aggregates");
     create_test_history_db(&support_dir);
@@ -134,14 +160,16 @@ fn global_summary_aggregates_projects_and_recent_sessions() {
     .expect("other index state");
     insert_session(
         &conn,
-        "/tmp/other",
-        "claude-code",
-        "src/lib.rs",
-        "other-session",
-        Some("claude-external"),
-        "Other project",
-        2500.0,
-        25,
+        TestSessionInput {
+            project_path: "/tmp/other",
+            source: "claude-code",
+            file_path: "src/lib.rs",
+            session_key: "other-session",
+            external_session_id: Some("claude-external"),
+            title: "Other project",
+            last_seen_at: 2500.0,
+            total_tokens: 25,
+        },
     );
 
     let summary = AIHistoryService::new(support_dir.clone()).global_summary();
@@ -210,40 +238,44 @@ fn create_test_history_db(support_dir: &std::path::Path) {
     .expect("index state");
     insert_session(
         &conn,
-        "/tmp/codux-gpui",
-        "codex",
-        "README.md",
-        "session-1",
-        None,
-        "Original session",
-        2000.0,
-        100,
+        TestSessionInput {
+            project_path: "/tmp/codux-gpui",
+            source: "codex",
+            file_path: "README.md",
+            session_key: "session-1",
+            external_session_id: None,
+            title: "Original session",
+            last_seen_at: 2000.0,
+            total_tokens: 100,
+        },
     );
     insert_session(
         &conn,
-        "/tmp/codux-gpui",
-        "codex",
-        "src/main.rs",
-        "session-2",
-        Some("external-2"),
-        "Grouped session",
-        1500.0,
-        50,
+        TestSessionInput {
+            project_path: "/tmp/codux-gpui",
+            source: "codex",
+            file_path: "src/main.rs",
+            session_key: "session-2",
+            external_session_id: Some("external-2"),
+            title: "Grouped session",
+            last_seen_at: 1500.0,
+            total_tokens: 50,
+        },
     );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn insert_session(
-    conn: &Connection,
-    project_path: &str,
-    source: &str,
-    file_path: &str,
-    session_key: &str,
-    external_session_id: Option<&str>,
-    title: &str,
+struct TestSessionInput<'a> {
+    project_path: &'a str,
+    source: &'a str,
+    file_path: &'a str,
+    session_key: &'a str,
+    external_session_id: Option<&'a str>,
+    title: &'a str,
     last_seen_at: f64,
     total_tokens: i64,
-) {
+}
+
+fn insert_session(conn: &Connection, input: TestSessionInput<'_>) {
     conn.execute(
         r#"
         INSERT INTO ai_history_file_session_link
@@ -251,15 +283,15 @@ fn insert_session(
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         "#,
         params![
-            project_path,
-            source,
-            file_path,
-            session_key,
-            external_session_id,
-            title,
-            last_seen_at - 30.0,
+            input.project_path,
+            input.source,
+            input.file_path,
+            input.session_key,
+            input.external_session_id,
+            input.title,
+            input.last_seen_at - 30.0,
             "gpt-5",
-            last_seen_at,
+            input.last_seen_at,
             30
         ],
     )
@@ -271,13 +303,13 @@ fn insert_session(
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         "#,
         params![
-            project_path,
-            source,
-            file_path,
-            session_key,
+            input.project_path,
+            input.source,
+            input.file_path,
+            input.session_key,
             local_today_start_seconds(),
-            total_tokens,
-            total_tokens / 10,
+            input.total_tokens,
+            input.total_tokens / 10,
             1
         ],
     )

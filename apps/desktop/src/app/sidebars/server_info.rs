@@ -37,7 +37,7 @@ pub(in crate::app) struct ServerInfoSidebarView {
 }
 
 enum ServerInfoFetchResult {
-    Metrics(RemoteHostMetrics),
+    Metrics(Box<RemoteHostMetrics>),
     Unsupported,
     Error(String),
 }
@@ -165,7 +165,7 @@ impl ServerInfoSidebarView {
                 self.capability = ServerInfoCapabilityState::Supported;
                 self.loading = false;
                 self.error = None;
-                self.metrics = Some(metrics);
+                self.metrics = Some(*metrics);
             }
             ServerInfoFetchResult::Unsupported => {
                 self.capability = ServerInfoCapabilityState::Unsupported;
@@ -202,7 +202,7 @@ fn fetch_server_info_metrics(
     capability: ServerInfoCapabilityState,
 ) -> ServerInfoFetchResult {
     let ServerInfoTarget::Remote(device_id) = target else {
-        return ServerInfoFetchResult::Metrics(service.local_host_metrics());
+        return ServerInfoFetchResult::Metrics(Box::new(service.local_host_metrics()));
     };
     if capability == ServerInfoCapabilityState::Unknown {
         match service.remote_host_info_blocking(&device_id) {
@@ -213,7 +213,7 @@ fn fetch_server_info_metrics(
     }
     service
         .remote_host_metrics(&device_id)
-        .map(ServerInfoFetchResult::Metrics)
+        .map(|metrics| ServerInfoFetchResult::Metrics(Box::new(metrics)))
         .unwrap_or_else(ServerInfoFetchResult::Error)
 }
 

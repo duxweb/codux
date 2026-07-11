@@ -12,6 +12,7 @@ use crate::ai_runtime::{constants::NEEDS_INPUT_IDLE_SECONDS, state::normalized_s
 ///   3. the latest tool/function call sits written-but-unanswered past the idle
 ///      gap (measured from the call row's own timestamp, not `updated_at`, which
 ///      timestamp-less metadata rows can pin to `now`).
+///
 /// Keeping it here -- not re-implemented per tool -- is the layering: drivers
 /// supply tool-specific signals, the rule lives once.
 pub(super) fn is_awaiting_user_decision(

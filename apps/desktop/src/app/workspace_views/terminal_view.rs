@@ -163,17 +163,19 @@ impl TerminalWorkspaceView {
 impl Render for TerminalWorkspaceView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let main = terminal_main_split_area(
-            self.app_entity.clone(),
-            &self.snapshot.language,
-            self.snapshot.main_panes.clone(),
-            &self.snapshot.layout_key,
-            &self.snapshot.top_ratios,
-            &self.snapshot.top_grid,
-            &self.snapshot.split_tree,
-            self.container_width,
-            self.container_height,
-            self.pane_drop_preview,
-            self.open_split_menu_pane,
+            TerminalMainSplitInput {
+                app_entity: self.app_entity.clone(),
+                language: &self.snapshot.language,
+                panes: &self.snapshot.main_panes,
+                layout_key: &self.snapshot.layout_key,
+                top_ratios: &self.snapshot.top_ratios,
+                top_grid: &self.snapshot.top_grid,
+                split_tree: &self.snapshot.split_tree,
+                container_width: self.container_width,
+                container_height: self.container_height,
+                pane_drop_preview: self.pane_drop_preview,
+                open_split_menu_pane: self.open_split_menu_pane,
+            },
             cx,
         );
 

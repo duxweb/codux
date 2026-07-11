@@ -1,15 +1,28 @@
 use super::*;
 
+pub(in crate::app) struct TerminalFloatRequest {
+    pub(in crate::app) title: String,
+    pub(in crate::app) app_entity: gpui::Entity<CoduxApp>,
+    pub(in crate::app) project_id: Option<String>,
+    pub(in crate::app) tab_view_id: usize,
+    pub(in crate::app) pane_index: usize,
+    pub(in crate::app) split_location: Option<TerminalSplitLocation>,
+    pub(in crate::app) slot: TerminalPaneSlot,
+}
+
 pub(in crate::app) fn terminal_float_window(
-    title: String,
-    app_entity: gpui::Entity<CoduxApp>,
-    project_id: Option<String>,
-    tab_view_id: usize,
-    pane_index: usize,
-    split_location: Option<TerminalSplitLocation>,
-    slot: TerminalPaneSlot,
+    request: TerminalFloatRequest,
     cx: &mut Context<CoduxApp>,
 ) -> gpui::Entity<TerminalFloatWindow> {
+    let TerminalFloatRequest {
+        title,
+        app_entity,
+        project_id,
+        tab_view_id,
+        pane_index,
+        split_location,
+        slot,
+    } = request;
     cx.new(|_| TerminalFloatWindow {
         title,
         restore: Some(TerminalFloatRestore {

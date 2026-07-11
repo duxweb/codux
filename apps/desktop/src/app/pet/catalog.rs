@@ -74,7 +74,7 @@ pub(super) fn pet_species_name(species: &str) -> String {
         "dolphin" => "Dolphin",
         "penguin" => "Penguin",
         "panda" => "Panda",
-        value if value.is_empty() => "Voidcat",
+        "" => "Voidcat",
         value => value,
     }
     .to_string()

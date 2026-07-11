@@ -349,7 +349,7 @@ fn terminal_resource_subscribe_baseline_keyframe_for_alt_screen() {
         .create(
             TerminalPtyConfig {
                 shell: Some("sh".to_string()),
-                command: Some("printf '\\033[?1049h\\033[2J\\033[HALT_UI'".to_string()),
+                command: Some("printf '\\033[?1049h\\033[2J\\033[HALT_UI'; sleep 30".to_string()),
                 cwd: Some(support_dir.to_string_lossy().to_string()),
                 ..Default::default()
             },
@@ -375,6 +375,7 @@ fn terminal_resource_subscribe_baseline_keyframe_for_alt_screen() {
         kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
         device_id: Some("phone-a".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({
             "resource": REMOTE_RESOURCE_TERMINALS,
@@ -415,6 +416,10 @@ fn terminal_resource_subscribe_baseline_keyframe_for_alt_screen() {
             .contains("ALT_UI"),
         "alt-screen baseline must ship the screen keyframe"
     );
+
+    terminals
+        .kill_and_wait(&session_id, Duration::from_secs(2))
+        .expect("stop terminal");
 
     fs::remove_dir_all(support_dir).ok();
 }
@@ -518,6 +523,7 @@ fn terminal_buffer_request_does_not_resize_remote_pty() {
         kind: "terminal.buffer".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "offset": 0,
@@ -581,6 +587,7 @@ fn terminal_subscribe_does_not_push_screen_keyframe() {
         kind: "terminal.subscribe".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({}),
     });

@@ -1,9 +1,17 @@
 use super::*;
 
 impl RemoteHostRuntime {
-    pub(super) fn send_project_and_terminal_lists(&self, device_id: Option<&str>) {
-        self.broadcast_project_list(device_id);
-        self.broadcast_terminal_list(device_id);
+    pub(super) fn send_project_and_terminal_snapshots(&self, device_id: Option<&str>) {
+        let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
+            return;
+        };
+        self.send_project_list(Some(device_id));
+        self.send_terminal_list(Some(device_id));
+    }
+
+    pub(super) fn broadcast_project_and_terminal_lists(&self, source_device_id: Option<&str>) {
+        self.broadcast_project_list(source_device_id);
+        self.broadcast_terminal_list(source_device_id);
     }
 
     pub(super) fn send_project_list(&self, device_id: Option<&str>) {
@@ -12,6 +20,17 @@ impl RemoteHostRuntime {
                 .current_version(REMOTE_RESOURCE_PROJECTS, None, None);
         let payload = with_resource_version(self.remote_project_list_payload(device_id), version);
         self.send(REMOTE_PROJECT_LIST, device_id, None, payload);
+    }
+
+    pub(super) fn reply_project_list(&self, envelope: &RemoteEnvelope) {
+        let version =
+            self.resource_subscriptions
+                .current_version(REMOTE_RESOURCE_PROJECTS, None, None);
+        let payload = with_resource_version(
+            self.remote_project_list_payload(envelope.device_id.as_deref()),
+            version,
+        );
+        self.reply(envelope, REMOTE_PROJECT_LIST, payload);
     }
 
     pub(super) fn send_terminal_list(&self, device_id: Option<&str>) {
@@ -23,9 +42,17 @@ impl RemoteHostRuntime {
         self.send(REMOTE_TERMINAL_LIST, device_id, None, payload);
     }
 
+    pub(super) fn reply_terminal_list(&self, envelope: &RemoteEnvelope) {
+        let version =
+            self.resource_subscriptions
+                .current_version(REMOTE_RESOURCE_TERMINALS, None, None);
+        let payload =
+            with_resource_version(json!({ "terminals": self.remote_terminals() }), version);
+        self.reply(envelope, REMOTE_TERMINAL_LIST, payload);
+    }
+
     pub(super) fn broadcast_project_list(&self, source_device_id: Option<&str>) {
-        // Bump the version ONCE for this change so every recipient shares it; the
-        // no-subscriber fallback reads current_version (== the value just bumped).
+        // Bump the version once so every recipient observes the same change.
         let version =
             self.resource_subscriptions
                 .next_version(REMOTE_RESOURCE_PROJECTS, None, None);
@@ -36,7 +63,6 @@ impl RemoteHostRuntime {
             device_ids.insert(source_device_id.to_string());
         }
         if device_ids.is_empty() {
-            self.send_project_list(source_device_id);
             return;
         }
         for device_id in device_ids {
@@ -50,14 +76,16 @@ impl RemoteHostRuntime {
         let version =
             self.resource_subscriptions
                 .next_version(REMOTE_RESOURCE_TERMINALS, None, None);
-        let mut device_ids =
-            self.resource_subscriptions
-                .devices_for(REMOTE_RESOURCE_TERMINALS, None, None);
+        let mut device_ids = self
+            .resource_subscriptions
+            .devices_for_resource(REMOTE_RESOURCE_TERMINALS);
         if let Some(source_device_id) = source_device_id.filter(|value| !value.trim().is_empty()) {
             device_ids.insert(source_device_id.to_string());
         }
         if device_ids.is_empty() {
-            self.send_terminal_list(source_device_id);
+            if source_device_id.is_some() {
+                self.send_terminal_list(source_device_id);
+            }
             return;
         }
         let payload =
@@ -72,18 +100,20 @@ impl RemoteHostRuntime {
         }
     }
 
-    pub(super) fn send_worktree_summary(
+    pub(super) fn reply_worktree_summary(
         &self,
+        envelope: &RemoteEnvelope,
         kind: &str,
-        device_id: Option<&str>,
         project_id: &str,
         project_path: &str,
     ) {
         let summary = WorktreeService::new(self.support_dir.clone())
             .summary(Some(project_id), Some(project_path));
-        self.send(
+        self.reply_resource_payload(
+            envelope,
             kind,
-            device_id,
+            REMOTE_RESOURCE_WORKTREES,
+            Some(project_id),
             None,
             remote_worktree_summary_payload(project_id, summary),
         );
@@ -148,11 +178,50 @@ impl RemoteHostRuntime {
             device_ids.insert(source_device_id.to_string());
         }
         if device_ids.is_empty() {
-            self.send(kind, source_device_id, session_id, payload);
             return;
         }
         for device_id in device_ids {
             self.send(kind, Some(&device_id), session_id, payload.clone());
+        }
+    }
+
+    pub(super) fn reply_resource_payload(
+        &self,
+        envelope: &RemoteEnvelope,
+        kind: &str,
+        resource: &str,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        payload: Value,
+    ) {
+        let version = self
+            .resource_subscriptions
+            .current_version(resource, project_id, session_id);
+        self.reply(envelope, kind, with_resource_version(payload, version));
+    }
+
+    pub(super) fn reply_and_broadcast_resource_change(
+        &self,
+        envelope: &RemoteEnvelope,
+        kind: &str,
+        resource: &str,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+        payload: Value,
+    ) {
+        let version = self
+            .resource_subscriptions
+            .next_version(resource, project_id, session_id);
+        let payload = with_resource_version(payload, version);
+        self.reply(envelope, kind, payload.clone());
+        let source_device_id = envelope.device_id.as_deref();
+        for device_id in self
+            .resource_subscriptions
+            .devices_for(resource, project_id, session_id)
+        {
+            if Some(device_id.as_str()) != source_device_id {
+                self.send(kind, Some(&device_id), session_id, payload.clone());
+            }
         }
     }
 
@@ -177,6 +246,7 @@ impl RemoteHostRuntime {
             kind: kind.to_string(),
             device_id: device_id.map(str::to_string),
             session_id: session_id.map(str::to_string),
+            request_id: None,
             seq: None,
             payload,
         };
@@ -188,18 +258,6 @@ impl RemoteHostRuntime {
             return false;
         };
         transport.send(data, device_id)
-    }
-
-    pub(super) fn send_device_unauthorized(&self, device_id: Option<&str>) -> bool {
-        self.send_plain(
-            REMOTE_ERROR,
-            device_id,
-            None,
-            json!({
-                "code": "device_unauthorized",
-                "message": "This mobile device is no longer authorized. Please pair it again."
-            }),
-        )
     }
 
     pub(super) fn send_terminal_data(
@@ -245,11 +303,32 @@ impl RemoteHostRuntime {
     }
 
     pub(super) fn send_error(&self, envelope: &RemoteEnvelope, message: &str) {
-        self.send_transport(
-            "error",
+        self.reply(envelope, REMOTE_ERROR, json!({ "message": message }));
+    }
+
+    pub(super) fn reply(&self, envelope: &RemoteEnvelope, kind: &str, payload: Value) {
+        self.send_transport_with_request_id(
+            kind,
             envelope.device_id.as_deref(),
             envelope.session_id.as_deref(),
-            json!({ "message": message }),
+            envelope.request_id.as_deref(),
+            payload,
+        );
+    }
+
+    pub(super) fn reply_with_session(
+        &self,
+        envelope: &RemoteEnvelope,
+        session_id: Option<&str>,
+        kind: &str,
+        payload: Value,
+    ) {
+        self.send_transport_with_request_id(
+            kind,
+            envelope.device_id.as_deref(),
+            session_id,
+            envelope.request_id.as_deref(),
+            payload,
         );
     }
 
@@ -258,13 +337,20 @@ impl RemoteHostRuntime {
         kind: &str,
         device_id: Option<&str>,
         session_id: Option<&str>,
+        request_id: Option<&str>,
         payload: Value,
     ) -> Option<String> {
         let Ok(mut send_seq) = self.send_seq_by_device.lock() else {
             return None;
         };
-        self.service()
-            .outgoing_transport_text(kind, device_id, session_id, payload, &mut send_seq)
+        self.service().outgoing_transport_text(
+            kind,
+            device_id,
+            session_id,
+            request_id,
+            payload,
+            &mut send_seq,
+        )
     }
 
     pub(super) fn update_device_online(&self, device_id: Option<&str>, online: bool) {
@@ -297,24 +383,6 @@ impl RemoteHostRuntime {
         self.update_snapshot(status);
     }
 
-    pub(super) fn is_authorized_device(&self, device_id: Option<&str>) -> bool {
-        let Some(device_id) = device_id.map(str::trim).filter(|value| !value.is_empty()) else {
-            return false;
-        };
-        super::remote_settings_from_raw(&self.service().raw_settings())
-            .cached_devices
-            .iter()
-            .any(|device| {
-                device.id == device_id
-                    && device
-                        .revoked_at
-                        .as_deref()
-                        .map(str::trim)
-                        .unwrap_or("")
-                        .is_empty()
-            })
-    }
-
     pub(super) fn is_authorized_device_token(
         &self,
         device_id: Option<&str>,
@@ -329,25 +397,13 @@ impl RemoteHostRuntime {
         else {
             return false;
         };
-        super::remote_settings_from_raw(&self.service().raw_settings())
-            .cached_devices
-            .iter()
-            .any(|device| {
-                device.id == device_id
-                    && device.device_token == device_token
-                    && device
-                        .revoked_at
-                        .as_deref()
-                        .map(str::trim)
-                        .unwrap_or("")
-                        .is_empty()
-            })
+        self.authorization.is_authorized(device_id, device_token)
     }
 
     pub(super) fn update_snapshot(&self, summary: RemoteSummary) {
         if let Ok(mut current) = self.snapshot.lock() {
             *current = summary;
-            self.push_event(RemoteHostEvent::Summary(current.clone()));
+            self.push_event(RemoteHostEvent::Summary(Box::new(current.clone())));
         }
     }
 

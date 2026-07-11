@@ -24,7 +24,7 @@ pub(crate) fn find_codex_rollout_path(
 }
 
 pub(crate) fn claude_project_log_paths(project_path: &str) -> Vec<PathBuf> {
-    let directory_name = project_path.replace('/', "-").replace('.', "-");
+    let directory_name = project_path.replace(['/', '.'], "-");
     let direct_dir = home_dir()
         .join(".claude")
         .join("projects")
@@ -106,10 +106,10 @@ fn codex_file_belongs_to_project(path: &Path, project_path: &str) -> bool {
         };
         let row_type = row.get("type").and_then(|value| value.as_str());
         let payload = row.get("payload").unwrap_or(&Value::Null);
-        if matches!(row_type, Some("session_meta") | Some("turn_context")) {
-            if let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str()) {
-                return paths_equivalent(Some(cwd), project_path);
-            }
+        if matches!(row_type, Some("session_meta") | Some("turn_context"))
+            && let Some(cwd) = payload.get("cwd").and_then(|value| value.as_str())
+        {
+            return paths_equivalent(Some(cwd), project_path);
         }
     }
     false

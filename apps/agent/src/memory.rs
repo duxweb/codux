@@ -39,11 +39,13 @@ fn memory_records() -> Vec<MemoryProjectRecord> {
 /// Run a memory extraction pass on the host with the controller-forwarded
 /// provider config. The config (incl. its provider's API key) is used for this
 /// run only and never persisted. Returns `{op: "extract", result: <status>}`.
-pub async fn memory_extract_payload(payload: &Value) -> Value {
+pub async fn memory_extract_payload(payload: &Value) -> Result<Value, String> {
     let config: MemoryConfig = payload
         .get("config")
         .cloned()
-        .and_then(|value| serde_json::from_value(value).ok())
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| error.to_string())?
         .unwrap_or_default();
     let output_locale = payload
         .get("outputLocale")
@@ -56,23 +58,21 @@ pub async fn memory_extract_payload(payload: &Value) -> Value {
         agent_data_dir().join("ai-usage.sqlite3"),
         None,
     )
-    .unwrap_or_default();
+    .map_err(|error| error.to_string())?;
     let runtime_sessions: Vec<MemorySessionSnapshot> = Vec::new();
 
     let service = service();
-    let _ = service.enqueue_automatic_extraction_candidates(
+    service.enqueue_automatic_extraction_candidates(
         &config.memory,
         &projects,
         &runtime_sessions,
         &history_sessions,
-    );
+    )?;
     let status = service
         .process_memory_extraction_queue(&config, &projects, output_locale)
         .await
-        .ok()
-        .and_then(|status| serde_json::to_value(status).ok())
-        .unwrap_or(Value::Null);
-    json!({ "op": "extract", "result": status })
+        .and_then(|status| serde_json::to_value(status).map_err(|error| error.to_string()))?;
+    Ok(json!({ "op": "extract", "result": status }))
 }
 
 /// The host's projects mapped into the engine's project shape (the manager view
@@ -95,14 +95,13 @@ fn memory_projects() -> Vec<MemoryProjectInfo> {
 /// host maps it to its local project (falling back to the supplied id).
 fn host_project_id(payload: &Value) -> Option<String> {
     let project_path = payload.get("projectPath").and_then(Value::as_str);
-    if let Some(path) = project_path.filter(|value| !value.is_empty()) {
-        if let Some(project) = AgentProjectStore::new()
+    if let Some(path) = project_path.filter(|value| !value.is_empty())
+        && let Some(project) = AgentProjectStore::new()
             .list()
             .into_iter()
             .find(|project| project.path == path)
-        {
-            return Some(project.id);
-        }
+    {
+        return Some(project.id);
     }
     payload
         .get("projectId")
@@ -111,29 +110,27 @@ fn host_project_id(payload: &Value) -> Option<String> {
 }
 
 /// Serve a `memory.read` query. Returns `{op, result}` where `result` is the
-/// op's JSON snapshot (or null on error, mirroring the engine's own fallbacks).
-pub fn memory_read_payload(payload: &Value) -> Value {
+/// operation's JSON snapshot.
+pub fn memory_read_payload(payload: &Value) -> Result<Value, String> {
     let op = payload.get("op").and_then(Value::as_str).unwrap_or("");
     let resolved_project_id = host_project_id(payload);
     let project_id = resolved_project_id.as_deref();
     let result = match op {
-        "summary" => serde_json::to_value(service().summary(project_id)).unwrap_or(Value::Null),
+        "summary" => serde_json::to_value(service().summary(project_id))
+            .map_err(|error| error.to_string())?,
         "status" => service()
             .extraction_status_snapshot()
-            .ok()
-            .and_then(|status| serde_json::to_value(status).ok())
-            .unwrap_or(Value::Null),
-        "management" => match serde_json::from_value::<MemoryManagementRequest>(payload.clone()) {
-            Ok(mut request) => {
-                request.project_id = project_id.map(str::to_string);
-                service()
-                    .management_snapshot(request)
-                    .ok()
-                    .and_then(|snapshot| serde_json::to_value(snapshot).ok())
-                    .unwrap_or(Value::Null)
-            }
-            Err(_) => Value::Null,
-        },
+            .and_then(|status| serde_json::to_value(status).map_err(|error| error.to_string()))?,
+        "management" => {
+            let mut request = serde_json::from_value::<MemoryManagementRequest>(payload.clone())
+                .map_err(|error| error.to_string())?;
+            request.project_id = project_id.map(str::to_string);
+            service()
+                .management_snapshot(request)
+                .and_then(|snapshot| {
+                    serde_json::to_value(snapshot).map_err(|error| error.to_string())
+                })?
+        }
         "manager" => {
             let scope = payload
                 .get("scope")
@@ -151,9 +148,9 @@ pub fn memory_read_payload(payload: &Value) -> Value {
                 tab,
                 limit,
             ))
-            .unwrap_or(Value::Null)
+            .map_err(|error| error.to_string())?
         }
-        _ => Value::Null,
+        _ => return Err(format!("Unsupported memory read operation: {op}")),
     };
-    json!({ "op": op, "result": result })
+    Ok(json!({ "op": op, "result": result }))
 }

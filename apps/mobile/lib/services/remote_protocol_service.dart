@@ -181,6 +181,7 @@ Future<StoredDevice> confirmPairingOverIroh({
         name: name,
         confirmed: message,
       );
+      await pairingTransport.close();
       CoduxLog.info(
         '[codux-flutter-pairing] iroh confirm accepted relay=${device.server} host=${device.hostId} device=${device.deviceId} transports=${_transportLogSummary(device.transports)}',
       );

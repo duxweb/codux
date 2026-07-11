@@ -1,20 +1,36 @@
 use super::memory_rows::*;
 use super::*;
 
+pub(in crate::app) struct MemoryManagerWindowInput<'a> {
+    pub(in crate::app) manager: &'a MemoryManagerSnapshot,
+    pub(in crate::app) active_tab: MemoryManagerTab,
+    pub(in crate::app) selected_scope: &'a str,
+    pub(in crate::app) selected_project_id: Option<&'a str>,
+    pub(in crate::app) selected_memory_entry_id: Option<&'a str>,
+    pub(in crate::app) selected_memory_summary_id: Option<&'a str>,
+    pub(in crate::app) memory_processing: bool,
+    pub(in crate::app) memory_refreshing: bool,
+    pub(in crate::app) project_profile_refreshing: bool,
+    pub(in crate::app) language: &'a str,
+}
+
 pub(in crate::app) fn memory_manager_window_workspace(
-    manager: &MemoryManagerSnapshot,
-    active_tab: MemoryManagerTab,
-    selected_scope: &str,
-    selected_project_id: Option<&str>,
-    selected_memory_entry_id: Option<&str>,
-    selected_memory_summary_id: Option<&str>,
-    memory_processing: bool,
-    memory_refreshing: bool,
-    project_profile_refreshing: bool,
-    language: &str,
+    input: MemoryManagerWindowInput<'_>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let MemoryManagerWindowInput {
+        manager,
+        active_tab,
+        selected_scope,
+        selected_project_id,
+        selected_memory_entry_id,
+        selected_memory_summary_id,
+        memory_processing,
+        memory_refreshing,
+        project_profile_refreshing,
+        language,
+    } = input;
     let window_title = ai_sidebar_text(language, "memory.manager.window.title", "Memory Manager");
     let title = ai_sidebar_text(language, "memory.manager.title", "Memory");
     let subtitle = ai_sidebar_text(
@@ -56,16 +72,18 @@ pub(in crate::app) fn memory_manager_window_workspace(
         .cloned()
         .collect::<Vec<_>>();
     let content = ai_memory_manager_window_content(
-        manager,
-        active_tab,
-        selected_scope == "project",
-        selected_memory_entry_id,
-        selected_memory_summary_id,
-        project_profile_refreshing,
-        empty_entries,
-        empty_summary,
-        empty_failed,
-        language,
+        MemoryManagerContentInput {
+            manager,
+            active_tab,
+            is_project_scope: selected_scope == "project",
+            selected_memory_entry_id,
+            selected_memory_summary_id,
+            project_profile_refreshing,
+            empty_entries,
+            empty_summary,
+            empty_failed,
+            language,
+        },
         window,
         cx,
     );
@@ -612,20 +630,36 @@ pub(super) fn ai_memory_manager_status_bar(
         })
 }
 
-pub(super) fn ai_memory_manager_window_content(
-    manager: &MemoryManagerSnapshot,
+struct MemoryManagerContentInput<'a> {
+    manager: &'a MemoryManagerSnapshot,
     active_tab: MemoryManagerTab,
     is_project_scope: bool,
-    selected_memory_entry_id: Option<&str>,
-    selected_memory_summary_id: Option<&str>,
+    selected_memory_entry_id: Option<&'a str>,
+    selected_memory_summary_id: Option<&'a str>,
     project_profile_refreshing: bool,
     empty_entries: String,
     empty_summary: String,
     empty_failed: String,
-    language: &str,
+    language: &'a str,
+}
+
+fn ai_memory_manager_window_content(
+    input: MemoryManagerContentInput<'_>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> AnyElement {
+    let MemoryManagerContentInput {
+        manager,
+        active_tab,
+        is_project_scope,
+        selected_memory_entry_id,
+        selected_memory_summary_id,
+        project_profile_refreshing,
+        empty_entries,
+        empty_summary,
+        empty_failed,
+        language,
+    } = input;
     let mut content = div().size_full().flex().flex_col();
     if active_tab == MemoryManagerTab::Queue {
         return ai_memory_manager_queue_content(manager, language, window, cx).into_any_element();

@@ -6,8 +6,9 @@
 //! path convention the desktop uses — so the two hosts can't drift on them.
 
 use codux_runtime_core::worktree::{
-    RuntimeWorktreeItem, default_worktree_base_branch, selected_runtime_worktree_id,
-    worktree_base_branches, worktree_display_name, worktree_summary_payload, worktree_uuid,
+    RuntimeWorktreeItem, WorktreeSummaryPayload, default_worktree_base_branch,
+    selected_runtime_worktree_id, worktree_base_branches, worktree_display_name,
+    worktree_summary_payload, worktree_uuid,
 };
 use serde_json::{Value, json};
 use std::path::Path;
@@ -45,16 +46,16 @@ pub fn worktree_list_payload(project_id: &str, project_path: &str) -> Value {
     let status = codux_git::wire::status(project_path);
     let base_branches = worktree_base_branches(&status.branch, &status.branches);
     let default_base_branch = default_worktree_base_branch(&status.branch, &status.branches);
-    worktree_summary_payload(
-        project_id,
-        selected,
-        Value::Array(entries),
-        json!([]),
-        true,
+    worktree_summary_payload(WorktreeSummaryPayload {
+        project_id: project_id.to_string(),
+        selected_worktree_id: selected,
+        worktrees: Value::Array(entries),
+        tasks: json!([]),
+        available: true,
         base_branches,
         default_base_branch,
-        None,
-    )
+        error: None,
+    })
 }
 
 /// Scan the project's real git worktrees via `git worktree list --porcelain`.

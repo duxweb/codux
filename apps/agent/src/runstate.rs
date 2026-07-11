@@ -4,6 +4,7 @@
 use fs4::fs_std::FileExt;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
+use std::path::Path;
 
 use crate::paths;
 
@@ -78,8 +79,12 @@ pub fn clear_status() {
 }
 
 /// Publish the pasteable `codux://pair` ticket for `link`/`qrcode`.
-pub fn write_ticket(ticket: &str) {
-    let _ = std::fs::write(paths::ticket_path(), ticket);
+pub fn write_ticket(ticket: &str) -> Result<(), String> {
+    write_ticket_at(&paths::ticket_path(), ticket)
+}
+
+pub(crate) fn write_ticket_at(path: &Path, ticket: &str) -> Result<(), String> {
+    std::fs::write(path, ticket).map_err(|error| format!("failed to write pairing ticket: {error}"))
 }
 
 pub fn read_ticket() -> Option<String> {

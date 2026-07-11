@@ -19,5 +19,5 @@ mod memory_rows;
 mod memory_window;
 mod stats;
 
-pub(in crate::app) use memory_window::memory_manager_window_workspace;
+pub(in crate::app) use memory_window::{MemoryManagerWindowInput, memory_manager_window_workspace};
 pub(in crate::app) use stats::ai_stats_sidebar;

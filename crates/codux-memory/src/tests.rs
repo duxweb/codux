@@ -347,8 +347,10 @@ fn launch_request_includes_global_prompt_even_when_memory_injection_is_disabled(
     create_memory_db(&support_dir);
     let service = MemoryService::new(support_dir.clone());
     let runtime_root = support_dir.join("runtime-root");
-    let mut settings = crate::MemoryConfig::default();
-    settings.global_prompt = "Always prefer small runtime modules.".to_string();
+    let mut settings = crate::MemoryConfig {
+        global_prompt: "Always prefer small runtime modules.".to_string(),
+        ..Default::default()
+    };
     settings.memory.enabled = false;
 
     let artifacts = service
@@ -375,18 +377,21 @@ fn extraction_prompt_context_respects_cross_project_user_memory_setting() {
     let support_dir = temp_support_dir();
     create_memory_db(&support_dir);
     let service = MemoryService::new(support_dir.clone());
-    let mut settings = MemorySettings::default();
-    settings.allow_cross_project_user_recall = false;
-    settings.max_injected_project_working_memories = 5;
+    let settings = MemorySettings {
+        allow_cross_project_user_recall: false,
+        max_injected_project_working_memories: 5,
+        ..Default::default()
+    };
 
-    let (user_summary, user_memories, project_memories) = service
+    let context = service
         .extraction_prompt_context(&settings, "project-a", "project active entry")
         .unwrap();
 
-    assert!(user_summary.is_none());
-    assert!(user_memories.is_empty());
+    assert!(context.user_summary.is_none());
+    assert!(context.user_memories.is_empty());
     assert!(
-        project_memories
+        context
+            .project_memories
             .iter()
             .any(|entry| entry.content == "project active entry")
     );
@@ -868,15 +873,15 @@ fn enqueue_completed_session_respects_cooldown() {
     let service = MemoryService::new(support_dir.clone());
     service.ensure_queue_schema().unwrap();
     service
-        .enqueue_extraction_if_needed(
-            "project-a",
-            &transcript_dir.display().to_string(),
-            "codex",
-            "session-a",
-            &transcript.display().to_string(),
-            "old-fingerprint",
-            false,
-        )
+        .enqueue_extraction_if_needed(queue::MemoryExtractionEnqueue {
+            project_id: "project-a",
+            workspace_path: &transcript_dir.display().to_string(),
+            tool: "codex",
+            session_id: "session-a",
+            transcript_path: &transcript.display().to_string(),
+            source_fingerprint: "old-fingerprint",
+            allow_retry_failed: false,
+        })
         .unwrap();
     let task = service.next_pending_extraction_task().unwrap().unwrap();
     service.mark_extraction_task_done(&task.id).unwrap();
@@ -1167,15 +1172,15 @@ fn extraction_queue_status_and_task_lifecycle() {
 
     assert!(
         service
-            .enqueue_extraction_if_needed(
-                "project-a",
-                "/workspace/project-a",
-                "codex",
-                "session-a",
-                "/tmp/session-a.jsonl",
-                "fingerprint-a",
-                false,
-            )
+            .enqueue_extraction_if_needed(queue::MemoryExtractionEnqueue {
+                project_id: "project-a",
+                workspace_path: "/workspace/project-a",
+                tool: "codex",
+                session_id: "session-a",
+                transcript_path: "/tmp/session-a.jsonl",
+                source_fingerprint: "fingerprint-a",
+                allow_retry_failed: false,
+            })
             .unwrap()
     );
     let queued = service.extraction_status_snapshot().unwrap();
@@ -1198,15 +1203,15 @@ fn extraction_queue_status_and_task_lifecycle() {
 
     assert!(
         service
-            .enqueue_extraction_if_needed(
-                "project-a",
-                "/workspace/project-a",
-                "codex",
-                "session-a",
-                "/tmp/session-a.jsonl",
-                "fingerprint-a",
-                true,
-            )
+            .enqueue_extraction_if_needed(queue::MemoryExtractionEnqueue {
+                project_id: "project-a",
+                workspace_path: "/workspace/project-a",
+                tool: "codex",
+                session_id: "session-a",
+                transcript_path: "/tmp/session-a.jsonl",
+                source_fingerprint: "fingerprint-a",
+                allow_retry_failed: true,
+            })
             .unwrap()
     );
     let task = service.next_pending_extraction_task().unwrap().unwrap();

@@ -145,11 +145,11 @@ impl<T> RemotePtySession<T> {
         // emit a full repaint. The keyframe carries the active DEC modes and its
         // \x1b[2J clears only the visible screen (alacritty keeps scrollback),
         // so the raw history above stays scrollable.
-        if let Some(screen_data) = screen_data {
-            if !screen_data.is_empty() {
-                self.history_screen.process_replay(screen_data.as_bytes());
-                rendered = true;
-            }
+        if let Some(screen_data) = screen_data
+            && !screen_data.is_empty()
+        {
+            self.history_screen.process_replay(screen_data.as_bytes());
+            rendered = true;
         }
         if rendered {
             self.history_screen.scroll_to_bottom();

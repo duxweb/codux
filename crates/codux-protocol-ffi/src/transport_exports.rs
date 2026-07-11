@@ -1,7 +1,7 @@
 use crate::common::{
-    FfiControllerTransport, c_to_string, clear_last_error, controller_transport_config_from_json,
-    controller_transport_ref, panic_payload_message, push_transport_event, set_last_error,
-    string_to_c,
+    FfiControllerTransport, TransportEvent, c_to_string, clear_last_error,
+    controller_transport_config_from_json, controller_transport_ref, panic_payload_message,
+    push_transport_event, set_last_error, string_to_c,
 };
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportFactory,
@@ -222,7 +222,7 @@ fn controller_transport_connect_json_inner(
 
 async fn connect_controller_transport(
     config: &RemoteControllerTransportConfig,
-    events: Arc<Mutex<VecDeque<String>>>,
+    events: Arc<Mutex<VecDeque<TransportEvent>>>,
 ) -> Result<Arc<dyn RemoteTransport>, String> {
     let events_for_message = Arc::clone(&events);
     let events_for_state = Arc::clone(&events);
@@ -365,7 +365,7 @@ pub extern "C" fn codux_controller_transport_poll_event_json(
             .ok()
             .and_then(|mut events| events.pop_front());
         match event {
-            Some(event) => string_to_c(event),
+            Some(event) => string_to_c(event.json),
             None => ptr::null_mut(),
         }
     }))

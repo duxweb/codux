@@ -12,14 +12,12 @@ pub(crate) fn prompt_entries(
     if limit <= 0 {
         return Ok(Vec::new());
     }
-    if use_fts {
-        if let Ok(entries) = prompt_entries_fts(conn, scope, project_id, limit, query) {
-            if !entries.is_empty() {
-                let entries =
-                    fill_prompt_entries(conn, scope, project_id, limit, query, entries)?;
-                return Ok(entries);
-            }
-        }
+    if use_fts
+        && let Ok(entries) = prompt_entries_fts(conn, scope, project_id, limit, query)
+        && !entries.is_empty()
+    {
+        let entries = fill_prompt_entries(conn, scope, project_id, limit, query, entries)?;
+        return Ok(entries);
     }
     let entries = prompt_entries_legacy_candidates(conn, scope, project_id, limit, query)?;
     bump_access_counts(conn, entries.iter().map(|entry| entry.id.as_str()));

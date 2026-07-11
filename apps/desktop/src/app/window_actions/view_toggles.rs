@@ -183,7 +183,7 @@ impl CoduxApp {
             AssistantPanel::ServerInfo => {
                 self.refresh_server_info_panel(cx);
             }
-            AssistantPanel::SSH => {
+            AssistantPanel::Ssh => {
                 self.state.ssh = self.runtime_service.reload_ssh(self.runtime.root.clone());
                 self.normalize_selected_ssh_profile();
             }

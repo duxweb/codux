@@ -1,4 +1,4 @@
-use super::app_select::{CoduxSelectOption, codux_select};
+use super::app_select::{CoduxSelectConfig, CoduxSelectOption, codux_select};
 use super::*;
 
 #[derive(Clone)]
@@ -143,8 +143,10 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                 "name",
                 labels.name.clone(),
                 &app.ssh_draft_name,
-                labels.name_placeholder.clone(),
-                false,
+                SshDialogInputOptions {
+                    placeholder: labels.name_placeholder.clone(),
+                    masked: false,
+                },
                 window,
                 cx,
                 |app, value, window, cx| app.set_ssh_draft_name(value, window, cx),
@@ -159,8 +161,10 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                         "host",
                         labels.host.clone(),
                         &app.ssh_draft_host,
-                        "example.com".to_string(),
-                        false,
+                        SshDialogInputOptions {
+                            placeholder: "example.com".to_string(),
+                            masked: false,
+                        },
                         window,
                         cx,
                         |app, value, window, cx| app.set_ssh_draft_host(value, window, cx),
@@ -169,8 +173,10 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                         "port",
                         labels.port.clone(),
                         &app.ssh_draft_port,
-                        "22".to_string(),
-                        false,
+                        SshDialogInputOptions {
+                            placeholder: "22".to_string(),
+                            masked: false,
+                        },
                         window,
                         cx,
                         |app, value, window, cx| app.set_ssh_draft_port(value, window, cx),
@@ -180,8 +186,10 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                 "username",
                 labels.username.clone(),
                 &app.ssh_draft_username,
-                "root".to_string(),
-                false,
+                SshDialogInputOptions {
+                    placeholder: "root".to_string(),
+                    masked: false,
+                },
                 window,
                 cx,
                 |app, value, window, cx| app.set_ssh_draft_username(value, window, cx),
@@ -197,8 +205,10 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                     "password",
                     labels.password.clone(),
                     &app.ssh_draft_password,
-                    labels.password_placeholder.clone(),
-                    true,
+                    SshDialogInputOptions {
+                        placeholder: labels.password_placeholder.clone(),
+                        masked: true,
+                    },
                     window,
                     cx,
                     |app, value, window, cx| app.set_ssh_draft_password(value, window, cx),
@@ -215,8 +225,10 @@ pub(in crate::app) fn ssh_profile_editor_workspace(
                     "key-passphrase",
                     labels.key_passphrase.clone(),
                     &app.ssh_draft_key_passphrase,
-                    labels.key_passphrase_placeholder.clone(),
-                    true,
+                    SshDialogInputOptions {
+                        placeholder: labels.key_passphrase_placeholder.clone(),
+                        masked: true,
+                    },
                     window,
                     cx,
                     |app, value, window, cx| app.set_ssh_draft_key_passphrase(value, window, cx),
@@ -240,16 +252,24 @@ fn ssh_test_result_message(message: String, ok: bool) -> impl IntoElement {
         .child(div().min_w_0().truncate().child(message))
 }
 
+struct SshDialogInputOptions {
+    placeholder: String,
+    masked: bool,
+}
+
 fn ssh_dialog_input(
     id: &'static str,
     label: String,
     value: &str,
-    placeholder: String,
-    masked: bool,
+    options: SshDialogInputOptions,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
+    let SshDialogInputOptions {
+        placeholder,
+        masked,
+    } = options;
     let value = value.to_string();
     let state = window.use_keyed_state(SharedString::from(format!("ssh-input-{id}")), cx, {
         let value = value.clone();
@@ -351,7 +371,7 @@ fn ssh_private_key_path_input(
 fn ssh_dialog_select(
     value: &str,
     labels: &SshProfileEditorLabels,
-    window: &mut Window,
+    _window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
     let select_id = "ssh-credential-select";
@@ -370,14 +390,15 @@ fn ssh_dialog_select(
                 .child(labels.credential.clone()),
         )
         .child(codux_select(
-            select_id,
-            value,
-            options,
-            labels.select.clone(),
-            relative(1.0),
-            px(220.0),
-            false,
-            window,
+            CoduxSelectConfig {
+                id: select_id.to_string(),
+                value: value.to_string(),
+                options,
+                placeholder: labels.select.clone().into(),
+                width: relative(1.0).into(),
+                menu_width: px(220.0),
+                disabled: false,
+            },
             cx,
             |app, value, window, cx| app.set_ssh_draft_credential_kind(value, window, cx),
         ))

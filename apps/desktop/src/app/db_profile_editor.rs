@@ -1,4 +1,4 @@
-use super::app_select::{CoduxSelectOption, codux_select};
+use super::app_select::{CoduxSelectConfig, CoduxSelectOption, codux_select};
 use super::*;
 
 #[derive(Clone)]
@@ -147,8 +147,10 @@ pub(in crate::app) fn db_profile_editor_workspace(
                 "name",
                 labels.name.clone(),
                 &app.db_draft_name,
-                labels.name_placeholder.clone(),
-                false,
+                DbDialogInputOptions {
+                    placeholder: labels.name_placeholder.clone(),
+                    masked: false,
+                },
                 window,
                 cx,
                 |app, value, window, cx| app.set_db_draft_field("name", value, window, cx),
@@ -157,8 +159,7 @@ pub(in crate::app) fn db_profile_editor_workspace(
                 "engine",
                 labels.engine.clone(),
                 &app.db_draft_engine,
-                db_engine_options(),
-                labels.select.clone(),
+                (db_engine_options(), labels.select.clone()),
                 window,
                 cx,
                 |app, value, window, cx| app.set_db_draft_field("engine", value, window, cx),
@@ -174,8 +175,10 @@ pub(in crate::app) fn db_profile_editor_workspace(
                             "host",
                             labels.host.clone(),
                             &app.db_draft_host,
-                            "localhost".to_string(),
-                            false,
+                            DbDialogInputOptions {
+                                placeholder: "localhost".to_string(),
+                                masked: false,
+                            },
                             window,
                             cx,
                             |app, value, window, cx| {
@@ -186,13 +189,15 @@ pub(in crate::app) fn db_profile_editor_workspace(
                             "port",
                             labels.port.clone(),
                             &app.db_draft_port,
-                            if app.db_draft_engine == "mysql" {
-                                "3306"
-                            } else {
-                                "5432"
-                            }
-                            .to_string(),
-                            false,
+                            DbDialogInputOptions {
+                                placeholder: if app.db_draft_engine == "mysql" {
+                                    "3306"
+                                } else {
+                                    "5432"
+                                }
+                                .to_string(),
+                                masked: false,
+                            },
                             window,
                             cx,
                             |app, value, window, cx| {
@@ -204,8 +209,10 @@ pub(in crate::app) fn db_profile_editor_workspace(
                     "username",
                     labels.username.clone(),
                     &app.db_draft_username,
-                    "app".to_string(),
-                    false,
+                    DbDialogInputOptions {
+                        placeholder: "app".to_string(),
+                        masked: false,
+                    },
                     window,
                     cx,
                     |app, value, window, cx| app.set_db_draft_field("username", value, window, cx),
@@ -214,8 +221,10 @@ pub(in crate::app) fn db_profile_editor_workspace(
                     "password",
                     labels.password.clone(),
                     &app.db_draft_password,
-                    labels.password_placeholder.clone(),
-                    true,
+                    DbDialogInputOptions {
+                        placeholder: labels.password_placeholder.clone(),
+                        masked: true,
+                    },
                     window,
                     cx,
                     |app, value, window, cx| app.set_db_draft_field("password", value, window, cx),
@@ -224,8 +233,7 @@ pub(in crate::app) fn db_profile_editor_workspace(
                     "ssl",
                     labels.ssl_mode.clone(),
                     &app.db_draft_ssl_mode,
-                    db_ssl_options(&labels),
-                    labels.select.clone(),
+                    (db_ssl_options(&labels), labels.select.clone()),
                     window,
                     cx,
                     |app, value, window, cx| app.set_db_draft_field("sslMode", value, window, cx),
@@ -235,13 +243,15 @@ pub(in crate::app) fn db_profile_editor_workspace(
                 "database",
                 labels.database.clone(),
                 &app.db_draft_database,
-                if app.db_draft_engine == "sqlite" {
-                    "/path/to/app.sqlite3"
-                } else {
-                    "app"
-                }
-                .to_string(),
-                false,
+                DbDialogInputOptions {
+                    placeholder: if app.db_draft_engine == "sqlite" {
+                        "/path/to/app.sqlite3"
+                    } else {
+                        "app"
+                    }
+                    .to_string(),
+                    masked: false,
+                },
                 window,
                 cx,
                 |app, value, window, cx| app.set_db_draft_field("database", value, window, cx),
@@ -271,16 +281,24 @@ fn db_test_result_message(message: String, ok: bool) -> impl IntoElement {
         .child(div().min_w_0().truncate().child(message))
 }
 
+struct DbDialogInputOptions {
+    placeholder: String,
+    masked: bool,
+}
+
 fn db_dialog_input(
     id: &'static str,
     label: String,
     value: &str,
-    placeholder: String,
-    masked: bool,
+    options: DbDialogInputOptions,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
+    let DbDialogInputOptions {
+        placeholder,
+        masked,
+    } = options;
     let value = value.to_string();
     let state = window.use_keyed_state(SharedString::from(format!("db-input-{id}")), cx, {
         let value = value.clone();
@@ -322,12 +340,12 @@ fn db_dialog_select(
     id: &'static str,
     label: String,
     value: &str,
-    options: Vec<CoduxSelectOption>,
-    select_label: String,
-    window: &mut Window,
+    select: (Vec<CoduxSelectOption>, String),
+    _window: &mut Window,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> impl IntoElement {
+    let (options, select_label) = select;
     div()
         .mb(px(16.0))
         .flex()
@@ -341,14 +359,15 @@ fn db_dialog_select(
                 .child(label),
         )
         .child(codux_select(
-            &format!("db-select-{id}"),
-            value,
-            options,
-            select_label,
-            relative(1.0),
-            px(220.0),
-            false,
-            window,
+            CoduxSelectConfig {
+                id: format!("db-select-{id}"),
+                value: value.to_string(),
+                options,
+                placeholder: select_label.into(),
+                width: relative(1.0).into(),
+                menu_width: px(220.0),
+                disabled: false,
+            },
             cx,
             action,
         ))

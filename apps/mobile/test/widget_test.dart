@@ -323,13 +323,16 @@ void main() {
       expect(log, isNot(contains('request terminal.buffer session=session-1')));
       final subscribePayload = _lastTerminalBaselineSubscribePayload(
         sent,
-        projectId: 'project-1',
+        sessionId: 'session-1',
       );
       expect(subscribePayload?['resource'], RemoteResourceType.terminals);
-      expect(subscribePayload?['projectId'], 'project-1');
       expect(subscribePayload?['baseline'], isTrue);
       expect(subscribePayload?['maxChars'], isA<int>());
       expect(subscribePayload?['chunkChars'], isA<int>());
+      expect(
+        _lastTerminalProjectSubscribePayload(sent, 'project-1'),
+        isNotNull,
+      );
       // The self-drawn terminal view reports its viewport size on layout, so a
       // resize is expected on open; the meaningful guarantee (bind via
       // subscription baseline, no terminal.buffer request) is asserted above.
@@ -446,18 +449,16 @@ void main() {
       expect(log, contains('bind session=session-2 project=project-2'));
       expect(log, isNot(contains('request terminal.buffer session=session-2')));
       expect(sentTypes.where((type) => type == 'project.select'), isEmpty);
+      expect(sent.where(_isTerminalSubscribe).length, 2);
       expect(
-        sentTypes
-            .where((type) => type == RemoteMessageType.resourceSubscribe)
-            .length,
-        1,
+        _lastTerminalProjectSubscribePayload(sent, 'project-2'),
+        isNotNull,
       );
       final subscribePayload = _lastTerminalBaselineSubscribePayload(
         sent,
-        projectId: 'project-2',
+        sessionId: 'session-2',
       );
       expect(subscribePayload?['resource'], RemoteResourceType.terminals);
-      expect(subscribePayload?['projectId'], 'project-2');
       expect(subscribePayload?['baseline'], isTrue);
       expect(subscribePayload?['maxChars'], isA<int>());
       expect(subscribePayload?['chunkChars'], isA<int>());
@@ -777,13 +778,16 @@ void main() {
       );
       expect(log, contains('bind session=session-2 project=project-2'));
       expect(log, isNot(contains('request terminal.buffer session=session-2')));
-      final subscribePayload = _lastPayloadOf(
+      final subscribePayload = _lastTerminalBaselineSubscribePayload(
         sent,
-        RemoteMessageType.resourceSubscribe,
+        sessionId: 'session-2',
       );
       expect(subscribePayload?['resource'], RemoteResourceType.terminals);
-      expect(subscribePayload?['projectId'], 'project-2');
       expect(subscribePayload?['baseline'], isTrue);
+      expect(
+        _lastTerminalProjectSubscribePayload(sent, 'project-2'),
+        isNotNull,
+      );
       // The self-drawn terminal view reports its viewport size on layout, so a
       // resize is expected on remount; the meaningful guarantee (remount from
       // the local pty pool, no terminal.buffer request) is asserted above.
@@ -899,15 +903,14 @@ void main() {
       );
       expect(
         sent.where((envelope) {
-          if (envelope['type'] != RemoteMessageType.resourceSubscribe) {
-            return false;
-          }
-          final payload = envelope['payload'];
-          return payload is Map &&
-              payload['projectId'] == 'project-2' &&
-              payload['baseline'] == true;
+          return _isTerminalBaselineSubscribe(envelope) &&
+              envelope['sessionId'] == 'session-2';
         }).length,
         1,
+      );
+      expect(
+        _lastTerminalProjectSubscribePayload(sent, 'project-2'),
+        isNotNull,
       );
     },
   );
@@ -1380,13 +1383,11 @@ void main() {
       final sentTypes = _sentTypes(sent);
       expect(sentTypes, contains(RemoteMessageType.resourceSubscribe));
       expect(sentTypes, isNot(contains(RemoteMessageType.terminalBuffer)));
-      final subscribePayload = _lastPayloadOf(
+      final subscribePayload = _lastTerminalBaselineSubscribePayload(
         sent,
-        RemoteMessageType.resourceSubscribe,
+        sessionId: 'session-1',
       );
       expect(subscribePayload?['resource'], RemoteResourceType.terminals);
-      expect(subscribePayload?['sessionId'], isNull);
-      expect(subscribePayload?['projectId'], 'project-1');
       expect(subscribePayload?['baseline'], isTrue);
       expect(
         CoduxLog.snapshotText(),
@@ -2417,16 +2418,28 @@ Map? _lastPayloadOf(List<Map<String, dynamic>> sent, String type) {
 
 Map? _lastTerminalBaselineSubscribePayload(
   List<Map<String, dynamic>> sent, {
-  String? projectId,
   String? sessionId,
 }) {
   for (final envelope in sent.reversed) {
     if (!_isTerminalBaselineSubscribe(envelope)) continue;
     final payload = envelope['payload'];
     if (payload is! Map) continue;
-    if (projectId != null && payload['projectId'] != projectId) continue;
-    if (sessionId != null && payload['sessionId'] != sessionId) continue;
+    if (sessionId != null && envelope['sessionId'] != sessionId) continue;
     return payload;
+  }
+  return null;
+}
+
+Map? _lastTerminalProjectSubscribePayload(
+  List<Map<String, dynamic>> sent,
+  String projectId,
+) {
+  for (final envelope in sent.reversed) {
+    if (!_isTerminalSubscribe(envelope) || envelope['sessionId'] != null) {
+      continue;
+    }
+    final payload = envelope['payload'];
+    if (payload is Map && payload['projectId'] == projectId) return payload;
   }
   return null;
 }
@@ -2459,6 +2472,8 @@ String _sessionIdForSubscribe(
   Map<String, dynamic> envelope,
   Map<String, String> sessionIdByProject,
 ) {
+  final envelopeSessionId = '${envelope['sessionId'] ?? ''}';
+  if (envelopeSessionId.isNotEmpty) return envelopeSessionId;
   final payload = envelope['payload'];
   if (payload is Map) {
     final sessionId = '${payload['sessionId'] ?? ''}';

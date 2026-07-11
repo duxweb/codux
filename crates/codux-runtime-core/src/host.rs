@@ -7,10 +7,13 @@ pub struct HostInfoPayload {
     pub name: String,
     pub platform: String,
     pub app: String,
+    pub resource_subscriptions: Vec<String>,
     pub transports: Vec<RemoteTransportCandidate>,
 }
 
 pub fn host_info_payload(input: HostInfoPayload) -> Value {
+    let mut capabilities = host_capabilities();
+    capabilities["resourceSubscriptions"] = json!(input.resource_subscriptions);
     json!({
         "hostId": input.host_id,
         "runtimeInstanceId": input.runtime_instance_id,
@@ -18,7 +21,7 @@ pub fn host_info_payload(input: HostInfoPayload) -> Value {
         "platform": input.platform,
         "app": input.app,
         "protocolVersion": REMOTE_PROTOCOL_VERSION,
-        "capabilities": host_capabilities(),
+        "capabilities": capabilities,
         "transports": input.transports,
     })
 }
@@ -36,6 +39,7 @@ mod tests {
             name: "Codux Mac".to_string(),
             platform: "macos".to_string(),
             app: "Codux".to_string(),
+            resource_subscriptions: vec!["projects".to_string(), "terminals".to_string()],
             transports: vec![iroh_transport_candidate(
                 "https://relay.example/v3",
                 "node-1",
@@ -47,6 +51,10 @@ mod tests {
         assert_eq!(payload["runtimeInstanceId"], "runtime-1");
         assert_eq!(payload["protocolVersion"], REMOTE_PROTOCOL_VERSION);
         assert_eq!(payload["capabilities"]["domains"]["terminal"], true);
+        assert_eq!(
+            payload["capabilities"]["resourceSubscriptions"],
+            json!(["projects", "terminals"])
+        );
         assert_eq!(payload["transports"][0]["kind"], "iroh");
         assert_eq!(payload["transports"][0]["nodeId"], "node-1");
         assert_eq!(

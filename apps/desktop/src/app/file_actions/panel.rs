@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::project_actions::FilePickerOpenRequest;
 
 impl CoduxApp {
     pub(in crate::app) fn current_file_panel_state_snapshot(
@@ -289,14 +290,16 @@ impl CoduxApp {
             .map(|parent| parent.to_string_lossy().to_string());
         let device_id = project.host_device_id.clone();
         self.open_file_picker_window(
-            super::types::FilePickerMode::Save,
-            super::types::FilePickerTarget::SaveFileAs {
-                source_path: source_abs,
-                device_id: device_id.clone(),
+            FilePickerOpenRequest {
+                mode: super::types::FilePickerMode::Save,
+                target: super::types::FilePickerTarget::SaveFileAs {
+                    source_path: source_abs,
+                    device_id: device_id.clone(),
+                },
+                device_id,
+                start_path: start_dir,
+                default_filename: Some(entry.name.clone()),
             },
-            device_id,
-            start_dir,
-            Some(entry.name.clone()),
             window,
             cx,
         );

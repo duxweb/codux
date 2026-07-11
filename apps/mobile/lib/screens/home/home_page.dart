@@ -33,6 +33,7 @@ import '../../services/remote_capabilities.dart';
 import '../../services/remote_connection_sync_controller.dart';
 import '../../services/terminal_repaint_signal.dart';
 import '../../services/remote_project_controller.dart';
+import '../../services/remote_resource_subscription_coordinator.dart';
 import '../../services/remote_network_route_refresh_controller.dart';
 import '../../services/remote_protocol_service.dart';
 import '../../services/remote_runtime_payloads.dart';

@@ -79,7 +79,7 @@ pub(in crate::app) fn ai_history_summary_from_project_state(
         .snapshot
         .clone()
         .map(normalized_ai_history_snapshot_to_summary)?;
-    apply_ai_history_project_state(&mut summary, &state);
+    apply_ai_history_project_state(&mut summary, state);
     Some(summary)
 }
 

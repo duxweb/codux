@@ -246,10 +246,10 @@ mod macos {
             }
             return;
         }
-        if let Some(parent) = path.parent() {
-            if let Some(url) = NSURL::from_directory_path(parent) {
-                panel.setDirectoryURL(Some(&url));
-            }
+        if let Some(parent) = path.parent()
+            && let Some(url) = NSURL::from_directory_path(parent)
+        {
+            panel.setDirectoryURL(Some(&url));
         }
         if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
             panel.setNameFieldStringValue(&NSString::from_str(file_name));

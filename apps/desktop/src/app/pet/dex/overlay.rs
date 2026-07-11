@@ -173,7 +173,7 @@ pub(super) fn pet_dex_archive_confirm_overlay(
                                 .line_height(rems(1.375))
                                 .font_weight(FontWeight::BOLD)
                                 .child(pet_catalog_text(
-                                    &language,
+                                    language,
                                     "pet.archive.alert.title",
                                     "Archive Current Pet",
                                 )),
@@ -186,7 +186,7 @@ pub(super) fn pet_dex_archive_confirm_overlay(
                         .line_height(rems(1.25))
                         .text_color(color(theme::TEXT_MUTED))
                         .child(pet_catalog_text(
-                            &language,
+                            language,
                             "pet.archive.alert.message",
                             "Archive this pet into the dex and choose a new companion.",
                         )),
@@ -200,7 +200,7 @@ pub(super) fn pet_dex_archive_confirm_overlay(
                         .child(
                             dialog_cancel_button(
                                 "pet-dex-cancel-archive",
-                                pet_catalog_text(&language, "common.cancel", "Cancel"),
+                                pet_catalog_text(language, "common.cancel", "Cancel"),
                                 cx,
                                 |app, _event, _window, cx| app.close_pet_dex_spotlight(cx),
                             )
@@ -210,7 +210,7 @@ pub(super) fn pet_dex_archive_confirm_overlay(
                             dialog_primary_button(
                                 "pet-dex-confirm-archive",
                                 pet_catalog_text(
-                                    &language,
+                                    language,
                                     "pet.archive.confirm",
                                     "Confirm Archive",
                                 ),

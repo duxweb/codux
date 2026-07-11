@@ -110,82 +110,113 @@ impl GitStatusVirtualRow {
     }
 }
 
-pub(super) fn git_status_virtual_rows(
-    staged: &[GitFileStatus],
-    changed: &[GitFileStatus],
-    untracked: &[GitFileStatus],
-    expanded_sections: &HashSet<String>,
-    expanded_dirs: &HashSet<String>,
-    tree_children: &HashMap<String, Vec<GitFileStatus>>,
-    selected_file: Option<&str>,
-    selected_files: &HashSet<String>,
-    labels: &GitSidebarLabels,
-) -> Vec<GitStatusVirtualRow> {
-    let mut rows = Vec::new();
-    let file_menu_labels = Rc::new(GitFileMenuLabels::from(labels));
-    append_git_status_group_virtual_rows(
-        "staged",
-        labels.staged.clone(),
+pub(super) struct GitStatusRowsInput<'a> {
+    pub(super) staged: &'a [GitFileStatus],
+    pub(super) changed: &'a [GitFileStatus],
+    pub(super) untracked: &'a [GitFileStatus],
+    pub(super) expanded_sections: &'a HashSet<String>,
+    pub(super) expanded_dirs: &'a HashSet<String>,
+    pub(super) tree_children: &'a HashMap<String, Vec<GitFileStatus>>,
+    pub(super) selected_file: Option<&'a str>,
+    pub(super) selected_files: &'a HashSet<String>,
+    pub(super) labels: &'a GitSidebarLabels,
+}
+
+pub(super) fn git_status_virtual_rows(input: GitStatusRowsInput<'_>) -> Vec<GitStatusVirtualRow> {
+    let GitStatusRowsInput {
         staged,
-        expanded_sections,
-        expanded_dirs,
-        tree_children,
-        selected_file,
-        selected_files,
-        labels.staged_empty.clone(),
-        labels.tree_limit.clone(),
-        file_menu_labels.clone(),
-        rows.is_empty(),
-        &mut rows,
-    );
-    append_git_status_group_virtual_rows(
-        "changed",
-        labels.changed.clone(),
         changed,
-        expanded_sections,
-        expanded_dirs,
-        tree_children,
-        selected_file,
-        selected_files,
-        labels.changed_empty.clone(),
-        labels.tree_limit.clone(),
-        file_menu_labels.clone(),
-        rows.is_empty(),
-        &mut rows,
-    );
-    append_git_status_group_virtual_rows(
-        "untracked",
-        labels.untracked.clone(),
         untracked,
         expanded_sections,
         expanded_dirs,
         tree_children,
         selected_file,
         selected_files,
-        labels.untracked_empty.clone(),
-        labels.tree_limit.clone(),
+        labels,
+    } = input;
+    let mut rows = Vec::new();
+    let file_menu_labels = Rc::new(GitFileMenuLabels::from(labels));
+    let tree_context = GitStatusTreeContext {
+        expanded_dirs,
+        tree_children,
+        selected_file,
+        selected_files,
         file_menu_labels,
-        rows.is_empty(),
+    };
+    append_git_status_group_virtual_rows(
+        GitStatusGroupInput {
+            id: "staged",
+            title: labels.staged.clone(),
+            files: staged,
+            expanded_sections,
+            empty_text: labels.staged_empty.clone(),
+            tree_limit: labels.tree_limit.clone(),
+            first: rows.is_empty(),
+        },
+        &tree_context,
+        &mut rows,
+    );
+    append_git_status_group_virtual_rows(
+        GitStatusGroupInput {
+            id: "changed",
+            title: labels.changed.clone(),
+            files: changed,
+            expanded_sections,
+            empty_text: labels.changed_empty.clone(),
+            tree_limit: labels.tree_limit.clone(),
+            first: rows.is_empty(),
+        },
+        &tree_context,
+        &mut rows,
+    );
+    append_git_status_group_virtual_rows(
+        GitStatusGroupInput {
+            id: "untracked",
+            title: labels.untracked.clone(),
+            files: untracked,
+            expanded_sections,
+            empty_text: labels.untracked_empty.clone(),
+            tree_limit: labels.tree_limit.clone(),
+            first: rows.is_empty(),
+        },
+        &tree_context,
         &mut rows,
     );
     rows
 }
 
-fn append_git_status_group_virtual_rows(
+struct GitStatusTreeContext<'a> {
+    expanded_dirs: &'a HashSet<String>,
+    tree_children: &'a HashMap<String, Vec<GitFileStatus>>,
+    selected_file: Option<&'a str>,
+    selected_files: &'a HashSet<String>,
+    file_menu_labels: Rc<GitFileMenuLabels>,
+}
+
+struct GitStatusGroupInput<'a> {
     id: &'static str,
     title: String,
-    files: &[GitFileStatus],
-    expanded_sections: &HashSet<String>,
-    expanded_dirs: &HashSet<String>,
-    tree_children: &HashMap<String, Vec<GitFileStatus>>,
-    selected_file: Option<&str>,
-    selected_files: &HashSet<String>,
+    files: &'a [GitFileStatus],
+    expanded_sections: &'a HashSet<String>,
     empty_text: String,
     tree_limit: String,
-    file_menu_labels: Rc<GitFileMenuLabels>,
     first: bool,
+}
+
+fn append_git_status_group_virtual_rows(
+    input: GitStatusGroupInput<'_>,
+    tree_context: &GitStatusTreeContext<'_>,
     rows: &mut Vec<GitStatusVirtualRow>,
 ) {
+    let GitStatusGroupInput {
+        id,
+        title,
+        files,
+        expanded_sections,
+        empty_text,
+        tree_limit,
+        first,
+    } = input;
     let expanded = expanded_sections.contains(id);
     rows.push(GitStatusVirtualRow::GroupHeader {
         id,
@@ -209,18 +240,7 @@ fn append_git_status_group_virtual_rows(
         return;
     }
     let start_len = rows.len();
-    append_git_status_virtual_directory_rows(
-        id,
-        "",
-        files,
-        0,
-        expanded_dirs,
-        tree_children,
-        selected_file,
-        selected_files,
-        file_menu_labels,
-        rows,
-    );
+    append_git_status_virtual_directory_rows(id, "", files, 0, tree_context, rows);
     let appended = rows.len().saturating_sub(start_len);
     if appended >= MAX_GIT_STATUS_TREE_ROWS {
         rows.push(GitStatusVirtualRow::Limit {
@@ -238,11 +258,7 @@ fn append_git_status_virtual_directory_rows(
     base_path: &str,
     files: &[GitFileStatus],
     depth: usize,
-    expanded_dirs: &HashSet<String>,
-    tree_children: &HashMap<String, Vec<GitFileStatus>>,
-    selected_file: Option<&str>,
-    selected_files: &HashSet<String>,
-    file_menu_labels: Rc<GitFileMenuLabels>,
+    tree_context: &GitStatusTreeContext<'_>,
     rows: &mut Vec<GitStatusVirtualRow>,
 ) {
     if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
@@ -256,45 +272,40 @@ fn append_git_status_virtual_directory_rows(
             return;
         }
         let tree_key = git_status_tree_key(section_id, &dir.path);
-        let expanded = expanded_dirs.contains(&tree_key);
+        let expanded = tree_context.expanded_dirs.contains(&tree_key);
         rows.push(GitStatusVirtualRow::Dir {
             section_id,
             name,
             path: dir.path.clone(),
             expanded,
             depth,
-            labels: file_menu_labels.clone(),
+            labels: tree_context.file_menu_labels.clone(),
         });
-        if expanded {
-            if let Some(children) = tree_children.get(&tree_key) {
-                append_git_status_virtual_directory_rows(
-                    section_id,
-                    &dir.path,
-                    children,
-                    depth + 1,
-                    expanded_dirs,
-                    tree_children,
-                    selected_file,
-                    selected_files,
-                    file_menu_labels.clone(),
-                    rows,
-                );
-            }
+        if expanded && let Some(children) = tree_context.tree_children.get(&tree_key) {
+            append_git_status_virtual_directory_rows(
+                section_id,
+                &dir.path,
+                children,
+                depth + 1,
+                tree_context,
+                rows,
+            );
         }
     }
     for file in direct_files {
         if rows.len() >= MAX_GIT_STATUS_TREE_ROWS {
             return;
         }
-        let active = selected_file
+        let active = tree_context
+            .selected_file
             .map(|path| path == file.path.as_str())
             .unwrap_or(false);
         rows.push(GitStatusVirtualRow::File {
             file,
             active,
-            selected_files: selected_files.clone(),
+            selected_files: tree_context.selected_files.clone(),
             depth,
-            labels: file_menu_labels.clone(),
+            labels: tree_context.file_menu_labels.clone(),
         });
     }
 }

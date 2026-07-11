@@ -158,41 +158,26 @@ impl TerminalLayoutService {
     ) -> Result<TerminalLayoutSummary, String> {
         self.save_from_gpui_with_grid(
             project_id,
-            tabs,
-            top_panes,
-            top_ratios,
-            TerminalTopGrid::default(),
-            None,
-            bottom_ratio,
-            Vec::new(),
+            TerminalLayoutSummary {
+                tabs,
+                top_panes,
+                top_ratios,
+                bottom_ratio,
+                ..Default::default()
+            },
         )
     }
 
     pub fn save_from_gpui_with_grid(
         &self,
         project_id: &str,
-        tabs: Vec<TerminalTabSummary>,
-        top_panes: Vec<TerminalPaneSummary>,
-        top_ratios: Vec<f64>,
-        top_grid: TerminalTopGrid,
-        split_tree: Option<TerminalSplitNode>,
-        bottom_ratio: f64,
-        collapsed_panes: Vec<TerminalPaneSummary>,
+        mut layout: TerminalLayoutSummary,
     ) -> Result<TerminalLayoutSummary, String> {
-        if tabs.is_empty() && top_panes.is_empty() {
+        if layout.tabs.is_empty() && layout.top_panes.is_empty() {
             return Err("Terminal layout is empty.".to_string());
         }
-        let layout = TerminalLayoutSummary {
-            tabs,
-            active_terminal_id: String::new(),
-            top_panes,
-            top_ratios,
-            top_grid,
-            split_tree,
-            bottom_ratio,
-            collapsed_panes,
-            error: None,
-        };
+        layout.active_terminal_id.clear();
+        layout.error = None;
         self.save_summary(project_id, layout)
     }
 
@@ -349,10 +334,11 @@ pub fn normalize_split_tree(
     }
     if let Some(tree) = tree {
         let mut seen = std::collections::HashSet::new();
-        if let Some(tree) = sanitize_split_node(tree, pane_count, &mut seen) {
-            if seen.len() == pane_count && split_tree_leaf_count(&tree) == pane_count {
-                return Some(tree);
-            }
+        if let Some(tree) = sanitize_split_node(tree, pane_count, &mut seen)
+            && seen.len() == pane_count
+            && split_tree_leaf_count(&tree) == pane_count
+        {
+            return Some(tree);
         }
     }
     Some(split_tree_from_top_grid(

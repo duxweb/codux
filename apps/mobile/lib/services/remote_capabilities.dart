@@ -60,6 +60,30 @@ class TerminalBufferCapability {
   }
 }
 
+class RemoteResourceSubscriptionCapability {
+  const RemoteResourceSubscriptionCapability([this.resources = const {}]);
+
+  final Set<String> resources;
+
+  static const fallback = RemoteResourceSubscriptionCapability();
+
+  bool supports(String resource) => resources.contains(resource);
+
+  factory RemoteResourceSubscriptionCapability.fromHostInfo(Object? payload) {
+    if (payload is! Map) return fallback;
+    final capabilities = payload['capabilities'];
+    if (capabilities is! Map) return fallback;
+    final resources = capabilities['resourceSubscriptions'];
+    if (resources is! List) return fallback;
+    return RemoteResourceSubscriptionCapability(
+      resources
+          .map((resource) => '$resource'.trim())
+          .where((resource) => resource.isNotEmpty)
+          .toSet(),
+    );
+  }
+}
+
 int? _intValue(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();

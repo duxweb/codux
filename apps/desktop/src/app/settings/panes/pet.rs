@@ -82,10 +82,9 @@ pub(super) fn settings_pet_pane(
                         "settings-pet-speech-frequency",
                         &settings.pet_speech_frequency,
                         pet_speech_frequency_options(language),
-                        speech_disabled,
+                        (speech_disabled, language),
                         window,
                         cx,
-                        language,
                         |app, value, window, cx| app.set_pet_speech_frequency(value, window, cx),
                     ),
                 )
@@ -214,10 +213,9 @@ pub(super) fn settings_pet_pane(
                         "pet-speech-provider",
                         &settings.pet_speech_provider_id,
                         ai_provider_options(settings, "petSpeech", language),
-                        pet_speech_llm_provider_disabled,
+                        (pet_speech_llm_provider_disabled, language),
                         window,
                         cx,
-                        language,
                         |app, value, window, cx| app.set_pet_speech_provider(value, window, cx),
                     ),
                 )
@@ -259,10 +257,9 @@ pub(super) fn settings_pet_pane(
                         "settings-pet-hydration-reminder-interval",
                         &settings.pet_hydration_reminder_minutes,
                         pet_reminder_interval_options(language),
-                        !settings.pet_reminders,
+                        (!settings.pet_reminders, language),
                         window,
                         cx,
-                        language,
                         |app, value, window, cx| {
                             app.set_pet_hydration_reminder_minutes(value, window, cx)
                         },
@@ -295,10 +292,9 @@ pub(super) fn settings_pet_pane(
                         "settings-pet-sedentary-reminder-interval",
                         &settings.pet_sedentary_reminder_minutes,
                         pet_reminder_interval_options(language),
-                        !settings.pet_sedentary_reminders,
+                        (!settings.pet_sedentary_reminders, language),
                         window,
                         cx,
-                        language,
                         |app, value, window, cx| {
                             app.set_pet_sedentary_reminder_minutes(value, window, cx)
                         },
@@ -331,10 +327,9 @@ pub(super) fn settings_pet_pane(
                         "settings-pet-late-night-reminder-interval",
                         &settings.pet_late_night_reminder_minutes,
                         pet_reminder_interval_options(language),
-                        !settings.pet_late_night_reminders,
+                        (!settings.pet_late_night_reminders, language),
                         window,
                         cx,
-                        language,
                         |app, value, window, cx| {
                             app.set_pet_late_night_reminder_minutes(value, window, cx)
                         },

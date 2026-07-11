@@ -40,6 +40,7 @@ pub struct TerminalMessage<'a> {
     pub kind: &'a str,
     pub device_id: Option<&'a str>,
     pub session_id: Option<&'a str>,
+    pub request_id: Option<&'a str>,
     pub payload: &'a Value,
 }
 
@@ -137,6 +138,20 @@ pub fn finish_terminal_create_viewer_lifecycle(
     add_viewer(session_id, device_id);
 }
 
+pub fn rollback_terminal_create_viewer_lifecycle(
+    lifecycle: &TerminalCreateLifecycle,
+    device_id: Option<&str>,
+    mut remove_viewer: impl FnMut(&str, &str),
+) {
+    let Some(session_id) = lifecycle.requested_terminal_id.as_deref() else {
+        return;
+    };
+    let Some(device_id) = device_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return;
+    };
+    remove_viewer(session_id, device_id);
+}
+
 /// True for every terminal-protocol message the shared router handles. This is
 /// the canonical set; hosts must not keep private copies that can fall behind.
 ///
@@ -184,6 +199,7 @@ pub trait RemoteTerminalDispatch {
         &self,
         device_id: Option<&str>,
         session_id: Option<&str>,
+        request_id: Option<&str>,
         kind: &str,
         payload: Value,
     );
@@ -252,7 +268,7 @@ pub trait RemoteTerminalDispatch {
         };
         let owner = self.viewport_owner_for(msg.device_id);
         if let Ok(Some(state)) = self.terminal_manager().release_viewport(session_id, &owner) {
-            self.send_terminal_viewport_state(session_id, msg.device_id, &state);
+            self.send_terminal_viewport_state(session_id, msg.device_id, msg.request_id, &state);
         }
     }
 
@@ -333,6 +349,7 @@ pub trait RemoteTerminalDispatch {
         self.reply_terminal(
             msg.device_id,
             Some(session_id),
+            msg.request_id,
             REMOTE_TERMINAL_VIEWPORT_SCROLLED,
             payload,
         );
@@ -345,11 +362,13 @@ pub trait RemoteTerminalDispatch {
         &self,
         session_id: &str,
         device_id: Option<&str>,
+        request_id: Option<&str>,
         state: &TerminalViewportState,
     ) {
         self.reply_terminal(
             device_id,
             Some(session_id),
+            request_id,
             REMOTE_TERMINAL_VIEWPORT_STATE,
             json!({
                 "sessionId": session_id,
@@ -390,9 +409,9 @@ pub trait RemoteTerminalDispatch {
 #[cfg(test)]
 mod tests {
     use super::{
-        TerminalViewportClaimIntent, apply_terminal_osc_color_env,
+        TerminalCreateLifecycle, TerminalViewportClaimIntent, apply_terminal_osc_color_env,
         finish_terminal_create_viewer_lifecycle, prepare_terminal_create_lifecycle,
-        terminal_viewport_claim_intent,
+        rollback_terminal_create_viewer_lifecycle, terminal_viewport_claim_intent,
     };
     use crate::terminal_pty::{TerminalManager, TerminalPtyConfig};
     use serde_json::json;
@@ -531,6 +550,28 @@ mod tests {
         assert_eq!(
             viewers,
             vec![("session-actual".to_string(), "device-a".to_string())]
+        );
+    }
+
+    #[test]
+    fn rollback_lifecycle_removes_preregistered_viewer() {
+        let lifecycle = TerminalCreateLifecycle {
+            requested_terminal_id: Some("session-requested".to_string()),
+            reattaching: false,
+        };
+        let mut removed = Vec::new();
+
+        rollback_terminal_create_viewer_lifecycle(
+            &lifecycle,
+            Some(" device-a "),
+            |session_id, device_id| {
+                removed.push((session_id.to_string(), device_id.to_string()));
+            },
+        );
+
+        assert_eq!(
+            removed,
+            vec![("session-requested".to_string(), "device-a".to_string())]
         );
     }
 }

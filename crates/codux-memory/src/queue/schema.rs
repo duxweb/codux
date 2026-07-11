@@ -15,10 +15,10 @@ fn schema_ensured_paths() -> &'static Mutex<HashSet<PathBuf>> {
 
 impl MemoryService {
     pub(crate) fn ensure_queue_schema(&self) -> Result<(), String> {
-        if let Ok(ensured) = schema_ensured_paths().lock() {
-            if ensured.contains(&self.database_path) {
-                return Ok(());
-            }
+        if let Ok(ensured) = schema_ensured_paths().lock()
+            && ensured.contains(&self.database_path)
+        {
+            return Ok(());
         }
         let conn = self.open_or_create_connection()?;
         conn.execute_batch(

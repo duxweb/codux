@@ -1,27 +1,30 @@
 impl WorktreeService {
     pub fn snapshot(&self, project_id: String, project_path: String) -> WorktreeSnapshot {
-        let now = now_seconds();
         let root_path =
             repository_root(&project_path).unwrap_or_else(|| normalize_path(&project_path));
         let default_branch = current_branch(&root_path).unwrap_or_else(|| "main".to_string());
         match scan_git_worktrees(&project_id, &project_path) {
             Ok(scanned) => self.snapshot_from_scanned(project_id, scanned, None),
-            Err(error) => WorktreeSnapshot {
-                project_id: project_id.clone(),
-                selected_worktree_id: project_id.clone(),
-                worktrees: vec![project_worktree_snapshot(
-                    project_id.clone(),
-                    project_id.clone(),
-                    default_branch.clone(),
-                    default_branch,
-                    root_path,
-                    "todo".to_string(),
-                    true,
-                    now,
-                )],
-                tasks: Vec::new(),
-                error: Some(error),
-            },
+            Err(error) => {
+                let now = now_seconds();
+                WorktreeSnapshot {
+                    project_id: project_id.clone(),
+                    selected_worktree_id: project_id.clone(),
+                    worktrees: vec![project_worktree_snapshot(ScannedWorktree {
+                        id: project_id.clone(),
+                        project_id: project_id.clone(),
+                        name: default_branch.clone(),
+                        branch: default_branch,
+                        path: root_path,
+                        status: "todo".to_string(),
+                        is_default: true,
+                        created_at: now,
+                        updated_at: now,
+                    })],
+                    tasks: Vec::new(),
+                    error: Some(error),
+                }
+            }
         }
     }
 

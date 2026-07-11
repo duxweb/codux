@@ -96,15 +96,15 @@ impl MemoryService {
                 summary: self.summary(Some(&project.project_id)),
             });
         }
-        let enqueued = self.enqueue_extraction_if_needed(
-            &project.project_id,
-            &project.workspace_path,
-            &session.tool,
-            &session_id,
-            &source.location,
-            &source.fingerprint,
-            false,
-        )?;
+        let enqueued = self.enqueue_extraction_if_needed(MemoryExtractionEnqueue {
+            project_id: &project.project_id,
+            workspace_path: &project.workspace_path,
+            tool: &session.tool,
+            session_id: &session_id,
+            transcript_path: &source.location,
+            source_fingerprint: &source.fingerprint,
+            allow_retry_failed: false,
+        })?;
         self.update_source_state(&source_snapshot)?;
         Ok(MemoryEnqueueResult {
             enqueued,
@@ -192,8 +192,7 @@ impl MemoryService {
         }
         self.ensure_queue_schema()?;
         let conn = self.open_connection()?;
-        let placeholders = std::iter::repeat("?")
-            .take(statuses.len())
+        let placeholders = std::iter::repeat_n("?", statuses.len())
             .collect::<Vec<_>>()
             .join(", ");
         let sql = format!(
@@ -233,14 +232,17 @@ impl MemoryService {
 
     pub(super) fn enqueue_extraction_if_needed(
         &self,
-        project_id: &str,
-        workspace_path: &str,
-        tool: &str,
-        session_id: &str,
-        transcript_path: &str,
-        source_fingerprint: &str,
-        allow_retry_failed: bool,
+        input: MemoryExtractionEnqueue<'_>,
     ) -> Result<bool, String> {
+        let MemoryExtractionEnqueue {
+            project_id,
+            workspace_path,
+            tool,
+            session_id,
+            transcript_path,
+            source_fingerprint,
+            allow_retry_failed,
+        } = input;
         let conn = self.open_or_create_connection()?;
         let existing: Option<String> = conn
             .query_row(

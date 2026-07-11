@@ -64,20 +64,20 @@ fn pet_slug_from_url(url: &Url) -> String {
         .path_segments()
         .map(|parts| parts.collect::<Vec<_>>())
         .unwrap_or_default();
-    if let Some(index) = segments.iter().position(|segment| *segment == "pets") {
-        if let Some(slug) = segments.get(index + 1) {
-            return (*slug).to_string();
-        }
+    if let Some(index) = segments.iter().position(|segment| *segment == "pets")
+        && let Some(slug) = segments.get(index + 1)
+    {
+        return (*slug).to_string();
     }
     segments.last().copied().unwrap_or("custom-pet").to_string()
 }
 
 fn extract_zip_url(html: &str) -> Option<Url> {
     for marker in ["zipUrl", "zip_url"] {
-        if let Some(index) = html.find(marker) {
-            if let Some(url) = first_zip_url_after(&html[index..]) {
-                return Some(url);
-            }
+        if let Some(index) = html.find(marker)
+            && let Some(url) = first_zip_url_after(&html[index..])
+        {
+            return Some(url);
         }
     }
     first_zip_url_after(html)
@@ -126,8 +126,8 @@ fn extract_jsonld_string(html: &str, field: &str) -> Option<String> {
     let tail = &html[index + marker.len()..];
     let colon = tail.find(':')?;
     let tail = tail[colon + 1..].trim_start();
-    if tail.starts_with('[') {
-        let rest = tail[1..].trim_start();
+    if let Some(tail) = tail.strip_prefix('[') {
+        let rest = tail.trim_start();
         if !rest.starts_with('"') {
             return None;
         }

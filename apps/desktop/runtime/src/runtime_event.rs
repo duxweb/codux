@@ -64,6 +64,12 @@ pub struct RuntimeEventService {
     event_dir: PathBuf,
 }
 
+impl Default for RuntimeEventService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RuntimeEventService {
     pub fn new() -> Self {
         Self {

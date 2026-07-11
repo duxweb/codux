@@ -1346,49 +1346,9 @@ fn worktree_row_title(worktree: &WorktreeInfo, no_branch: &str) -> String {
 
     branch
         .split('/')
-        .filter(|segment| !segment.is_empty())
-        .next_back()
+        .rfind(|segment| !segment.is_empty())
         .unwrap_or(branch)
         .to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn worktree(name: &str, branch: &str, is_default: bool) -> WorktreeInfo {
-        WorktreeInfo {
-            id: "worktree-1".to_string(),
-            project_id: "project-1".to_string(),
-            name: name.to_string(),
-            branch: branch.to_string(),
-            path: "/workspace/project".to_string(),
-            status: "active".to_string(),
-            is_default,
-            exists: true,
-            git_summary: Default::default(),
-        }
-    }
-
-    #[test]
-    fn worktree_row_title_uses_worktree_fields_without_git_panel_state() {
-        assert_eq!(
-            worktree_row_title(&worktree("Task A", "feature/task-a", false), "No Branch"),
-            "Task A"
-        );
-        assert_eq!(
-            worktree_row_title(&worktree("", "feature/task-b", false), "No Branch"),
-            "task-b"
-        );
-        assert_eq!(
-            worktree_row_title(&worktree("Main", "main", true), "No Branch"),
-            "main"
-        );
-        assert_eq!(
-            worktree_row_title(&worktree("Draft", "uninitialized", false), "No Branch"),
-            "No Branch"
-        );
-    }
 }
 
 fn ai_session_compact_row(
@@ -1526,4 +1486,43 @@ fn session_usage_label(session: &TaskSessionRow) -> String {
         return compact_number(session.total_tokens);
     }
     usage_amount_label(&session.usage_amounts).unwrap_or_else(|| compact_number(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn worktree(name: &str, branch: &str, is_default: bool) -> WorktreeInfo {
+        WorktreeInfo {
+            id: "worktree-1".to_string(),
+            project_id: "project-1".to_string(),
+            name: name.to_string(),
+            branch: branch.to_string(),
+            path: "/workspace/project".to_string(),
+            status: "active".to_string(),
+            is_default,
+            exists: true,
+            git_summary: Default::default(),
+        }
+    }
+
+    #[test]
+    fn worktree_row_title_uses_worktree_fields_without_git_panel_state() {
+        assert_eq!(
+            worktree_row_title(&worktree("Task A", "feature/task-a", false), "No Branch"),
+            "Task A"
+        );
+        assert_eq!(
+            worktree_row_title(&worktree("", "feature/task-b", false), "No Branch"),
+            "task-b"
+        );
+        assert_eq!(
+            worktree_row_title(&worktree("Main", "main", true), "No Branch"),
+            "main"
+        );
+        assert_eq!(
+            worktree_row_title(&worktree("Draft", "uninitialized", false), "No Branch"),
+            "No Branch"
+        );
+    }
 }

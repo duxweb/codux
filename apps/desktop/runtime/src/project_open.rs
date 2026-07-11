@@ -207,11 +207,11 @@ pub fn project_reveal_in_file_manager(project_path: &str) -> Result<(), String> 
 
     #[cfg(target_os = "macos")]
     {
-        return Command::new("open")
+        Command::new("open")
             .arg(&path)
             .spawn()
             .map(|_| ())
-            .map_err(|error| error.to_string());
+            .map_err(|error| error.to_string())
     }
 
     #[cfg(target_os = "windows")]
@@ -291,7 +291,7 @@ fn open_project_path_in_application(
                 .map_err(|error| error.to_string());
         }
 
-        return Err(format!("{} not found.", spec.label));
+        Err(format!("{} not found.", spec.label))
     }
 
     #[cfg(not(target_os = "macos"))]

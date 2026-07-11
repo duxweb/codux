@@ -50,7 +50,7 @@ impl RemoteHostRuntime {
             if reuse_saved_terminal {
                 self.saved_remote_terminal_id(&scope.layout_key)
             } else {
-                None
+                Some(remote_terminal_id_for_scope(&scope))
             }
         });
         let cols = envelope
@@ -65,12 +65,15 @@ impl RemoteHostRuntime {
             .map(|value| value as u16);
         let mut config = remote_terminal_pty_config(
             &scope,
-            terminal_id,
-            &title,
-            command,
-            cwd,
-            cols,
-            rows,
+            TerminalPtyConfig {
+                terminal_id,
+                title: Some(title.clone()),
+                command,
+                cwd,
+                cols,
+                rows,
+                ..Default::default()
+            },
             self.support_dir.clone(),
         );
         apply_terminal_osc_color_env(&mut config, &envelope.payload);
@@ -131,7 +134,6 @@ impl RemoteHostRuntime {
     pub(super) fn ensure_remote_project_terminal(
         self: &Arc<Self>,
         scope: &RemoteProjectScope,
-        device_id: Option<&str>,
     ) -> Result<String, String> {
         let existing = self
             .remote_terminals()
@@ -148,11 +150,11 @@ impl RemoteHostRuntime {
                     .filter(|id| !id.trim().is_empty())
                     .map(str::to_string)
             });
-        if let Some(session_id) = existing {
-            if self.remote_terminal_session_matches_scope(&session_id, scope) {
-                self.ensure_terminal_event_subscription(&session_id);
-                return Ok(session_id);
-            }
+        if let Some(session_id) = existing
+            && self.remote_terminal_session_matches_scope(&session_id, scope)
+        {
+            self.ensure_terminal_event_subscription(&session_id);
+            return Ok(session_id);
         }
 
         let terminal_id = self
@@ -161,12 +163,11 @@ impl RemoteHostRuntime {
         let title = "Terminal".to_string();
         let mut config = remote_terminal_pty_config(
             scope,
-            terminal_id.clone(),
-            &title,
-            None,
-            None,
-            None,
-            None,
+            TerminalPtyConfig {
+                terminal_id: terminal_id.clone(),
+                title: Some(title.clone()),
+                ..Default::default()
+            },
             self.support_dir.clone(),
         );
         self.apply_host_osc_color_fallback(&mut config);
@@ -192,7 +193,6 @@ impl RemoteHostRuntime {
         self.persist_remote_terminal_layout(&scope.layout_key, &session_id, &title);
         self.publish_remote_terminal_layout_changed();
         self.mark_terminal_event_subscription(&session_id);
-        self.register_terminal_viewer(&session_id, device_id);
         Ok(session_id)
     }
 
@@ -366,18 +366,18 @@ impl RemoteHostRuntime {
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| "Project id is required.".to_string())?;
-        let project_path = envelope
-            .payload
-            .get("projectPath")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .map(str::to_string)
+        let project_path = ProjectStore::new(self.support_dir.clone())
+            .projects_snapshot()
+            .into_iter()
+            .find(|project| project.id == project_id)
+            .map(|project| project.path)
             .or_else(|| {
-                ProjectStore::new(self.support_dir.clone())
-                    .projects_snapshot()
-                    .into_iter()
-                    .find(|project| project.id == project_id)
-                    .map(|project| project.path)
+                envelope
+                    .payload
+                    .get("projectPath")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_string)
             })
             .ok_or_else(|| "Project path is required.".to_string())?;
         Ok((project_id.to_string(), project_path))
@@ -429,10 +429,9 @@ impl RemoteHostRuntime {
             .terminals
             .subscribe_events_keyed(session_id, format!("remote-terminal:{session_id}"), emit)
             .is_err()
+            && let Ok(mut subscriptions) = self.terminal_event_subscriptions.lock()
         {
-            if let Ok(mut subscriptions) = self.terminal_event_subscriptions.lock() {
-                subscriptions.remove(session_id);
-            }
+            subscriptions.remove(session_id);
         }
     }
 
@@ -547,97 +546,34 @@ impl RemoteHostRuntime {
         let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
             return;
         };
-        self.terminal_subscriptions
-            .add_session_viewer(session_id, device_id);
+        self.resource_subscriptions.subscribe(
+            REMOTE_RESOURCE_TERMINALS,
+            None,
+            Some(session_id),
+            device_id,
+        );
+        self.activate_terminal_viewer(session_id);
+    }
+
+    pub(super) fn activate_terminal_viewer(self: &Arc<Self>, session_id: &str) {
         self.terminals.restore_remote_screen_scrollback(session_id);
         self.ensure_terminal_event_subscription(session_id);
     }
 
-    pub(super) fn register_project_terminal_viewers(
-        self: &Arc<Self>,
+    pub(super) fn register_project_terminal_subscription(
+        &self,
         project_id: &str,
         device_id: Option<&str>,
     ) {
         let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
             return;
         };
-        self.terminal_subscriptions
-            .add_project_subscriber(project_id, device_id);
-        for terminal in self.remote_terminals() {
-            let Some(terminal_project_id) = terminal.get("projectId").and_then(Value::as_str)
-            else {
-                continue;
-            };
-            if terminal_project_id != project_id {
-                continue;
-            }
-            let Some(session_id) = terminal.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            self.register_terminal_viewer(session_id, Some(device_id));
-        }
-    }
-
-    pub(super) fn send_project_terminal_baselines(
-        self: &Arc<Self>,
-        project_id: &str,
-        device_id: Option<&str>,
-        envelope: &RemoteEnvelope,
-    ) {
-        let sessions = self
-            .remote_terminals()
-            .into_iter()
-            .filter(|terminal| {
-                terminal.get("projectId").and_then(Value::as_str) == Some(project_id)
-            })
-            .filter_map(|terminal| {
-                terminal
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .collect::<Vec<_>>();
-        let target_session_id = envelope
-            .payload
-            .get("baselineSessionId")
-            .or_else(|| envelope.payload.get("sessionId"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned);
-        for session_id in sessions {
-            let mut envelope = envelope.clone();
-            if target_session_id.as_deref() != Some(session_id.as_str()) {
-                if let Some(payload) = envelope.payload.as_object_mut() {
-                    payload.remove("viewportCols");
-                    payload.remove("viewportRows");
-                }
-            }
-            self.spawn_terminal_baseline(&session_id, device_id, &envelope);
-        }
-    }
-
-    pub(super) fn send_project_terminal_viewport_states(
-        &self,
-        project_id: &str,
-        device_id: Option<&str>,
-    ) {
-        let sessions = self
-            .remote_terminals()
-            .into_iter()
-            .filter(|terminal| {
-                terminal.get("projectId").and_then(Value::as_str) == Some(project_id)
-            })
-            .filter_map(|terminal| {
-                terminal
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .collect::<Vec<_>>();
-        for session_id in sessions {
-            self.send_terminal_viewport_state(&session_id, device_id);
-        }
+        self.resource_subscriptions.subscribe(
+            REMOTE_RESOURCE_TERMINALS,
+            Some(project_id),
+            None,
+            device_id,
+        );
     }
 
     pub(super) fn spawn_terminal_baseline(
@@ -749,15 +685,23 @@ impl RemoteHostRuntime {
         let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
             return;
         };
-        self.terminal_subscriptions
-            .remove_session_viewer(session_id, device_id);
+        self.resource_subscriptions.unsubscribe(
+            REMOTE_RESOURCE_TERMINALS,
+            None,
+            Some(session_id),
+            device_id,
+        );
+        self.clear_terminal_viewer_state(session_id, device_id);
+    }
+
+    pub(super) fn clear_terminal_viewer_state(&self, session_id: &str, device_id: &str) {
         self.clear_terminal_viewer_ack(session_id, Some(device_id));
         if self.terminal_output_viewers(session_id).is_empty() {
             self.terminals.shrink_remote_screen_scrollback(session_id);
         }
     }
 
-    pub(super) fn remove_project_terminal_viewers(
+    pub(super) fn remove_project_terminal_subscription(
         &self,
         project_id: &str,
         device_id: Option<&str>,
@@ -765,29 +709,12 @@ impl RemoteHostRuntime {
         let Some(device_id) = device_id.filter(|value| !value.trim().is_empty()) else {
             return;
         };
-        self.terminal_subscriptions
-            .remove_project_subscriber(project_id, device_id);
-        let session_ids = self
-            .remote_terminals()
-            .into_iter()
-            .filter(|terminal| {
-                terminal.get("projectId").and_then(Value::as_str) == Some(project_id)
-            })
-            .filter_map(|terminal| {
-                terminal
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .collect::<Vec<_>>();
-        self.terminal_subscriptions
-            .remove_project_session_viewers(session_ids.iter().map(String::as_str), device_id);
-        for session_id in session_ids {
-            self.clear_terminal_viewer_ack(&session_id, Some(device_id));
-            if self.terminal_output_viewers(&session_id).is_empty() {
-                self.terminals.shrink_remote_screen_scrollback(&session_id);
-            }
-        }
+        self.resource_subscriptions.unsubscribe(
+            REMOTE_RESOURCE_TERMINALS,
+            Some(project_id),
+            None,
+            device_id,
+        );
     }
 
     pub(super) fn remove_terminal_viewer(&self, device_id: Option<&str>) {
@@ -805,7 +732,6 @@ impl RemoteHostRuntime {
             .map(|terminal| terminal.id)
             .collect::<Vec<_>>();
         self.resource_subscriptions.remove_device(device_id);
-        self.terminal_subscriptions.remove_device(device_id);
         self.clear_terminal_device_acks(device_id);
         self.clear_ai_stats_watcher_device(device_id);
         for session_id in session_ids {
@@ -835,29 +761,35 @@ impl RemoteHostRuntime {
                 self.queue_terminal_output_batch(session_id, text);
             }
             TerminalEvent::Exit { session_id, .. } => {
+                let viewers = self.terminal_output_viewers(&session_id);
                 if let Ok(mut subscriptions) = self.terminal_event_subscriptions.lock() {
                     subscriptions.remove(&session_id);
                 }
-                self.terminal_subscriptions.remove_session(&session_id);
+                self.resource_subscriptions.remove_session(&session_id);
                 self.clear_terminal_output_seq(&session_id);
                 self.clear_terminal_session_acks(&session_id);
-                self.send_terminal_data(
-                    REMOTE_TERMINAL_CLOSED,
-                    None,
-                    Some(&session_id),
-                    json!({ "id": session_id }),
-                );
+                for device_id in viewers {
+                    self.send_terminal_data(
+                        REMOTE_TERMINAL_CLOSED,
+                        Some(&device_id),
+                        Some(&session_id),
+                        json!({ "id": session_id }),
+                    );
+                }
+                self.broadcast_terminal_list(None);
             }
             TerminalEvent::Error {
                 session_id,
                 message,
             } => {
-                self.send(
-                    "error",
-                    None,
-                    Some(&session_id),
-                    json!({ "message": message }),
-                );
+                for device_id in self.terminal_output_viewers(&session_id) {
+                    self.send(
+                        "error",
+                        Some(&device_id),
+                        Some(&session_id),
+                        json!({ "message": message }),
+                    );
+                }
             }
             TerminalEvent::Viewport {
                 session_id,
@@ -874,26 +806,13 @@ impl RemoteHostRuntime {
                     owner_label: None,
                 };
                 let viewers = self.terminal_output_viewers(&session_id);
-                if viewers.is_empty() {
+                for device_id in viewers {
                     self.send_terminal_data(
                         REMOTE_TERMINAL_VIEWPORT_STATE,
-                        None,
+                        Some(&device_id),
                         Some(&session_id),
-                        self.terminal_viewport_state_payload(&session_id, None, &state),
+                        self.terminal_viewport_state_payload(&session_id, Some(&device_id), &state),
                     );
-                } else {
-                    for device_id in viewers {
-                        self.send_terminal_data(
-                            REMOTE_TERMINAL_VIEWPORT_STATE,
-                            Some(&device_id),
-                            Some(&session_id),
-                            self.terminal_viewport_state_payload(
-                                &session_id,
-                                Some(&device_id),
-                                &state,
-                            ),
-                        );
-                    }
                 }
             }
         }
@@ -936,15 +855,11 @@ impl RemoteHostRuntime {
     }
 
     pub(super) fn terminal_output_viewers(&self, session_id: &str) -> HashSet<String> {
-        let project_id = self
-            .terminals
-            .list()
-            .into_iter()
-            .find(|terminal| terminal.id == session_id)
-            .map(|terminal| terminal.project_id)
-            .filter(|value| !value.trim().is_empty());
-        self.terminal_subscriptions
-            .viewers_for_session(session_id, project_id.as_deref())
+        self.resource_subscriptions.devices_for_exact(
+            REMOTE_RESOURCE_TERMINALS,
+            None,
+            Some(session_id),
+        )
     }
 
     pub(super) fn flush_terminal_output_batch(&self, session_id: &str) {
@@ -999,16 +914,17 @@ impl RemoteHostRuntime {
         // resize/repaint ticks. The viewer's generation guard dedups the rest.
         // Idle sessions (no output) self-heal via the keepalive echo; (re)subscribe
         // self-heals via send_terminal_viewport_state on the subscribe path.
-        if output_seq % REMOTE_TERMINAL_OWNER_REASSERT_EVERY == 0 {
-            if let Ok(state) = self.terminals.viewport_state(session_id) {
-                for device_id in &batch.viewers {
-                    if state.owner != terminal_viewport_remote_owner(device_id) {
-                        self.send_terminal_viewport_state_payload(
-                            session_id,
-                            Some(device_id.as_str()),
-                            &state,
-                        );
-                    }
+        if output_seq % REMOTE_TERMINAL_OWNER_REASSERT_EVERY == 0
+            && let Ok(state) = self.terminals.viewport_state(session_id)
+        {
+            for device_id in &batch.viewers {
+                if state.owner != terminal_viewport_remote_owner(device_id) {
+                    self.send_terminal_viewport_state_payload(
+                        session_id,
+                        Some(device_id.as_str()),
+                        None,
+                        &state,
+                    );
                 }
             }
         }
@@ -1020,44 +936,38 @@ impl RemoteHostRuntime {
 /// an `Arc` for its output-event closure) and the inbound envelope (so each
 pub(super) fn remote_terminal_pty_config(
     scope: &RemoteProjectScope,
-    terminal_id: Option<String>,
-    title: &str,
-    command: Option<String>,
-    cwd: Option<String>,
-    cols: Option<u16>,
-    rows: Option<u16>,
+    mut config: TerminalPtyConfig,
     support_dir: PathBuf,
 ) -> TerminalPtyConfig {
-    let cwd = cwd
+    let cwd = config
+        .cwd
+        .take()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| scope.project_path.clone());
-    let terminal_id = terminal_id.filter(|value| !value.trim().is_empty());
+    let terminal_id = config
+        .terminal_id
+        .take()
+        .filter(|value| !value.trim().is_empty());
     let session_key = terminal_id
         .as_ref()
         .map(|terminal_id| format!("gpui:{}:{terminal_id}", scope.worktree_id));
     let session_instance_id = session_key.as_ref().map(|session_key| {
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, session_key.as_bytes()).to_string()
     });
-    TerminalPtyConfig {
-        cwd: Some(cwd),
-        command,
-        cols,
-        rows,
-        root_project_id: Some(scope.project_id.clone()),
-        project_id: Some(scope.worktree_id.clone()),
-        worktree_id: Some(scope.worktree_id.clone()),
-        project_name: Some(scope.project_name.clone()),
-        terminal_id,
-        session_key,
-        session_instance_id,
-        title: Some(title.to_string()),
-        // Same env injection as local spawns (wrapper PATH, shell hooks,
-        // ssh/db profiles); without these a remote terminal launches the bare
-        // CLI and none of the wrapper features work.
-        support_dir: Some(support_dir),
-        runtime_root: Some(codux_runtime_live::runtime_paths::runtime_root_dir()),
-        ..Default::default()
-    }
+    config.cwd = Some(cwd);
+    config.root_project_id = Some(scope.project_id.clone());
+    config.project_id = Some(scope.worktree_id.clone());
+    config.worktree_id = Some(scope.worktree_id.clone());
+    config.project_name = Some(scope.project_name.clone());
+    config.terminal_id = terminal_id;
+    config.session_key = session_key;
+    config.session_instance_id = session_instance_id;
+    // Same env injection as local spawns (wrapper PATH, shell hooks,
+    // ssh/db profiles); without these a remote terminal launches the bare
+    // CLI and none of the wrapper features work.
+    config.support_dir = Some(support_dir);
+    config.runtime_root = Some(codux_runtime_live::runtime_paths::runtime_root_dir());
+    config
 }
 
 pub(super) fn remote_terminal_id_for_scope(scope: &RemoteProjectScope) -> String {

@@ -158,24 +158,24 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
     });
 
     let usage = last_usage.or_else(|| kimi_usage(&state));
-    if let Some(usage) = usage {
-        if usage.total_tokens() > 0 || usage.cached_input_tokens > 0 {
-            result.entries.push(HistoryEntry {
-                source: "kimi".to_string(),
-                session_id: session_id.clone(),
-                external_session_id: Some(session_id),
-                session_title: session_title.or_else(|| Some(project.name.clone())),
-                timestamp: last_timestamp
-                    .or_else(|| kimi_timestamp(&state))
-                    .unwrap_or_else(now_seconds),
-                model: session_model,
-                input_tokens: usage.input_tokens,
-                output_tokens: usage.output_tokens,
-                cached_input_tokens: usage.cached_input_tokens,
-                reasoning_output_tokens: usage.reasoning_output_tokens,
-                usage_amounts: Vec::new(),
-            });
-        }
+    if let Some(usage) = usage
+        && (usage.total_tokens() > 0 || usage.cached_input_tokens > 0)
+    {
+        result.entries.push(HistoryEntry {
+            source: "kimi".to_string(),
+            session_id: session_id.clone(),
+            external_session_id: Some(session_id),
+            session_title: session_title.or_else(|| Some(project.name.clone())),
+            timestamp: last_timestamp
+                .or_else(|| kimi_timestamp(&state))
+                .unwrap_or_else(now_seconds),
+            model: session_model,
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cached_input_tokens: usage.cached_input_tokens,
+            reasoning_output_tokens: usage.reasoning_output_tokens,
+            usage_amounts: Vec::new(),
+        });
     }
 
     result

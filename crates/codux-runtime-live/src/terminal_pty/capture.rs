@@ -22,14 +22,18 @@ pub struct TerminalOutputSnapshot {
 pub(super) struct CaptureReader {
     session_id: String,
     inner: Box<dyn Read + Send>,
-    output_capture: Arc<parking_lot::Mutex<TerminalOutputCapture>>,
-    history: Arc<parking_lot::Mutex<RingHistory>>,
-    screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
-    output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
-    event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
-    info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
+    shared: CaptureReaderShared,
     pending_utf8: Vec<u8>,
     raw_capture: Option<RawCapture>,
+}
+
+pub(super) struct CaptureReaderShared {
+    pub(super) output_capture: Arc<parking_lot::Mutex<TerminalOutputCapture>>,
+    pub(super) history: Arc<parking_lot::Mutex<RingHistory>>,
+    pub(super) screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
+    pub(super) output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
+    pub(super) event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
+    pub(super) info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
 }
 
 struct RawCapture {
@@ -86,23 +90,13 @@ impl CaptureReader {
     pub(super) fn new(
         session_id: String,
         inner: Box<dyn Read + Send>,
-        output_capture: Arc<parking_lot::Mutex<TerminalOutputCapture>>,
-        history: Arc<parking_lot::Mutex<RingHistory>>,
-        screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
-        output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
-        event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
-        info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
+        shared: CaptureReaderShared,
     ) -> Self {
         let raw_capture = raw_capture_file(&session_id);
         Self {
             session_id,
             inner,
-            output_capture,
-            history,
-            screen,
-            output_subscribers,
-            event_subscribers,
-            info,
+            shared,
             pending_utf8: Vec::new(),
             raw_capture,
         }
@@ -129,21 +123,21 @@ impl Read for CaptureReader {
                 );
                 capture.offset += read as u64;
             }
-            self.output_capture.lock().push(bytes);
-            self.screen.lock().process(bytes);
+            self.shared.output_capture.lock().push(bytes);
+            self.shared.screen.lock().process(bytes);
             self.broadcast_output(bytes);
             let text = decode_utf8_output(bytes, &mut self.pending_utf8);
             if !text.is_empty() {
-                let mut history = self.history.lock();
+                let mut history = self.shared.history.lock();
                 history.push_text(&text);
                 let chars = history.len_chars();
-                let mut info = self.info.lock();
+                let mut info = self.shared.info.lock();
                 info.last_active_at = rfc3339_now();
                 info.buffer_characters = chars;
                 info.has_buffer = chars > 0;
             }
             emit_terminal_event(
-                &self.event_subscribers,
+                &self.shared.event_subscribers,
                 TerminalEvent::Output {
                     session_id: self.session_id.clone(),
                     text,
@@ -163,17 +157,17 @@ impl CaptureReader {
         }
         let bytes = text.as_bytes().to_vec();
         {
-            let mut history = self.history.lock();
+            let mut history = self.shared.history.lock();
             history.push_text(&text);
             let chars = history.len_chars();
-            let mut info = self.info.lock();
+            let mut info = self.shared.info.lock();
             info.last_active_at = rfc3339_now();
             info.buffer_characters = chars;
             info.has_buffer = chars > 0;
         }
         self.broadcast_output(&bytes);
         emit_terminal_event(
-            &self.event_subscribers,
+            &self.shared.event_subscribers,
             TerminalEvent::Output {
                 session_id: self.session_id.clone(),
                 text,
@@ -186,7 +180,7 @@ impl CaptureReader {
         if bytes.is_empty() {
             return;
         }
-        let mut subscribers = self.output_subscribers.lock();
+        let mut subscribers = self.shared.output_subscribers.lock();
         subscribers.retain(|subscriber| subscriber.send(bytes.to_vec()).is_ok());
     }
 }

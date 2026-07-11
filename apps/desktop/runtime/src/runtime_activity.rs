@@ -53,14 +53,12 @@ impl RuntimeActivityService {
         const CACHE_TTL: Duration = Duration::from_secs(15);
 
         let cache = CACHE.get_or_init(|| Mutex::new(None));
-        if let Ok(guard) = cache.lock() {
-            if let Some((updated_at, summary)) = guard.as_ref() {
-                if updated_at.elapsed() < CACHE_TTL
-                    && summary.support_dir == self.support_dir.display().to_string()
-                {
-                    return summary.clone();
-                }
-            }
+        if let Ok(guard) = cache.lock()
+            && let Some((updated_at, summary)) = guard.as_ref()
+            && updated_at.elapsed() < CACHE_TTL
+            && summary.support_dir == self.support_dir.display().to_string()
+        {
+            return summary.clone();
         }
 
         let runtime_log = crate::runtime_paths::runtime_log_path_in(&self.support_dir);
@@ -158,16 +156,16 @@ fn tail_lines(path: &Path, limit: usize) -> Result<Vec<String>, String> {
 }
 
 fn running_ai_processes() -> Result<Vec<RuntimeProcessSummary>, String> {
-    static CACHE: OnceLock<Mutex<Option<(Instant, Vec<RuntimeProcessSummary>)>>> = OnceLock::new();
+    type RuntimeProcessCache = Option<(Instant, Vec<RuntimeProcessSummary>)>;
+    static CACHE: OnceLock<Mutex<RuntimeProcessCache>> = OnceLock::new();
     const CACHE_TTL: Duration = Duration::from_secs(10);
 
     let cache = CACHE.get_or_init(|| Mutex::new(None));
-    if let Ok(guard) = cache.lock() {
-        if let Some((updated_at, processes)) = guard.as_ref() {
-            if updated_at.elapsed() < CACHE_TTL {
-                return Ok(processes.clone());
-            }
-        }
+    if let Ok(guard) = cache.lock()
+        && let Some((updated_at, processes)) = guard.as_ref()
+        && updated_at.elapsed() < CACHE_TTL
+    {
+        return Ok(processes.clone());
     }
 
     #[cfg(target_os = "windows")]

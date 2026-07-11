@@ -65,7 +65,7 @@ fn block_is_managed(block: &[String]) -> bool {
         (line.starts_with("name") && line.contains(MANAGED_NAME_PREFIX))
             || (line.starts_with("command")
                 && line.contains("dmux-ai-state")
-                && line.contains(&owner)
+                && line.contains(owner)
                 && line.contains("kimi"))
             || (line.starts_with("command")
                 && line.contains("dmux-ai-state")
@@ -97,7 +97,7 @@ fn has_kimi_managed_hook(text: &str, event: &str, action: &str) -> bool {
             line.starts_with("command")
                 && line.contains("dmux-ai-state")
                 && line.contains(action)
-                && line.contains(&owner)
+                && line.contains(owner)
                 && line.contains("kimi")
         });
         if has_event && has_action {

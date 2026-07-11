@@ -41,8 +41,7 @@ pub(super) fn render_db_launch_context_for_profiles(
     let codux_db_command = codux_db_command
         .and_then(|value| normalized(&value))
         .unwrap_or_else(|| "codux-db".to_string());
-    let lines = vec![
-        "Codux saved database connections for the current root project are available through terminal commands.".to_string(),
+    let lines = ["Codux saved database connections for the current root project are available through terminal commands.".to_string(),
         format!(
             "Always run `{codux_db_command} list` at the time of use to discover the current database profiles as redacted JSON."
         ),
@@ -51,8 +50,7 @@ pub(super) fn render_db_launch_context_for_profiles(
         ),
         "Do not grep the repository or inspect Codux config files to discover saved database connections; use the wrapper list command.".to_string(),
         "Do not ask for, print, infer, or hardcode saved database usernames or passwords.".to_string(),
-        "When selecting non-basic column types such as timestamps, dates, UUIDs, decimals, JSON, enums, arrays, or MySQL tinyint/boolean values, cast them to text so the portable database wrapper can decode the result: use `column::text` on Postgres and `CAST(column AS CHAR)` on MySQL.".to_string(),
-    ];
+        "When selecting non-basic column types such as timestamps, dates, UUIDs, decimals, JSON, enums, arrays, or MySQL tinyint/boolean values, cast them to text so the portable database wrapper can decode the result: use `column::text` on Postgres and `CAST(column AS CHAR)` on MySQL.".to_string()];
     Some(lines.join("\n"))
 }
 

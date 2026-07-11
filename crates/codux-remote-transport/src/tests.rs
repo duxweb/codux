@@ -1,5 +1,5 @@
 use super::*;
-use codux_protocol::{REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG};
+use codux_protocol::{REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG, RemoteEnvelope};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::mpsc;
@@ -170,6 +170,7 @@ fn transport_pong_for_ping_uses_fallback_device_id() {
         kind: REMOTE_TRANSPORT_PING.to_string(),
         device_id: None,
         session_id: None,
+        request_id: Some("request-2".to_string()),
         seq: None,
         payload: json!({ "id": "ping-2" }),
     };
@@ -186,12 +187,33 @@ fn transport_pong_for_ping_uses_fallback_device_id() {
         Some("device-2")
     );
     assert_eq!(envelope["payload"]["id"], "ping-2");
+    assert_eq!(envelope["requestId"], "request-2");
+}
+
+#[test]
+fn pairing_handshake_rejects_conflicting_device_ids() {
+    let envelope = RemoteEnvelope {
+        kind: codux_protocol::REMOTE_PAIRING_REQUEST.to_string(),
+        device_id: Some("device-a".to_string()),
+        session_id: None,
+        request_id: None,
+        seq: None,
+        payload: json!({
+            "deviceId": "device-b",
+            "deviceName": "Phone",
+            "pairingId": "pair-1",
+            "code": "123456",
+            "secret": "secret",
+        }),
+    };
+
+    assert!(super::control_messages::pairing_handshake_from_envelope(&envelope).is_none());
 }
 
 #[test]
 fn iroh_broadcast_deduplicates_peer_alias_senders() {
-    let (tx, _rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    let other = mpsc::unbounded_channel::<Vec<u8>>().0;
+    let (tx, _rx) = mpsc::channel::<Vec<u8>>(1);
+    let other = mpsc::channel::<Vec<u8>>(1).0;
 
     let unique = crate::iroh_link::unique_senders([&tx, &tx, &other]);
 

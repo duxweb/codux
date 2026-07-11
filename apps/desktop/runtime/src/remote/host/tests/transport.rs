@@ -73,70 +73,157 @@ fn pairing_preparation_restarts_host_transport() {
 }
 
 #[test]
-fn unauthorized_remote_message_gets_repair_response() {
+fn authorization_rejects_unknown_device_credentials() {
     let support_dir = temp_support_dir("codux-remote-unauthorized-repair");
     write_paired_remote_settings(&support_dir);
     let runtime = Arc::new(RemoteHostRuntime::new(support_dir.clone()));
-    let transport = Arc::new(CapturingTransport::default());
-    if let Ok(mut current) = runtime.transport.lock() {
-        *current = Some(transport.clone());
-    }
-
-    let raw = RemoteOutgoingEnvelope {
-        kind: REMOTE_HOST_INFO.to_string(),
-        device_id: Some("unknown-device".to_string()),
-        session_id: None,
-        seq: None,
-        payload: json!({}),
-    };
-    runtime.clone().handle_transport_message(
-        "unknown-device".to_string(),
-        serde_json::to_vec(&raw).unwrap(),
-    );
-
-    let messages = transport.take_messages();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].0.as_deref(), Some("unknown-device"));
-    let envelope: RemoteEnvelope =
-        serde_json::from_slice(&messages[0].1).expect("unauthorized envelope");
-    assert_eq!(envelope.kind, REMOTE_ERROR);
-    assert_eq!(envelope.device_id.as_deref(), Some("unknown-device"));
-    assert_eq!(envelope.payload["code"], "device_unauthorized");
+    assert!(!runtime.is_authorized_device_token(Some("unknown-device"), Some("device-token-1"),));
+    assert!(!runtime.is_authorized_device_token(Some("device-1"), Some("unknown-token"),));
+    assert!(runtime.is_authorized_device_token(Some("device-1"), Some("device-token-1")));
 
     fs::remove_dir_all(support_dir).ok();
 }
 
 #[test]
-fn unauthorized_message_without_envelope_device_uses_transport_device_for_repair() {
+fn authorization_rejects_missing_device_credentials() {
     let support_dir = temp_support_dir("codux-remote-unauthorized-transport-device-repair");
     write_paired_remote_settings(&support_dir);
     let runtime = Arc::new(RemoteHostRuntime::new(support_dir.clone()));
-    let transport = Arc::new(CapturingTransport::default());
-    if let Ok(mut current) = runtime.transport.lock() {
-        *current = Some(transport.clone());
-    }
+    assert!(!runtime.is_authorized_device_token(None, Some("device-token-1")));
+    assert!(!runtime.is_authorized_device_token(Some("device-1"), None));
+    assert!(!runtime.is_authorized_device_token(Some(""), Some("device-token-1")));
+    assert!(!runtime.is_authorized_device_token(Some("device-1"), Some("")));
 
-    let raw = RemoteOutgoingEnvelope {
-        kind: REMOTE_HOST_INFO.to_string(),
-        device_id: None,
-        session_id: None,
-        seq: None,
-        payload: json!({}),
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn pairing_credentials_are_consumed_once_under_concurrency() {
+    let support_dir = temp_support_dir("codux-remote-pairing-single-use");
+    write_paired_remote_settings(&support_dir);
+    let runtime = Arc::new(RemoteHostRuntime::new(support_dir.clone()));
+    let pairing = RemotePairingInfo {
+        pairing_id: "pair-1".to_string(),
+        code: "123456".to_string(),
+        secret: "secret".to_string(),
+        expires_at: (chrono::Utc::now() + chrono::Duration::minutes(1)).to_rfc3339(),
+        qr_payload: String::new(),
     };
-    runtime.clone().handle_transport_message(
-        "unknown-device".to_string(),
-        serde_json::to_vec(&raw).unwrap(),
+    *runtime.active_pairing.lock().unwrap() = Some(pairing);
+    let handshake = RemoteTransportPairingRequest {
+        device_id: "phone-1".to_string(),
+        device_name: "Phone".to_string(),
+        platform: Some("ios".to_string()),
+        pairing_id: Some("pair-1".to_string()),
+        pairing_code: Some("123456".to_string()),
+        pairing_secret: Some("secret".to_string()),
+    };
+    let barrier = Arc::new(std::sync::Barrier::new(3));
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let runtime = Arc::clone(&runtime);
+        let handshake = handshake.clone();
+        let barrier = Arc::clone(&barrier);
+        workers.push(std::thread::spawn(move || {
+            barrier.wait();
+            runtime.handle_transport_pairing_request(handshake)
+        }));
+    }
+    barrier.wait();
+
+    let responses = workers
+        .into_iter()
+        .filter_map(|worker| worker.join().unwrap())
+        .collect::<Vec<_>>();
+
+    assert_eq!(responses.len(), 1);
+    let token = responses[0]["token"].as_str().unwrap();
+    assert!(runtime.is_authorized_device_token(Some("phone-1"), Some(token)));
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn expired_pairing_poll_consumes_the_ticket() {
+    let support_dir = temp_support_dir("codux-remote-pairing-expired");
+    write_paired_remote_settings(&support_dir);
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    let pairing = RemotePairingInfo {
+        pairing_id: "pair-expired".to_string(),
+        code: "123456".to_string(),
+        secret: "secret".to_string(),
+        expires_at: (chrono::Utc::now() - chrono::Duration::seconds(1)).to_rfc3339(),
+        qr_payload: String::new(),
+    };
+    *runtime.active_pairing.lock().unwrap() = Some(pairing.clone());
+
+    let result = runtime.poll_pairing_status(&pairing).unwrap();
+
+    assert!(result.finished);
+    assert_eq!(result.summary.message, "Pairing expired.");
+    assert!(result.summary.pairing.is_none());
+    assert!(runtime.active_pairing.lock().unwrap().is_none());
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn cancelled_pairing_poll_does_not_report_confirmation() {
+    let support_dir = temp_support_dir("codux-remote-pairing-cancelled");
+    write_paired_remote_settings(&support_dir);
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    let pairing = RemotePairingInfo {
+        pairing_id: "pair-cancelled".to_string(),
+        code: "123456".to_string(),
+        secret: "secret".to_string(),
+        expires_at: (chrono::Utc::now() + chrono::Duration::minutes(1)).to_rfc3339(),
+        qr_payload: String::new(),
+    };
+    *runtime.active_pairing.lock().unwrap() = Some(pairing.clone());
+
+    runtime.cancel_pairing(&pairing.pairing_id).unwrap();
+    let result = runtime.poll_pairing_status(&pairing).unwrap();
+
+    assert!(result.finished);
+    assert_eq!(result.summary.message, "Pairing cancelled.");
+    assert!(result.summary.pairing.is_none());
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn pairing_poll_waits_for_consumed_ticket_snapshot() {
+    let support_dir = temp_support_dir("codux-remote-pairing-snapshot-race");
+    write_paired_remote_settings(&support_dir);
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    let pairing = RemotePairingInfo {
+        pairing_id: "pair-confirming".to_string(),
+        code: "123456".to_string(),
+        secret: "secret".to_string(),
+        expires_at: (chrono::Utc::now() + chrono::Duration::minutes(1)).to_rfc3339(),
+        qr_payload: String::new(),
+    };
+    let mut summary = runtime.snapshot();
+    summary.pairing = Some(pairing.clone());
+    runtime.update_snapshot(summary);
+
+    let confirming = runtime.poll_pairing_status(&pairing).unwrap();
+
+    assert!(!confirming.finished);
+    assert_eq!(
+        confirming
+            .summary
+            .pairing
+            .as_ref()
+            .map(|current| current.pairing_id.as_str()),
+        Some("pair-confirming")
     );
 
-    let messages = transport.take_messages();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].0.as_deref(), Some("unknown-device"));
-    let envelope: RemoteEnvelope =
-        serde_json::from_slice(&messages[0].1).expect("unauthorized envelope");
-    assert_eq!(envelope.kind, REMOTE_ERROR);
-    assert_eq!(envelope.device_id.as_deref(), Some("unknown-device"));
-    assert_eq!(envelope.payload["code"], "device_unauthorized");
+    let mut confirmed = runtime.snapshot();
+    confirmed.pairing = None;
+    confirmed.message = "Pairing confirmed.".to_string();
+    runtime.update_snapshot(confirmed);
+    let result = runtime.poll_pairing_status(&pairing).unwrap();
 
+    assert!(result.finished);
+    assert_eq!(result.summary.message, "Pairing confirmed.");
     fs::remove_dir_all(support_dir).ok();
 }
 
@@ -154,6 +241,7 @@ fn host_metrics_request_replies_with_metrics_payload() {
         kind: REMOTE_HOST_METRICS.to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: Some("metrics-1".to_string()),
         seq: None,
         payload: json!({}),
     };
@@ -169,6 +257,7 @@ fn host_metrics_request_replies_with_metrics_payload() {
     let envelope: RemoteEnvelope = serde_json::from_slice(&bytes).expect("metrics envelope");
     assert_eq!(envelope.kind, REMOTE_HOST_METRICS);
     assert_eq!(envelope.device_id.as_deref(), Some("device-1"));
+    assert_eq!(envelope.request_id.as_deref(), Some("metrics-1"));
     let metrics: codux_protocol::RemoteHostMetrics =
         serde_json::from_value(envelope.payload).expect("metrics payload");
     assert!(metrics.sampled_at_millis > 0);
@@ -213,6 +302,55 @@ fn web_tunnel_requires_paired_device_token() {
             })
             .is_err()
     );
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn viewport_resize_reply_keeps_request_id() {
+    let support_dir = temp_support_dir("codux-remote-viewport-request-id");
+    write_paired_remote_settings(&support_dir);
+    let terminals = Arc::new(TerminalManager::new());
+    let runtime = Arc::new(RemoteHostRuntime::new_with_ai_history_and_terminals(
+        support_dir.clone(),
+        Default::default(),
+        Arc::clone(&terminals),
+    ));
+    let transport = Arc::new(CapturingTransport::default());
+    if let Ok(mut current) = runtime.transport.lock() {
+        *current = Some(transport.clone());
+    }
+    let session_id = terminals
+        .create(
+            TerminalPtyConfig {
+                shell: Some("sh".to_string()),
+                command: Some("sleep 1".to_string()),
+                cwd: Some(support_dir.to_string_lossy().to_string()),
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .expect("create terminal");
+
+    runtime.handle_terminal_viewport_resize(&RemoteEnvelope {
+        kind: codux_protocol::REMOTE_TERMINAL_VIEWPORT_RESIZE.to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: Some(session_id),
+        request_id: Some("resize-1".to_string()),
+        seq: None,
+        payload: json!({ "cols": 80, "rows": 24 }),
+    });
+
+    let (_, bytes) = transport
+        .wait_for_message(|message| {
+            serde_json::from_slice::<RemoteEnvelope>(&message.1).is_ok_and(|envelope| {
+                envelope.kind == REMOTE_TERMINAL_VIEWPORT_STATE
+                    && envelope.request_id.as_deref() == Some("resize-1")
+            })
+        })
+        .expect("viewport reply");
+    let envelope: RemoteEnvelope = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(envelope.request_id.as_deref(), Some("resize-1"));
 
     fs::remove_dir_all(support_dir).ok();
 }
@@ -282,6 +420,7 @@ fn viewport_events_do_not_broadcast_terminal_list() {
             |_| {},
         )
         .expect("create terminal");
+    runtime.register_terminal_viewer(&session_id, Some("device-1"));
 
     transport.take_messages();
     runtime.handle_terminal_event(TerminalEvent::Viewport {

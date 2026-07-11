@@ -9,42 +9,46 @@ use serde_json::{Value, json};
 
 use crate::{AIHistoryService, AISessionForkRequest, AISessionForkTarget};
 
-/// Run one `ai.session` op and return its JSON result (null on error, mirroring
-/// the engine's own fallbacks).
-pub fn session_op_result(service: &AIHistoryService, project_path: &str, payload: &Value) -> Value {
+/// Run one `ai.session` op and return its JSON result.
+pub fn session_op_result(
+    service: &AIHistoryService,
+    project_path: &str,
+    payload: &Value,
+) -> Result<Value, String> {
     let op = payload.get("op").and_then(Value::as_str).unwrap_or("");
     let session_id = payload
         .get("sessionId")
         .and_then(Value::as_str)
         .unwrap_or("");
     match op {
-        "list" => serde_json::to_value(
-            service
-                .project_summary(project_path)
-                .sessions
-                .into_iter()
-                .map(codux_protocol::RemoteAISessionSummary::from)
-                .collect::<Vec<_>>(),
-        )
-        .unwrap_or(Value::Null),
+        "list" => {
+            let summary = service.project_summary(project_path);
+            if let Some(error) = summary.error {
+                return Err(error);
+            }
+            serde_json::to_value(
+                summary
+                    .sessions
+                    .into_iter()
+                    .map(codux_protocol::RemoteAISessionSummary::from)
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|error| error.to_string())
+        }
         "detail" => service
             .project_session_detail(project_path, session_id)
-            .ok()
-            .and_then(|detail| serde_json::to_value(detail).ok())
-            .unwrap_or(Value::Null),
+            .and_then(|detail| serde_json::to_value(detail).map_err(|error| error.to_string())),
         "rename" => {
             let title = payload.get("title").and_then(Value::as_str).unwrap_or("");
             service
                 .rename_project_session(project_path, session_id, title)
-                .ok()
-                .and_then(|summary| serde_json::to_value(summary).ok())
-                .unwrap_or(Value::Null)
+                .and_then(|summary| {
+                    serde_json::to_value(summary).map_err(|error| error.to_string())
+                })
         }
         "remove" => service
             .remove_project_session(project_path, session_id)
-            .ok()
-            .and_then(|summary| serde_json::to_value(summary).ok())
-            .unwrap_or(Value::Null),
+            .and_then(|summary| serde_json::to_value(summary).map_err(|error| error.to_string())),
         "restore" => service
             .project_summary(project_path)
             .sessions
@@ -56,13 +60,13 @@ pub fn session_op_result(service: &AIHistoryService, project_path: &str, payload
                     "title": session.title,
                 })
             })
-            .unwrap_or(Value::Null),
+            .ok_or_else(|| "Session not found.".to_string()),
         "fork" => {
-            let target_tool = payload
-                .get("targetTool")
-                .cloned()
-                .and_then(|value| serde_json::from_value::<AISessionForkTarget>(value).ok())
-                .unwrap_or(AISessionForkTarget::Codex);
+            let target_tool = match payload.get("targetTool").cloned() {
+                Some(value) => serde_json::from_value::<AISessionForkTarget>(value)
+                    .map_err(|error| error.to_string())?,
+                None => AISessionForkTarget::Codex,
+            };
             let request = AISessionForkRequest {
                 project_id: string_field(payload, "projectId"),
                 project_name: string_field(payload, "projectName"),
@@ -72,11 +76,9 @@ pub fn session_op_result(service: &AIHistoryService, project_path: &str, payload
             };
             service
                 .fork_project_session(request)
-                .ok()
-                .and_then(|result| serde_json::to_value(result).ok())
-                .unwrap_or(Value::Null)
+                .and_then(|result| serde_json::to_value(result).map_err(|error| error.to_string()))
         }
-        _ => Value::Null,
+        _ => Err(format!("Unsupported AI session operation: {op}")),
     }
 }
 
@@ -85,9 +87,9 @@ pub fn session_op_payload(
     service: &AIHistoryService,
     project_path: &str,
     payload: &Value,
-) -> Value {
+) -> Result<Value, String> {
     let op = payload.get("op").and_then(Value::as_str).unwrap_or("");
-    json!({ "op": op, "result": session_op_result(service, project_path, payload) })
+    Ok(json!({ "op": op, "result": session_op_result(service, project_path, payload)? }))
 }
 
 fn string_field(payload: &Value, key: &str) -> String {

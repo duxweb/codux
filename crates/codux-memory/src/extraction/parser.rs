@@ -126,10 +126,10 @@ fn parse_extraction_value(value: &Value) -> Option<MemoryExtractionResponse> {
     .into_iter()
     .filter_map(parse_extraction_item)
     .collect::<Vec<_>>();
-    if working_add.is_empty() {
-        if let Some(item) = parse_extraction_item(value) {
-            working_add.push(item);
-        }
+    if working_add.is_empty()
+        && let Some(item) = parse_extraction_item(value)
+    {
+        working_add.push(item);
     }
     let working_archive = string_array_from_keys(
         value,
@@ -198,13 +198,13 @@ fn parse_extraction_item(value: &Value) -> Option<MemoryExtractionItem> {
     archive = unique_strings(archive);
     Some(MemoryExtractionItem {
         scope: string_from_keys(value, &["scope", "target", "level"])
-            .map(|value| MemoryScope::from_str(&value)),
+            .map(|value| MemoryScope::from_token(&value)),
         module_key: string_from_keys(value, &["module_key", "moduleKey", "module", "area"])
             .and_then(|value| normalized_memory_module(&value)),
         tier: string_from_keys(value, &["tier", "priority", "stability"])
-            .map(|value| MemoryTier::from_str(&value)),
+            .map(|value| MemoryTier::from_token(&value)),
         kind: string_from_keys(value, &["kind", "type", "category", "memory_type"])
-            .map(|value| MemoryKind::from_str(&value))
+            .map(|value| MemoryKind::from_token(&value))
             .unwrap_or(MemoryKind::Fact),
         content,
         rationale: string_from_keys(value, &["rationale", "reason", "context", "source", "why"]),

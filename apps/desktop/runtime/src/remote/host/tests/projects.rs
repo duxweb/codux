@@ -10,6 +10,7 @@ fn remote_project_select_keeps_desktop_selected_project() {
         kind: "project.select".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({ "projectId": "project-b" }),
     });
@@ -42,6 +43,7 @@ fn secure_project_select_keeps_decrypted_device_id_for_scope_and_replies() {
             .outgoing_transport_text(
                 "project.select",
                 Some("device-1"),
+                None,
                 None,
                 json!({ "projectId": "project-b" }),
                 &mut send_seq,
@@ -120,6 +122,7 @@ fn remote_project_select_starts_project_terminal_on_host() {
         kind: "project.select".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({ "projectId": "project-b", "worktreeId": "worktree-b" }),
     });
@@ -207,6 +210,7 @@ fn remote_worktree_select_is_device_scoped_and_does_not_mutate_desktop_selection
         kind: "worktree.select".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({
             "projectId": "project-b",
@@ -287,6 +291,7 @@ fn remote_worktree_select_replaces_saved_terminal_with_wrong_cwd() {
         kind: "worktree.select".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({
             "projectId": "project-b",
@@ -322,6 +327,7 @@ fn project_list_broadcast_preserves_per_device_project_scope() {
             kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
             device_id: Some("phone-a".to_string()),
             session_id: None,
+            request_id: None,
             seq: None,
             payload: json!({ "resource": REMOTE_RESOURCE_PROJECTS }),
         })
@@ -332,6 +338,7 @@ fn project_list_broadcast_preserves_per_device_project_scope() {
             kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
             device_id: Some("phone-b".to_string()),
             session_id: None,
+            request_id: None,
             seq: None,
             payload: json!({ "resource": REMOTE_RESOURCE_PROJECTS }),
         })
@@ -352,7 +359,7 @@ fn project_list_broadcast_preserves_per_device_project_scope() {
 }
 
 #[test]
-fn terminal_project_subscribe_with_baseline_sends_buffer_baseline() {
+fn terminal_project_subscribe_returns_list_without_buffer_baseline() {
     let support_dir = temp_support_dir("codux-remote-terminal-subscribe-baseline");
     let (project_a, _) = write_two_project_state(&support_dir);
     write_paired_remote_settings(&support_dir);
@@ -394,6 +401,7 @@ fn terminal_project_subscribe_with_baseline_sends_buffer_baseline() {
         kind: "terminal.subscribe".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({
             "scope": "project",
@@ -404,33 +412,22 @@ fn terminal_project_subscribe_with_baseline_sends_buffer_baseline() {
         }),
     });
 
-    let (_, data) = transport
-        .wait_for_message(|(_, data)| {
-            let Ok(text) = std::str::from_utf8(data) else {
-                return false;
-            };
-            let Ok(envelope) = runtime.service().parse_incoming_envelope(text) else {
-                return false;
-            };
-            envelope.kind == "terminal.output"
-                && envelope.session_id.as_deref() == Some(&session_id)
-        })
-        .expect("baseline terminal output");
-    let text = String::from_utf8(data).expect("utf8 transport");
-    let envelope = runtime
-        .service()
-        .parse_incoming_envelope(&text)
-        .expect("parse outgoing envelope");
-    let baseline = envelope.payload;
-    assert_eq!(baseline["buffer"], true);
-    assert_eq!(baseline["offset"], 0);
-    assert_eq!(baseline["requestId"].as_str().is_some(), true);
-    assert!(
-        baseline["data"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("baseline-data")
-    );
+    let messages = transport.take_messages();
+    assert!(messages.iter().any(|(_, data)| {
+        let text = std::str::from_utf8(data).expect("utf8 transport");
+        runtime
+            .service()
+            .parse_incoming_envelope(text)
+            .is_ok_and(|envelope| envelope.kind == REMOTE_TERMINAL_LIST)
+    }));
+    assert!(messages.iter().all(|(_, data)| {
+        let text = std::str::from_utf8(data).expect("utf8 transport");
+        runtime
+            .service()
+            .parse_incoming_envelope(text)
+            .is_ok_and(|envelope| envelope.kind != REMOTE_TERMINAL_OUTPUT)
+    }));
+    assert!(runtime.terminal_output_viewers(&session_id).is_empty());
 
     fs::remove_dir_all(support_dir).ok();
 }

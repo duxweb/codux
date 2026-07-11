@@ -163,13 +163,13 @@ impl MemoryService {
             if transcript.trim().chars().count() < MIN_EXTRACTION_TRANSCRIPT_CHARS {
                 return Ok(());
             }
-            let (user_summary, user_memories, project_memories) =
+            let context =
                 self.extraction_prompt_context(&settings.memory, &task.project_id, &transcript)?;
             let prompt = make_extraction_prompt(
                 &transcript,
-                user_summary.as_ref(),
-                &user_memories,
-                &project_memories,
+                context.user_summary.as_ref(),
+                &context.user_memories,
+                &context.project_memories,
                 &project.project_name,
                 output_locale,
                 &settings.memory,
@@ -210,7 +210,7 @@ impl MemoryService {
             // Not forced: let the fingerprint / refresh-due cache short-circuit so
             // we don't fire a second (repo-walking) LLM call on every extraction.
             let _ = self
-                .refresh_project_profile_detailed(settings, &project, false)
+                .refresh_project_profile_detailed(settings, project, false)
                 .await;
         }
         Ok(())

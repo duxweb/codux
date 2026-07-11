@@ -17,20 +17,37 @@ fn terminal_layout_key_for_element_id(key: &str) -> String {
         .collect()
 }
 
+pub(super) struct TerminalMainSplitInput<'a> {
+    pub(super) app_entity: gpui::Entity<CoduxApp>,
+    pub(super) language: &'a str,
+    pub(super) panes: &'a [TerminalPaneViewSnapshot],
+    pub(super) layout_key: &'a str,
+    pub(super) top_ratios: &'a [f64],
+    pub(super) top_grid: &'a TerminalTopGrid,
+    pub(super) split_tree: &'a Option<TerminalSplitNode>,
+    pub(super) container_width: Option<Pixels>,
+    pub(super) container_height: Option<Pixels>,
+    pub(super) pane_drop_preview: Option<TerminalPaneDropPreview>,
+    pub(super) open_split_menu_pane: Option<usize>,
+}
+
 pub(super) fn terminal_main_split_area(
-    app_entity: gpui::Entity<CoduxApp>,
-    language: &str,
-    panes: Vec<TerminalPaneViewSnapshot>,
-    layout_key: &str,
-    top_ratios: &[f64],
-    top_grid: &TerminalTopGrid,
-    split_tree: &Option<TerminalSplitNode>,
-    container_width: Option<Pixels>,
-    container_height: Option<Pixels>,
-    pane_drop_preview: Option<TerminalPaneDropPreview>,
-    open_split_menu_pane: Option<usize>,
+    input: TerminalMainSplitInput<'_>,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
+    let TerminalMainSplitInput {
+        app_entity,
+        language,
+        panes,
+        layout_key,
+        top_ratios,
+        top_grid,
+        split_tree,
+        container_width,
+        container_height,
+        pane_drop_preview,
+        open_split_menu_pane,
+    } = input;
     if panes.is_empty() {
         return div()
             .flex_1()
@@ -52,18 +69,21 @@ pub(super) fn terminal_main_split_area(
         pane_drop_preview,
         cx,
     );
-    let content = terminal_split_node_element(
-        app_entity.clone(),
+    let render_context = TerminalSplitRenderContext {
+        app_entity,
         layout_key,
         language,
         panes,
+        pane_count,
+        open_split_menu_pane,
+    };
+    let content = terminal_split_node_element(
+        &render_context,
         &tree,
         Vec::new(),
         TerminalSplitDivider::None,
-        pane_count,
         total_width,
         total_height,
-        open_split_menu_pane,
         cx,
     );
 
@@ -349,31 +369,35 @@ fn terminal_pane_drop_target_in_node(
     }
 }
 
-fn terminal_split_node_element(
+struct TerminalSplitRenderContext<'a> {
     app_entity: gpui::Entity<CoduxApp>,
-    layout_key: &str,
-    language: &str,
-    panes: Vec<TerminalPaneViewSnapshot>,
+    layout_key: &'a str,
+    language: &'a str,
+    panes: &'a [TerminalPaneViewSnapshot],
+    pane_count: usize,
+    open_split_menu_pane: Option<usize>,
+}
+
+fn terminal_split_node_element(
+    render_context: &TerminalSplitRenderContext<'_>,
     node: &TerminalSplitNode,
     path: Vec<usize>,
     divider: TerminalSplitDivider,
-    pane_count: usize,
     total_width: Pixels,
     total_height: Pixels,
-    open_split_menu_pane: Option<usize>,
     cx: &mut Context<TerminalWorkspaceView>,
 ) -> AnyElement {
     let content = match node {
         TerminalSplitNode::Leaf { pane } => {
-            let slot = panes.get(*pane).cloned();
+            let slot = render_context.panes.get(*pane).cloned();
             slot.map(|slot| {
                 terminal_pane(
-                    app_entity,
+                    render_context.app_entity.clone(),
                     *pane,
-                    language,
-                    pane_count,
+                    render_context.language,
+                    render_context.pane_count,
                     slot,
-                    open_split_menu_pane,
+                    render_context.open_split_menu_pane,
                     cx,
                 )
             })
@@ -386,15 +410,15 @@ fn terminal_split_node_element(
         } => {
             let split_id = SharedString::from(format!(
                 "workspace-terminal-split-tree-{}-{}-{}",
-                terminal_layout_key_for_element_id(layout_key),
-                pane_count,
+                terminal_layout_key_for_element_id(render_context.layout_key),
+                render_context.pane_count,
                 path.iter()
                     .map(|index| index.to_string())
                     .collect::<Vec<_>>()
                     .join("-")
             ));
-            let resize_app_entity = app_entity.clone();
-            let resize_layout_key = layout_key.to_string();
+            let resize_app_entity = render_context.app_entity.clone();
+            let resize_layout_key = render_context.layout_key.to_string();
             let resize_path = path.clone();
             let ratios = codux_runtime::terminal_layout::normalize_split_ratios(
                 ratios.clone(),
@@ -416,17 +440,12 @@ fn terminal_split_node_element(
                     .copied()
                     .unwrap_or(1.0 / children.len().max(1) as f64);
                 let child_element = terminal_split_node_element(
-                    app_entity.clone(),
-                    layout_key,
-                    language,
-                    panes.clone(),
+                    render_context,
                     child,
                     child_path,
                     divider,
-                    pane_count,
                     total_width,
                     total_height,
-                    open_split_menu_pane,
                     cx,
                 );
                 match axis {
@@ -456,7 +475,7 @@ fn terminal_split_node_element(
                                 let layout_key = resize_layout_key.clone();
                                 let path = resize_path.clone();
                                 move |_window, cx| {
-                                    let _ = app_entity.update(cx, |app, cx| {
+                                    app_entity.update(cx, |app, cx| {
                                         app.update_terminal_split_ratios(
                                             layout_key, path, ratios, cx,
                                         );
@@ -478,7 +497,7 @@ fn terminal_split_node_element(
                             let layout_key = resize_layout_key.clone();
                             let path = resize_path.clone();
                             move |_window, cx| {
-                                let _ = app_entity.update(cx, |app, cx| {
+                                app_entity.update(cx, |app, cx| {
                                     app.update_terminal_split_ratios(layout_key, path, ratios, cx);
                                 });
                             }
@@ -780,7 +799,7 @@ fn terminal_pane_split_button(
             let app_entity = app_entity.clone();
             let view = view.clone();
             move |_, window, cx| {
-                let _ = view.update(cx, |view, cx| {
+                view.update(cx, |view, cx| {
                     view.open_split_menu_pane = None;
                     cx.notify();
                 });
@@ -844,7 +863,7 @@ fn split_menu_hover_listener(
     pane_index: usize,
 ) -> impl Fn(&bool, &mut Window, &mut gpui::App) + 'static {
     move |hovered, _window, cx| {
-        let _ = view.update(cx, |view, cx| {
+        view.update(cx, |view, cx| {
             if *hovered {
                 view.set_split_menu_open(pane_index, true, cx);
             } else {
@@ -874,7 +893,7 @@ fn terminal_split_direction_menu_button(
         .hover(|style| style.bg(color(theme::ACCENT).opacity(0.12)))
         .child(terminal_split_direction_icon(direction, scope))
         .on_click(move |_, window, cx| {
-            let _ = view.update(cx, |view, cx| {
+            view.update(cx, |view, cx| {
                 view.open_split_menu_pane = None;
                 cx.notify();
             });

@@ -6,26 +6,24 @@ fn select_provider<'a>(
     let requested = provider_id
         .map(str::trim)
         .filter(|value| !value.is_empty() && *value != "automatic");
-    if let Some(id) = requested {
-        if let Some(provider) = settings.providers.iter().find(|provider| {
+    if let Some(id) = requested
+        && let Some(provider) = settings.providers.iter().find(|provider| {
             provider.id == id && provider.is_enabled && supports_completion(&provider.kind)
         }) {
             return Some(provider);
         }
-    }
     let selector = match purpose {
         "petSpeech" => settings.pet.speech_provider_id.as_str(),
         "memory" => settings.memory.default_extractor_provider_id.as_str(),
         "gitCommitMessage" => "automatic",
         _ => "automatic",
     };
-    if selector != "automatic" {
-        if let Some(provider) = settings.providers.iter().find(|provider| {
+    if selector != "automatic"
+        && let Some(provider) = settings.providers.iter().find(|provider| {
             provider.id == selector && provider.is_enabled && supports_completion(&provider.kind)
         }) {
             return Some(provider);
         }
-    }
     settings
         .providers
         .iter()
@@ -90,8 +88,7 @@ fn default_model_for_provider_kind(kind: &str) -> &'static str {
 }
 
 fn sanitize_response_line(text: &str) -> String {
-    text.replace('\r', " ")
-        .replace('\n', " ")
+    text.replace(['\r', '\n'], " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")

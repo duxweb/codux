@@ -158,7 +158,7 @@ fn run_system_git(
     let mut command = system_git_command();
     let mut child = command
         .args(args)
-        .current_dir(&working_dir)
+        .current_dir(working_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

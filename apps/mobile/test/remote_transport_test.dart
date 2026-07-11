@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:codux_flutter/models/remote_models.dart';
@@ -148,6 +149,52 @@ void main() {
 
     expect(states, ['connecting', 'connected:path=relay', 'closed']);
     expect(handle.pollCount, 2);
+  });
+
+  test('transport poll backs off from busy to idle delay', () async {
+    final timers = <_FakePollTimer>[];
+    final transport = RustControllerTransport(
+      handleFactory: (_) => _FakeControllerHandle([
+        {'kind': 'state', 'state': 'connected:path=relay'},
+      ]),
+      pollTimerFactory: (delay, callback) {
+        final timer = _FakePollTimer(delay, callback);
+        timers.add(timer);
+        return timer;
+      },
+    );
+
+    await transport.connect(_storedDevice());
+
+    expect(timers, hasLength(1));
+    expect(timers.single.delay, const Duration(milliseconds: 16));
+    timers.single.fire();
+    expect(timers, hasLength(2));
+    expect(timers.last.delay, const Duration(milliseconds: 100));
+    await transport.close();
+  });
+
+  test('full transport event batch schedules immediate continuation', () async {
+    final timers = <_FakePollTimer>[];
+    final events = <Map<String, dynamic>>[
+      {'kind': 'state', 'state': 'connected:path=relay'},
+      for (var index = 1; index < 128; index += 1)
+        {'kind': 'log', 'message': '$index'},
+    ];
+    final transport = RustControllerTransport(
+      handleFactory: (_) => _FakeControllerHandle(events),
+      pollTimerFactory: (delay, callback) {
+        final timer = _FakePollTimer(delay, callback);
+        timers.add(timer);
+        return timer;
+      },
+    );
+
+    await transport.connect(_storedDevice());
+
+    expect(timers, hasLength(1));
+    expect(timers.single.delay, Duration.zero);
+    await transport.close();
   });
 
   test('transport path updates do not masquerade as latency samples', () {
@@ -309,4 +356,29 @@ final class _FakeControllerHandle implements ControllerTransportEventHandle {
   void addEvent(Map<String, dynamic> event) {
     _events.add(event);
   }
+}
+
+final class _FakePollTimer implements Timer {
+  _FakePollTimer(this.delay, this._callback);
+
+  final Duration delay;
+  final void Function() _callback;
+  var _active = true;
+
+  void fire() {
+    if (!_active) return;
+    _active = false;
+    _callback();
+  }
+
+  @override
+  void cancel() {
+    _active = false;
+  }
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => 0;
 }

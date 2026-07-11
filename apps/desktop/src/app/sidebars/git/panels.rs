@@ -3,7 +3,6 @@ use super::*;
 pub(super) fn git_panel_header(
     git: &GitSummary,
     branch: &str,
-    _selected_branch: Option<&str>,
     default_push_remote: Option<&str>,
     language: &str,
     running_operation: Option<&GitRunningOperation>,
@@ -71,21 +70,23 @@ pub(super) fn git_panel_header(
                             .dropdown_menu(move |menu, window, cx| {
                                 git_branch_dropdown_menu(
                                     menu,
+                                    GitBranchMenuInput {
+                                        branches: branches.clone(),
+                                        remote_branches: remote_branches.clone(),
+                                        remotes: remotes.clone(),
+                                        default_push_remote: default_push_remote.clone(),
+                                        current_branch: current_branch.clone(),
+                                        upstream: upstream.clone(),
+                                        has_commits,
+                                        stashes: stashes.clone(),
+                                        tags: tags.clone(),
+                                        changed_paths: changed_paths.clone(),
+                                        has_staged,
+                                        language: language.clone(),
+                                        app_entity: app_entity.clone(),
+                                    },
                                     window,
                                     cx,
-                                    branches.clone(),
-                                    remote_branches.clone(),
-                                    remotes.clone(),
-                                    default_push_remote.clone(),
-                                    current_branch.clone(),
-                                    upstream.clone(),
-                                    has_commits,
-                                    stashes.clone(),
-                                    tags.clone(),
-                                    changed_paths.clone(),
-                                    has_staged,
-                                    language.clone(),
-                                    app_entity.clone(),
                                 )
                             }),
                     )
@@ -133,7 +134,6 @@ pub(super) fn git_panel_header(
 }
 
 pub(super) fn git_repository_panel(
-    _git: &GitSummary,
     labels: Rc<GitSidebarLabels>,
     commit_message: &str,
     commit_message_revision: u64,
@@ -312,20 +312,24 @@ pub(super) fn git_commit_panel(
         )
 }
 
+pub(super) struct GitFilesPanelInput<'a> {
+    pub(super) staged: &'a [GitFileStatus],
+    pub(super) changed: &'a [GitFileStatus],
+    pub(super) untracked: &'a [GitFileStatus],
+    pub(super) expanded_sections: &'a HashSet<String>,
+    pub(super) expanded_dirs: &'a HashSet<String>,
+    pub(super) tree_children: &'a HashMap<String, Vec<GitFileStatus>>,
+    pub(super) selected_file: Option<&'a str>,
+    pub(super) selected_files: &'a HashSet<String>,
+    pub(super) labels: Rc<GitSidebarLabels>,
+    pub(super) scroll_handle: VirtualListScrollHandle,
+}
+
 pub(super) fn git_files_panel(
-    staged: &[GitFileStatus],
-    changed: &[GitFileStatus],
-    untracked: &[GitFileStatus],
-    expanded_sections: &HashSet<String>,
-    expanded_dirs: &HashSet<String>,
-    tree_children: &HashMap<String, Vec<GitFileStatus>>,
-    selected_file: Option<&str>,
-    selected_files: &HashSet<String>,
-    labels: Rc<GitSidebarLabels>,
-    scroll_handle: VirtualListScrollHandle,
+    input: GitFilesPanelInput<'_>,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
-    let rows = Rc::new(git_status_virtual_rows(
+    let GitFilesPanelInput {
         staged,
         changed,
         untracked,
@@ -334,8 +338,20 @@ pub(super) fn git_files_panel(
         tree_children,
         selected_file,
         selected_files,
-        &labels,
-    ));
+        labels,
+        scroll_handle,
+    } = input;
+    let rows = Rc::new(git_status_virtual_rows(GitStatusRowsInput {
+        staged,
+        changed,
+        untracked,
+        expanded_sections,
+        expanded_dirs,
+        tree_children,
+        selected_file,
+        selected_files,
+        labels: &labels,
+    }));
     let item_sizes = Rc::new(
         rows.iter()
             .map(|row| size(px(1.0), row.height()))

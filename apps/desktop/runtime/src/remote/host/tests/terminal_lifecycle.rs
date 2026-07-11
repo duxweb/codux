@@ -26,6 +26,7 @@ fn remote_terminal_plan_uses_device_project_scope_without_desktop_ui_selection()
                 kind: "terminal.buffer".to_string(),
                 device_id: Some("device-1".to_string()),
                 session_id: Some("terminal-b".to_string()),
+                request_id: None,
                 seq: None,
                 payload: json!({}),
             },
@@ -240,6 +241,7 @@ fn remote_terminal_create_plan_does_not_reuse_saved_layout_terminal() {
                 kind: "terminal.create".to_string(),
                 device_id: Some("device-1".to_string()),
                 session_id: None,
+                request_id: None,
                 seq: None,
                 payload: json!({}),
             },
@@ -247,7 +249,13 @@ fn remote_terminal_create_plan_does_not_reuse_saved_layout_terminal() {
             false,
         )
         .expect("create terminal plan");
-    assert_eq!(create_plan.config.terminal_id, None);
+    let create_terminal_id = create_plan
+        .config
+        .terminal_id
+        .as_deref()
+        .expect("create plan terminal id");
+    assert!(create_terminal_id.starts_with("gpui-term-worktree-b-"));
+    assert_ne!(create_terminal_id, "terminal-b");
     assert_eq!(create_plan.config.project_id.as_deref(), Some("worktree-b"));
     let expected_worktree_path = support_dir.join("project-b");
     let expected_worktree_path = expected_worktree_path.to_string_lossy();
@@ -262,6 +270,7 @@ fn remote_terminal_create_plan_does_not_reuse_saved_layout_terminal() {
                 kind: "terminal.buffer".to_string(),
                 device_id: Some("device-1".to_string()),
                 session_id: None,
+                request_id: None,
                 seq: None,
                 payload: json!({}),
             },
@@ -314,6 +323,7 @@ fn remote_terminal_create_emits_layout_changed_event() {
         kind: "terminal.create".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({
             "projectId": "project-b",
@@ -393,6 +403,7 @@ fn remote_terminal_close_removes_layout_entry_and_kills_last_terminal() {
         kind: "terminal.close".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_b.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "projectId": "project-b", "worktreeId": "worktree-b" }),
     });
@@ -412,6 +423,7 @@ fn remote_terminal_close_removes_layout_entry_and_kills_last_terminal() {
         kind: "terminal.close".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_a.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "projectId": "project-b", "worktreeId": "worktree-b" }),
     });
@@ -422,6 +434,51 @@ fn remote_terminal_close_removes_layout_entry_and_kills_last_terminal() {
     // Closing the last terminal now tears it down (previously it no-opped so
     // the dead pane lingered on both the desktop split and the pad tab).
     assert!(terminals.snapshot(&session_a).is_err());
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn remote_terminal_list_excludes_exited_sessions() {
+    let support_dir = temp_support_dir("codux-remote-terminal-exited-list");
+    let terminals = Arc::new(TerminalManager::new());
+    let runtime = RemoteHostRuntime::new_with_ai_history_and_terminals(
+        support_dir.clone(),
+        Default::default(),
+        Arc::clone(&terminals),
+    );
+    let session_id = terminals
+        .create(
+            TerminalPtyConfig {
+                shell: Some("sh".to_string()),
+                command: Some("exit 0".to_string()),
+                cwd: Some(support_dir.to_string_lossy().to_string()),
+                ..Default::default()
+            },
+            |_| {},
+        )
+        .expect("create terminal");
+
+    for _ in 0..200 {
+        if terminals
+            .list()
+            .iter()
+            .any(|terminal| terminal.id == session_id && !terminal.is_running)
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    assert!(
+        terminals
+            .list()
+            .iter()
+            .any(|terminal| terminal.id == session_id && !terminal.is_running)
+    );
+    assert!(runtime.remote_terminals().iter().all(|terminal| {
+        terminal.get("id").and_then(Value::as_str) != Some(session_id.as_str())
+    }));
 
     fs::remove_dir_all(support_dir).ok();
 }
@@ -453,6 +510,7 @@ fn device_disconnect_releases_owned_terminal_viewport() {
         kind: "terminal.viewport.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "cols": 72,
@@ -471,6 +529,7 @@ fn device_disconnect_releases_owned_terminal_viewport() {
         kind: "device.disconnected".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({}),
     });

@@ -10,7 +10,7 @@ pub use types::*;
 
 use crate::git::GitService;
 use git_ops::*;
-use scan::{ScannedWorktreeSnapshot, scan_git_worktrees};
+use scan::{ScannedWorktree, ScannedWorktreeSnapshot, scan_git_worktrees};
 use serde_json::{Map, Value};
 use snapshot::{
     project_worktree_git_summary, project_worktree_snapshot, scanned_task_to_snapshot,

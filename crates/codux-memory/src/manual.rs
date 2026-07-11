@@ -2,7 +2,9 @@ use super::{
     MemoryService,
     extraction::ensure_memory_provider_available,
     now_seconds,
-    queue::{MemoryExtractionStatusSnapshot, source_state::MemorySourceGate},
+    queue::{
+        MemoryExtractionEnqueue, MemoryExtractionStatusSnapshot, source_state::MemorySourceGate,
+    },
     transcript::{MemoryProjectContext, resolve_transcript_source, session_identifier},
 };
 use crate::{
@@ -182,15 +184,15 @@ impl MemoryService {
             }
             return Ok(false);
         }
-        let enqueued = self.enqueue_extraction_if_needed(
-            &project.project_id,
-            &project.workspace_path,
-            &session.tool,
-            &session_id,
-            &source.location,
-            &source.fingerprint,
-            false,
-        )?;
+        let enqueued = self.enqueue_extraction_if_needed(MemoryExtractionEnqueue {
+            project_id: &project.project_id,
+            workspace_path: &project.workspace_path,
+            tool: &session.tool,
+            session_id: &session_id,
+            transcript_path: &source.location,
+            source_fingerprint: &source.fingerprint,
+            allow_retry_failed: false,
+        })?;
         self.update_source_state(&source_snapshot)?;
         Ok(enqueued)
     }

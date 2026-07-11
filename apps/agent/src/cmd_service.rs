@@ -17,16 +17,14 @@ pub fn status() -> Result<(), String> {
         "Codux host: {}",
         if running { "running" } else { "stopped" }
     );
-    if running {
-        if let Some(status) = runstate::read_status() {
-            println!("  started:  {}", status.started_at);
-            println!("  device:   {}", status.device_name);
-            if !status.node_id.is_empty() {
-                println!("  node:     {}", status.node_id);
-            }
-            if !status.web_test_url.is_empty() {
-                println!("  web:      {}", status.web_test_url);
-            }
+    if running && let Some(status) = runstate::read_status() {
+        println!("  started:  {}", status.started_at);
+        println!("  device:   {}", status.device_name);
+        if !status.node_id.is_empty() {
+            println!("  node:     {}", status.node_id);
+        }
+        if !status.web_test_url.is_empty() {
+            println!("  web:      {}", status.web_test_url);
         }
     }
     println!("  paired:   {devices} device(s)");

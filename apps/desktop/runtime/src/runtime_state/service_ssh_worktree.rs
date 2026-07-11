@@ -92,15 +92,14 @@ impl RuntimeService {
         project_id: Option<&str>,
         project_path: Option<&str>,
     ) -> WorktreeSummary {
-        if let Some(path) = project_path {
-            if let Some(device_id) = self.host_device_for_project_path(path) {
+        if let Some(path) = project_path
+            && let Some(device_id) = self.host_device_for_project_path(path) {
                 return self.remote_worktree_summary(
                     &device_id,
                     project_id.unwrap_or_default(),
                     path,
                 );
             }
-        }
         load_worktrees(&self.support_dir, project_id, project_path)
     }
 
@@ -109,15 +108,14 @@ impl RuntimeService {
         project_id: Option<&str>,
         project_path: Option<&str>,
     ) -> WorktreeSummary {
-        if let Some(path) = project_path {
-            if let Some(device_id) = self.host_device_for_project_path(path) {
+        if let Some(path) = project_path
+            && let Some(device_id) = self.host_device_for_project_path(path) {
                 return self.remote_worktree_summary(
                     &device_id,
                     project_id.unwrap_or_default(),
                     path,
                 );
             }
-        }
         WorktreeService::new(self.support_dir.clone()).state_summary(project_id, project_path)
     }
 
@@ -266,23 +264,10 @@ impl RuntimeService {
     pub fn save_terminal_layout_with_grid(
         &self,
         project_id: &str,
-        tabs: Vec<crate::terminal_layout::TerminalTabSummary>,
-        top_panes: Vec<crate::terminal_layout::TerminalPaneSummary>,
-        top_ratios: Vec<f64>,
-        top_grid: crate::terminal_layout::TerminalTopGrid,
-        split_tree: Option<crate::terminal_layout::TerminalSplitNode>,
-        bottom_ratio: f64,
-        collapsed_panes: Vec<crate::terminal_layout::TerminalPaneSummary>,
+        layout: TerminalLayoutSummary,
     ) -> Result<TerminalLayoutSummary, String> {
         TerminalLayoutService::new(self.support_dir.clone()).save_from_gpui_with_grid(
-            project_id,
-            tabs,
-            top_panes,
-            top_ratios,
-            top_grid,
-            split_tree,
-            bottom_ratio,
-            collapsed_panes,
+            project_id, layout,
         )
     }
 

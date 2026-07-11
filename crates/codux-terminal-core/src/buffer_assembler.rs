@@ -144,10 +144,10 @@ impl TerminalBufferAssembly {
             return;
         };
         for key in ["screenData"] {
-            if !base.contains_key(key) {
-                if let Some(value) = current.get(key) {
-                    base.insert(key.to_string(), value.clone());
-                }
+            if !base.contains_key(key)
+                && let Some(value) = current.get(key)
+            {
+                base.insert(key.to_string(), value.clone());
             }
         }
     }

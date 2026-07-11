@@ -76,7 +76,7 @@ fn terminal_baseline_viewport_does_not_steal_from_other_owner() {
 }
 
 #[test]
-fn project_terminal_baseline_viewport_targets_active_split_only() {
+fn session_terminal_baseline_viewport_targets_only_subscribed_split() {
     let support_dir = temp_support_dir("codux-remote-project-baseline-active-viewport");
     write_paired_remote_settings(&support_dir);
     let project_dir = support_dir.join("project-a");
@@ -95,7 +95,7 @@ fn project_terminal_baseline_viewport_targets_active_split_only() {
         .create(
             TerminalPtyConfig {
                 shell: Some("sh".to_string()),
-                command: Some("printf '\\033[2J\\033[Hactive split'".to_string()),
+                command: Some("printf '\\033[2J\\033[Hactive split'; sleep 30".to_string()),
                 cwd: Some(project_dir.to_string_lossy().to_string()),
                 project_id: Some("project-a".to_string()),
                 cols: Some(100),
@@ -109,7 +109,7 @@ fn project_terminal_baseline_viewport_targets_active_split_only() {
         .create(
             TerminalPtyConfig {
                 shell: Some("sh".to_string()),
-                command: Some("printf '\\033[2J\\033[Hbackground split'".to_string()),
+                command: Some("printf '\\033[2J\\033[Hbackground split'; sleep 30".to_string()),
                 cwd: Some(project_dir.to_string_lossy().to_string()),
                 project_id: Some("project-a".to_string()),
                 cols: Some(100),
@@ -141,13 +141,12 @@ fn project_terminal_baseline_viewport_targets_active_split_only() {
     runtime.handle_resource_subscribe(&RemoteEnvelope {
         kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
         device_id: Some("phone-a".to_string()),
-        session_id: None,
+        session_id: Some(session_a.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "resource": REMOTE_RESOURCE_TERMINALS,
-            "projectId": "project-a",
             "baseline": true,
-            "baselineSessionId": session_a.clone(),
             "viewportCols": 72,
             "viewportRows": 18,
         }),
@@ -176,7 +175,7 @@ fn project_terminal_baseline_viewport_targets_active_split_only() {
                 background_baseline = Some(envelope.payload);
             }
         }
-        if active_baseline.is_some() && background_baseline.is_some() {
+        if active_baseline.is_some() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
@@ -191,17 +190,7 @@ fn project_terminal_baseline_viewport_targets_active_split_only() {
             .unwrap_or(false),
         "active split should receive a target-viewport keyframe"
     );
-    // Background splits keep their own grid: they get a host-grid keyframe
-    // (every tail baseline ships one) but never the active split's viewport.
-    assert!(
-        background_baseline
-            .as_ref()
-            .and_then(|payload| payload.get("screenData"))
-            .and_then(Value::as_str)
-            .map(|screen_data| screen_data.contains("background split"))
-            .unwrap_or(false),
-        "background split keyframe must carry its own screen at its own grid"
-    );
+    assert!(background_baseline.is_none());
     let active_state = terminals
         .viewport_state(&session_a)
         .expect("active viewport state");
@@ -212,6 +201,13 @@ fn project_terminal_baseline_viewport_targets_active_split_only() {
     assert_eq!(active_state.rows, 18);
     assert_eq!(background_state.cols, 100);
     assert_eq!(background_state.rows, 32);
+
+    terminals
+        .kill_and_wait(&session_a, Duration::from_secs(2))
+        .expect("stop terminal a");
+    terminals
+        .kill_and_wait(&session_b, Duration::from_secs(2))
+        .expect("stop terminal b");
 
     fs::remove_dir_all(support_dir).ok();
 }
@@ -308,6 +304,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
         kind: "terminal.viewport.claim".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "intent": "auto" }),
     });
@@ -315,6 +312,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
         kind: "terminal.viewport.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "cols": 72,
@@ -344,6 +342,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
         kind: "terminal.viewport.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "cols": 72,
@@ -361,6 +360,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
         kind: "terminal.viewport.claim".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "intent": "auto" }),
     });
@@ -376,6 +376,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
         kind: "terminal.viewport.claim".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "intent": "force" }),
     });
@@ -383,6 +384,7 @@ fn terminal_viewport_auto_claim_respects_explicit_desktop_owner() {
         kind: "terminal.viewport.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "cols": 72,
@@ -443,6 +445,7 @@ fn terminal_viewport_resize_pushes_state_without_screen_keyframe() {
         kind: "terminal.viewport.claim".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({}),
     });
@@ -451,6 +454,7 @@ fn terminal_viewport_resize_pushes_state_without_screen_keyframe() {
         kind: "terminal.viewport.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "cols": 72,
@@ -536,6 +540,7 @@ fn terminal_input_reclaims_viewport_after_lease_expired_to_host() {
         kind: "terminal.input".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "data": "x" }),
     });
@@ -549,6 +554,7 @@ fn terminal_input_reclaims_viewport_after_lease_expired_to_host() {
         kind: "terminal.input".to_string(),
         device_id: Some("device-2".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({ "data": "y" }),
     });
@@ -587,6 +593,7 @@ fn terminal_resize_without_owner_claims_remote_viewport_for_compatibility() {
         kind: "terminal.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({
             "cols": 80,
@@ -635,6 +642,7 @@ fn terminal_resize_without_dimensions_is_rejected() {
         kind: "terminal.resize".to_string(),
         device_id: Some("device-1".to_string()),
         session_id: Some(session_id.clone()),
+        request_id: None,
         seq: None,
         payload: json!({}),
     });

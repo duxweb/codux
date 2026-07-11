@@ -21,6 +21,7 @@ pub(crate) fn transport_pong_for_ping(
         kind: REMOTE_TRANSPORT_PONG.to_string(),
         device_id,
         session_id: None,
+        request_id: envelope.request_id.clone(),
         seq: None,
         payload: envelope.payload.clone(),
     })
@@ -30,17 +31,24 @@ pub(crate) fn transport_pong_for_ping(
 pub(crate) fn pairing_handshake_from_envelope(
     envelope: &RemoteEnvelope,
 ) -> Option<RemoteTransportPairingRequest> {
-    let device_id = envelope
+    let envelope_device_id = envelope
         .device_id
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            envelope
-                .payload
-                .get("deviceId")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })?;
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let payload_device_id = envelope
+        .payload
+        .get("deviceId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if envelope_device_id.is_some()
+        && payload_device_id.is_some()
+        && envelope_device_id != payload_device_id
+    {
+        return None;
+    }
+    let device_id = envelope_device_id.or(payload_device_id)?.to_string();
     let device_name = envelope
         .payload
         .get("deviceName")

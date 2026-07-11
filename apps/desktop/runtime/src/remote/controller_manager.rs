@@ -34,13 +34,18 @@ impl ControllerLinkState {
     /// transport emits `"connecting"`, `"connected"` (and `"connected:path=…"`),
     /// and `"closed"`; anything that isn't a connected/connecting marker is
     /// treated as a drop.
-    fn from_transport_state(state: &str) -> Self {
+    fn from_transport_state(state: &str) -> Option<Self> {
         if state.starts_with("connected") {
-            Self::Connected
+            Some(Self::Connected)
         } else if state.starts_with("connecting") {
-            Self::Connecting
+            Some(Self::Connecting)
+        } else if matches!(
+            state.split(':').next().unwrap_or_default(),
+            "closed" | "failed" | "disconnected"
+        ) {
+            Some(Self::Disconnected)
         } else {
-            Self::Disconnected
+            None
         }
     }
 }
@@ -155,7 +160,9 @@ impl ManagerShared {
             if !shared.is_current_connection_epoch(&device_id, epoch) {
                 return;
             }
-            let mapped = ControllerLinkState::from_transport_state(&state);
+            let Some(mapped) = ControllerLinkState::from_transport_state(&state) else {
+                return;
+            };
             if mapped == ControllerLinkState::Connecting {
                 shared.set_connecting_link(&device_id);
             } else {
@@ -456,10 +463,10 @@ impl RemoteControllerManager {
     }
 
     pub fn controller_for(&self, device_id: &str) -> Result<Arc<RemoteController>, String> {
-        if let Ok(connections) = self.shared.connections.lock() {
-            if let Some(controller) = connections.get(device_id).cloned() {
-                return Ok(controller);
-            }
+        if let Ok(connections) = self.shared.connections.lock()
+            && let Some(controller) = connections.get(device_id).cloned()
+        {
+            return Ok(controller);
         }
         if self.shared.ensure_reconnect_loop(device_id) {
             match self.shared.last_error(device_id) {
@@ -491,10 +498,10 @@ impl RemoteControllerManager {
         timeout: Duration,
     ) -> Result<Arc<RemoteController>, String> {
         // Already connected (re-browsing the same host): no wait.
-        if let Ok(connections) = self.shared.connections.lock() {
-            if let Some(controller) = connections.get(device_id).cloned() {
-                return Ok(controller);
-            }
+        if let Ok(connections) = self.shared.connections.lock()
+            && let Some(controller) = connections.get(device_id).cloned()
+        {
+            return Ok(controller);
         }
         // Kick off (or join) the background reconnect loop, then poll the pool
         // until it lands the link or we hit the deadline.
@@ -503,10 +510,10 @@ impl RemoteControllerManager {
         }
         let deadline = Instant::now() + timeout;
         loop {
-            if let Ok(connections) = self.shared.connections.lock() {
-                if let Some(controller) = connections.get(device_id).cloned() {
-                    return Ok(controller);
-                }
+            if let Ok(connections) = self.shared.connections.lock()
+                && let Some(controller) = connections.get(device_id).cloned()
+            {
+                return Ok(controller);
             }
             if Instant::now() >= deadline {
                 // Surface the real reconnect failure (offline host, relay
@@ -605,5 +612,21 @@ mod tests {
         manager.forget("device-1").unwrap();
 
         assert_eq!(manager.drain_disconnected_devices(), ["device-1"]);
+    }
+
+    #[test]
+    fn latency_telemetry_does_not_change_link_lifecycle() {
+        assert_eq!(
+            ControllerLinkState::from_transport_state("latency:rtt=12;path=direct"),
+            None
+        );
+        assert_eq!(
+            ControllerLinkState::from_transport_state("connected:path=relay"),
+            Some(ControllerLinkState::Connected)
+        );
+        assert_eq!(
+            ControllerLinkState::from_transport_state("closed"),
+            Some(ControllerLinkState::Disconnected)
+        );
     }
 }

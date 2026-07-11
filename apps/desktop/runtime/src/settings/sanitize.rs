@@ -124,7 +124,7 @@ fn provider_supports_completion(kind: &str) -> bool {
 fn block_on_llm<T: Send>(
     future: impl std::future::Future<Output = Result<T, String>> + Send,
 ) -> Result<T, String> {
-    Ok(crate::async_runtime::block_on(future)?)
+    crate::async_runtime::block_on(future)
 }
 
 fn ai_providers_mut(raw: &mut Map<String, Value>) -> Result<&mut Vec<Value>, String> {

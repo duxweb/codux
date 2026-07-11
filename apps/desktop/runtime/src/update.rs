@@ -304,7 +304,7 @@ fn manifest_notes(manifest: &Value) -> Option<String> {
     })
 }
 
-fn current_platform_manifest_entry<'a>(manifest: &'a Value) -> Option<&'a Value> {
+fn current_platform_manifest_entry(manifest: &Value) -> Option<&Value> {
     let platforms = manifest.get("platforms").and_then(Value::as_object)?;
     platform_keys_for_current_target()
         .iter()
@@ -352,9 +352,9 @@ fn manifest_entry_string(entry: Option<&Value>, key: &str) -> Option<String> {
 fn platform_supports_automatic_install(download_url: Option<&str>) -> bool {
     #[cfg(target_os = "macos")]
     {
-        return download_url
+        download_url
             .map(str::to_ascii_lowercase)
-            .is_some_and(|url| url.ends_with(".app.tar.gz"));
+            .is_some_and(|url| url.ends_with(".app.tar.gz"))
     }
     #[cfg(target_os = "windows")]
     {

@@ -78,11 +78,11 @@ fn sqlite_database_fingerprint_paths(path: &Path) -> Vec<PathBuf> {
     if !is_sqlite_history_database_path(path) {
         return vec![path.to_path_buf()];
     }
-    let mut paths = Vec::with_capacity(3);
-    paths.push(path.to_path_buf());
-    paths.push(path_with_suffix(path, "-wal"));
-    paths.push(path_with_suffix(path, "-shm"));
-    paths
+    vec![
+        path.to_path_buf(),
+        path_with_suffix(path, "-wal"),
+        path_with_suffix(path, "-shm"),
+    ]
 }
 
 pub fn load_indexed_project_history(

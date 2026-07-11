@@ -51,9 +51,10 @@ pub fn app_support_candidates() -> Vec<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if cfg!(debug_assertions) {
-            return vec![home.join("Library/Application Support/Codux Dev")];
+            vec![home.join("Library/Application Support/Codux Dev")]
+        } else {
+            vec![home.join("Library/Application Support/Codux")]
         }
-        return vec![home.join("Library/Application Support/Codux")];
     }
 
     #[cfg(target_os = "windows")]
@@ -62,15 +63,16 @@ pub fn app_support_candidates() -> Vec<PathBuf> {
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join("AppData").join("Roaming"));
         if cfg!(debug_assertions) {
-            return vec![base.join("Codux Dev")];
+            vec![base.join("Codux Dev")]
+        } else {
+            // Installed layout keeps data in Data beside Codux.exe; existing %APPDATA% data keeps winning via the probe.
+            let mut candidates = Vec::new();
+            if let Some(data) = windows_exe_data_dir() {
+                candidates.push(data);
+            }
+            candidates.push(base.join("Codux"));
+            candidates
         }
-        // Installed layout keeps data in Data beside Codux.exe; existing %APPDATA% data keeps winning via the probe.
-        let mut candidates = Vec::new();
-        if let Some(data) = windows_exe_data_dir() {
-            candidates.push(data);
-        }
-        candidates.push(base.join("Codux"));
-        return candidates;
     }
 
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]

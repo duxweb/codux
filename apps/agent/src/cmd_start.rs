@@ -10,7 +10,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn run(detach: bool) -> Result<(), String> {
     // Make sure a stable identity exists before we derive the node key from it.
     let mut config = CoduxConfig::load();
-    if config.ensure_identity() {
+    if config.ensure_identity()? {
         config.save()?;
     }
 

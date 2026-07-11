@@ -225,15 +225,15 @@ impl CoduxApp {
         let terminal_ids = self
             .pane_agent_lifecycle
             .iter()
-            .filter_map(|(terminal_id, lifecycle)| {
+            .filter(|&(_terminal_id, lifecycle)| {
                 lifecycle
                     .remote_device_id
                     .as_deref()
                     .is_some_and(|device_id| {
                         device_ids.iter().any(|candidate| candidate == device_id)
                     })
-                    .then(|| terminal_id.clone())
             })
+            .map(|(terminal_id, _lifecycle)| terminal_id.clone())
             .collect::<Vec<_>>();
         let mut changed = false;
         for terminal_id in terminal_ids {

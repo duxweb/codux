@@ -154,20 +154,32 @@ impl GitSidebarLabels {
     }
 }
 
+pub(in crate::app) struct GitSectionInput<'a> {
+    pub(in crate::app) git: &'a GitSummary,
+    pub(in crate::app) default_push_remote: Option<&'a str>,
+    pub(in crate::app) language: &'a str,
+    pub(in crate::app) running_operation: Option<&'a GitRunningOperation>,
+    pub(in crate::app) commit_message: &'a str,
+    pub(in crate::app) commit_message_revision: u64,
+    pub(in crate::app) files_panel_view: gpui::Entity<GitFilesPanelView>,
+    pub(in crate::app) history_panel_view: gpui::Entity<GitHistoryPanelView>,
+}
+
 pub(in crate::app) fn git_section(
-    git: &GitSummary,
-    selected_branch: Option<&str>,
-    default_push_remote: Option<&str>,
-    _clone_remote_url: &str,
-    language: &str,
-    running_operation: Option<&GitRunningOperation>,
-    commit_message: &str,
-    commit_message_revision: u64,
-    files_panel_view: gpui::Entity<GitFilesPanelView>,
-    history_panel_view: gpui::Entity<GitHistoryPanelView>,
+    input: GitSectionInput<'_>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
+    let GitSectionInput {
+        git,
+        default_push_remote,
+        language,
+        running_operation,
+        commit_message,
+        commit_message_revision,
+        files_panel_view,
+        history_panel_view,
+    } = input;
     let labels = Rc::new(GitSidebarLabels::load(language));
     let branch = if git.branch.trim().is_empty() {
         labels.no_branch.as_str()
@@ -185,7 +197,6 @@ pub(in crate::app) fn git_section(
             this.child(git_panel_header(
                 git,
                 branch,
-                selected_branch,
                 default_push_remote,
                 language,
                 running_operation,
@@ -194,7 +205,6 @@ pub(in crate::app) fn git_section(
         })
         .child(if git.is_repository {
             git_repository_panel(
-                git,
                 labels.clone(),
                 commit_message,
                 commit_message_revision,

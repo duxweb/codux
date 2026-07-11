@@ -93,10 +93,10 @@ fn delete_branch_git2(repo: &GitRepository, branch: &str, force: bool) -> Result
     if !force {
         let head = repo.head().ok().and_then(|head| head.target());
         let target = local_branch.get().target();
-        if let (Some(head), Some(target)) = (head, target) {
-            if !repo.graph_descendant_of(head, target).unwrap_or(false) {
-                return Err(format!("Branch {branch} is not fully merged."));
-            }
+        if let (Some(head), Some(target)) = (head, target)
+            && !repo.graph_descendant_of(head, target).unwrap_or(false)
+        {
+            return Err(format!("Branch {branch} is not fully merged."));
         }
     }
     local_branch

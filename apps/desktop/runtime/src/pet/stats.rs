@@ -96,7 +96,7 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
         .iter()
         .filter(|session| {
             timestamp_hour_local(session.first_seen_at)
-                .map(|hour| hour >= 22 || hour < 6)
+                .map(|hour| !(6..22).contains(&hour))
                 .unwrap_or(false)
         })
         .count();
@@ -120,7 +120,7 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
             return false;
         }
         let avg_per_turn = session.total_tokens as f64 / session.request_count as f64;
-        session.active_duration_seconds >= 360 && avg_per_turn >= 120.0 && avg_per_turn <= 4200.0
+        session.active_duration_seconds >= 360 && (120.0..=4200.0).contains(&avg_per_turn)
     });
     let repair_token_budget: i64 = repair_sessions.map(|session| session.total_tokens).sum();
 

@@ -478,7 +478,7 @@ fn update_download_path(url: &str, version: Option<&str>) -> Result<PathBuf, Str
     let parsed = Url::parse(url).map_err(|error| format!("Invalid URL: {error}"))?;
     let file_name = parsed
         .path_segments()
-        .and_then(|segments| segments.filter(|segment| !segment.is_empty()).next_back())
+        .and_then(|mut segments| segments.rfind(|segment| !segment.is_empty()))
         .map(percent_encoding::percent_decode_str)
         .map(|decoded| decoded.decode_utf8_lossy().to_string())
         .filter(|value| !value.trim().is_empty())
@@ -549,7 +549,7 @@ fn decode_updater_signature(signature: &str) -> Result<Signature, String> {
 fn prepare_update_install(artifact_path: &Path) -> Result<PendingUpdateInstall, String> {
     #[cfg(target_os = "macos")]
     {
-        return prepare_macos_update_install(artifact_path);
+        prepare_macos_update_install(artifact_path)
     }
     #[cfg(target_os = "windows")]
     {
@@ -822,7 +822,7 @@ fn shell_quote(value: &str) -> String {
 fn open_target(target: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return spawn_open_command("open", &[target]);
+        spawn_open_command("open", &[target])
     }
     #[cfg(target_os = "windows")]
     {
@@ -866,7 +866,7 @@ fn open_target_with_http_proxy(
                 return Ok(());
             }
         }
-        return Err("No Chromium-based browser found for Web Tunnel proxy mode.".to_string());
+        Err("No Chromium-based browser found for Web Tunnel proxy mode.".to_string())
     }
     #[cfg(target_os = "windows")]
     {

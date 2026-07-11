@@ -90,4 +90,16 @@ void main() {
     expect(capability.maxChars, TerminalBufferCapability.mobileMaxChars);
     expect(capability.chunkChars, 16384);
   });
+
+  test('resource subscription capability reads advertised resources', () {
+    final capability = RemoteResourceSubscriptionCapability.fromHostInfo({
+      'capabilities': {
+        'resourceSubscriptions': ['projects', 'git.status'],
+      },
+    });
+
+    expect(capability.supports('projects'), isTrue);
+    expect(capability.supports('git.status'), isTrue);
+    expect(capability.supports('worktrees'), isFalse);
+  });
 }

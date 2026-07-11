@@ -2,12 +2,10 @@
 //! `RemoteHostRuntime` or a headless agent) and drive its domains over Iroh.
 //! This is the inverse of `RemoteHostRuntime`.
 //!
-//! Replies are correlated by message **type** — the host echoes a domain
-//! specific reply type, not a `requestId`, for general domains — using a FIFO
-//! waiter list, the same proven scheme the mobile controller and the agent use.
-//! The request path is synchronous (send, then block on a channel that the
-//! transport's message callback feeds) so it composes cleanly with the
-//! synchronous `RuntimeService` domain methods that will route through it.
+//! Replies are correlated by top-level `requestId`; reply-type matching remains
+//! only for older hosts that omit it. The request path is synchronous (send,
+//! then block on a channel that the transport callback feeds) so it composes
+//! with the synchronous `RuntimeService` domain methods that route through it.
 
 use base64::Engine;
 use codux_protocol::{
@@ -41,6 +39,7 @@ use super::controller_store::{SavedRemoteHost, SavedRemoteTransport};
 use super::transport_factory::RemoteTransportFactory;
 
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const CONTROLLER_EVENT_LIMIT: usize = 1024;
 /// Memory reads run inside the project-switch load on the single blocking
 /// worker. A host that doesn't implement memory (e.g. a desktop host) never
 /// replies, so the default 20s wait would freeze that worker — starving every
@@ -196,7 +195,7 @@ pub(super) fn new_device_id() -> String {
 }
 
 struct Waiter {
-    id: u64,
+    request_id: String,
     expect: String,
     tx: Sender<Result<Value, String>>,
 }
@@ -216,9 +215,8 @@ struct ControllerInner {
 }
 
 impl ControllerInner {
-    /// Route one inbound envelope: resolve the first waiter expecting this reply
-    /// type, fail the oldest waiter on `error`, or queue it as an unsolicited
-    /// event (resource update, terminal output, broadcast).
+    /// Route one inbound envelope by request id. Replies from older hosts that
+    /// omit it fall back to reply-type matching.
     fn route(&self, data: &[u8]) {
         let Ok(envelope) = serde_json::from_slice::<Value>(data) else {
             return;
@@ -229,15 +227,16 @@ impl ControllerInner {
             .unwrap_or_default()
             .to_string();
         let payload = envelope.get("payload").cloned().unwrap_or(Value::Null);
+        let request_id = envelope.get("requestId").and_then(Value::as_str);
         // Terminal output never goes through the waiter/event path. A raw sink
         // (tests) gets the full envelope; otherwise demux by sessionId to the
         // per-session byte forwarder (the desktop terminal UI).
         if kind == REMOTE_TERMINAL_OUTPUT {
-            if let Ok(sink) = self.terminal_sink.lock() {
-                if let Some(sink) = sink.as_ref() {
-                    sink(envelope);
-                    return;
-                }
+            if let Ok(sink) = self.terminal_sink.lock()
+                && let Some(sink) = sink.as_ref()
+            {
+                sink(envelope);
+                return;
             }
             let session_id = envelope.get("sessionId").and_then(Value::as_str);
             let data = payload.get("data").and_then(Value::as_str).unwrap_or("");
@@ -257,13 +256,12 @@ impl ControllerInner {
                 .unwrap_or(false);
             let mut delivered = false;
             if let Some(session_id) = session_id {
-                if !data.is_empty() {
-                    if let Ok(forwarders) = self.terminal_outputs.lock() {
-                        if let Some(forwarder) = forwarders.get(session_id) {
-                            forwarder(data.as_bytes().to_vec());
-                            delivered = true;
-                        }
-                    }
+                if !data.is_empty()
+                    && let Ok(forwarders) = self.terminal_outputs.lock()
+                    && let Some(forwarder) = forwarders.get(session_id)
+                {
+                    forwarder(data.as_bytes().to_vec());
+                    delivered = true;
                 }
                 // Baseline chunks and dropped output are rare; live output with a
                 // forwarder stays untraced.
@@ -282,8 +280,20 @@ impl ControllerInner {
         {
             let mut waiters = self.waiters.lock().unwrap();
             if kind == REMOTE_ERROR {
-                if !waiters.is_empty() {
-                    let waiter = waiters.remove(0);
+                let index = request_id
+                    .and_then(|request_id| {
+                        waiters
+                            .iter()
+                            .position(|waiter| waiter.request_id == request_id)
+                    })
+                    .or_else(|| {
+                        request_id
+                            .is_none()
+                            .then_some(0)
+                            .filter(|_| !waiters.is_empty())
+                    });
+                if let Some(index) = index {
+                    let waiter = waiters.remove(index);
                     let message = payload
                         .get("message")
                         .and_then(Value::as_str)
@@ -292,21 +302,58 @@ impl ControllerInner {
                     let _ = waiter.tx.send(Err(message));
                     return;
                 }
-            } else if let Some(index) = waiters.iter().position(|waiter| waiter.expect == kind) {
+            } else if let Some(index) = waiters.iter().position(|waiter| {
+                request_id.map_or_else(
+                    || waiter.expect == kind,
+                    |request_id| waiter.request_id == request_id && waiter.expect == kind,
+                )
+            }) {
                 let waiter = waiters.remove(index);
                 let _ = waiter.tx.send(Ok(payload));
                 return;
             }
         }
-        self.events.lock().unwrap().push_back((kind, payload));
+        self.push_event(kind, payload);
     }
 
-    fn remove_waiter(&self, id: u64) {
+    fn push_event(&self, kind: String, payload: Value) {
+        let Ok(mut events) = self.events.lock() else {
+            return;
+        };
+        if events.len() >= CONTROLLER_EVENT_LIMIT {
+            let removable = events
+                .iter()
+                .position(|(event_kind, _)| !is_pairing_event(event_kind));
+            match removable {
+                Some(index) => {
+                    events.remove(index);
+                }
+                None if is_pairing_event(&kind) => {
+                    events.pop_front();
+                }
+                None => return,
+            }
+        }
+        events.push_back((kind, payload));
+    }
+
+    fn remove_waiter(&self, request_id: &str) {
         self.waiters
             .lock()
             .unwrap()
-            .retain(|waiter| waiter.id != id);
+            .retain(|waiter| waiter.request_id != request_id);
     }
+}
+
+fn is_pairing_event(kind: &str) -> bool {
+    matches!(kind, REMOTE_PAIRING_CONFIRMED | REMOTE_PAIRING_REJECTED)
+}
+
+fn required_remote_result(value: Value, operation: &str) -> Result<Value, String> {
+    value
+        .get("result")
+        .cloned()
+        .ok_or_else(|| format!("Remote {operation} reply is missing result."))
 }
 
 pub struct RemoteController {
@@ -434,6 +481,13 @@ impl RemoteController {
             for (kind, payload) in controller.drain_events() {
                 if kind == REMOTE_PAIRING_CONFIRMED {
                     let saved = saved_host_from_confirmed(&device_id, &payload);
+                    if !controller
+                        .transport
+                        .set_device_credentials(&saved.device_id, &saved.device_token)
+                    {
+                        controller.shutdown().await;
+                        return Err("Failed to activate paired device credentials.".to_string());
+                    }
                     return Ok((controller, saved));
                 }
                 if kind == REMOTE_PAIRING_REJECTED {
@@ -463,28 +517,29 @@ impl RemoteController {
         timeout: Duration,
     ) -> Result<Value, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let request_id = id.to_string();
         let (tx, rx) = mpsc::channel();
         self.inner.waiters.lock().unwrap().push(Waiter {
-            id,
+            request_id: request_id.clone(),
             expect: expect.to_string(),
             tx,
         });
-        let envelope = self.envelope(kind, payload);
+        let envelope = self.envelope_with_request_id(kind, payload, Some(&request_id));
         let bytes = match serde_json::to_vec(&envelope) {
             Ok(bytes) => bytes,
             Err(error) => {
-                self.inner.remove_waiter(id);
+                self.inner.remove_waiter(&request_id);
                 return Err(error.to_string());
             }
         };
         if !self.transport.send(bytes, None) {
-            self.inner.remove_waiter(id);
+            self.inner.remove_waiter(&request_id);
             return Err(format!("failed to send {kind} to remote host"));
         }
         match rx.recv_timeout(timeout) {
             Ok(result) => result,
             Err(_) => {
-                self.inner.remove_waiter(id);
+                self.inner.remove_waiter(&request_id);
                 Err(format!("timed out waiting for {expect} from remote host"))
             }
         }
@@ -792,12 +847,12 @@ impl RemoteController {
         };
         payload.insert("op".to_string(), Value::String(op.to_string()));
         let value = self.request_with_timeout(
-            REMOTE_MEMORY_READ,
             REMOTE_MEMORY_RESULT,
+            REMOTE_MEMORY_READ,
             Value::Object(payload),
             MEMORY_READ_TIMEOUT,
         )?;
-        Ok(value.get("result").cloned().unwrap_or(Value::Null))
+        required_remote_result(value, "memory")
     }
 
     /// Trigger a memory extraction run on the host with a forwarded provider
@@ -811,7 +866,7 @@ impl RemoteController {
             json!({ "config": config, "outputLocale": output_locale }),
             std::time::Duration::from_secs(300),
         )?;
-        Ok(value.get("result").cloned().unwrap_or(Value::Null))
+        required_remote_result(value, "memory extraction")
     }
 
     /// Run an AI-session op on the host (`detail`/`rename`/`remove`/`fork`).
@@ -823,11 +878,11 @@ impl RemoteController {
         };
         payload.insert("op".to_string(), Value::String(op.to_string()));
         let value = self.request(
-            REMOTE_AI_SESSION,
             REMOTE_AI_SESSION_RESULT,
+            REMOTE_AI_SESSION,
             Value::Object(payload),
         )?;
-        Ok(value.get("result").cloned().unwrap_or(Value::Null))
+        required_remote_result(value, "AI session")
     }
 
     pub fn project_list(&self) -> Result<Value, String> {
@@ -933,29 +988,23 @@ impl RemoteController {
     /// Typed terminal create (keeps `serde_json` out of the UI crate).
     pub fn open_terminal(
         &self,
-        cwd: Option<&str>,
-        command: Option<&str>,
-        cols: Option<u16>,
-        rows: Option<u16>,
-        project_id: Option<&str>,
-        worktree_id: Option<&str>,
-        title: Option<&str>,
-        terminal_id: Option<&str>,
-        osc_fg: Option<&str>,
-        osc_bg: Option<&str>,
+        config: &crate::terminal_pty::TerminalPtyConfig,
     ) -> Result<String, String> {
+        let terminal_env = config.env.as_ref();
+        let osc_fg = terminal_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_FG"));
+        let osc_bg = terminal_env.and_then(|env| env.get("DMUX_TERMINAL_OSC_BG"));
         // Pass our stable terminal id so the host keys the session by it and
         // RE-ATTACHES to the still-running shell on a later open (persistent
         // remote terminals) instead of spawning a fresh one each switch.
         self.create_terminal(json!({
-            "cwd": cwd,
-            "command": command,
-            "cols": cols,
-            "rows": rows,
-            "projectId": project_id,
-            "worktreeId": worktree_id,
-            "title": title,
-            "terminalId": terminal_id,
+            "cwd": config.cwd,
+            "command": config.command,
+            "cols": config.cols,
+            "rows": config.rows,
+            "projectId": config.root_project_id,
+            "worktreeId": config.worktree_id,
+            "title": config.title,
+            "terminalId": config.terminal_id,
             "oscFg": osc_fg,
             "oscBg": osc_bg,
         }))
@@ -1025,16 +1074,24 @@ impl RemoteController {
 
     /// Send an envelope without awaiting a reply.
     fn fire(&self, kind: &str, payload: Value) -> bool {
-        let envelope = self.envelope(kind, payload);
+        let envelope = self.envelope_with_request_id(kind, payload, None);
         match serde_json::to_vec(&envelope) {
             Ok(bytes) => self.transport.send(bytes, None),
             Err(_) => false,
         }
     }
 
-    fn envelope(&self, kind: &str, payload: Value) -> Value {
+    fn envelope_with_request_id(
+        &self,
+        kind: &str,
+        payload: Value,
+        request_id: Option<&str>,
+    ) -> Value {
         let session_id = payload.get("sessionId").cloned();
         let mut envelope = json!({ "type": kind, "deviceId": self.device_id, "payload": payload });
+        if let Some(request_id) = request_id {
+            envelope["requestId"] = json!(request_id);
+        }
         // The host reads sessionId from the envelope top level (`RemoteEnvelope`),
         // not from payload. Request and fire must stay identical for all
         // session-keyed terminal operations.
@@ -1110,7 +1167,9 @@ mod e2e {
     //! then drive a domain request. Ignored by default (iroh endpoint setup is
     //! slow and needs no network for direct dial); run with `--ignored`.
     use super::*;
-    use codux_remote_transport::{RemoteHostTransportConfig, RemoteTransportFactory as Shared};
+    use codux_remote_transport::{
+        RemoteHostTransportConfig, RemoteHostTransportHandlers, RemoteTransportFactory as Shared,
+    };
 
     #[test]
     #[ignore = "in-process iroh round trip; run with: cargo test -p codux-runtime -- --ignored controller"]
@@ -1131,11 +1190,6 @@ mod e2e {
                     .unwrap_or_default();
                 let device_id = envelope.get("deviceId").and_then(Value::as_str);
                 let reply = match kind {
-                    REMOTE_PAIRING_REQUEST => Some((
-                        REMOTE_PAIRING_CONFIRMED,
-                        json!({ "hostId": "host-it", "deviceId": device_id.unwrap_or_default(),
-                                "token": "device-token-it", "hostName": "IT Host", "transports": [] }),
-                    )),
                     REMOTE_HOST_INFO => Some((
                         REMOTE_HOST_INFO,
                         json!({ "hostId": "host-it", "name": "IT Host" }),
@@ -1149,10 +1203,9 @@ mod e2e {
                     }
                     if let (Ok(bytes), Ok(guard)) =
                         (serde_json::to_vec(&envelope), reply_slot.lock())
+                        && let Some(transport) = guard.as_ref()
                     {
-                        if let Some(transport) = guard.as_ref() {
-                            transport.send(bytes, device_id);
-                        }
+                        transport.send(bytes, device_id);
                     }
                 }
             });
@@ -1167,12 +1220,23 @@ mod e2e {
             };
             let host = Shared::connect_host(
                 &config,
-                on_message,
-                Arc::new(|_| Ok(())),
-                Arc::new(|_, _| {}),
-                Arc::new(|_| {}),
-                None,
-                None,
+                RemoteHostTransportHandlers {
+                    on_message,
+                    on_upload: Arc::new(|_| Ok(())),
+                    on_state: Arc::new(|_, _| {}),
+                    on_pairing: Arc::new(|handshake| {
+                        Some(json!({
+                            "hostId": "host-it",
+                            "deviceId": handshake.device_id,
+                            "token": "device-token-it",
+                            "hostName": "IT Host",
+                            "transports": [],
+                        }))
+                    }),
+                    on_authorize: Arc::new(|_, _| true),
+                    on_web_tunnel_tcp_connect: None,
+                    on_log: None,
+                },
             )
             .await
             .expect("host connects");
@@ -1240,11 +1304,6 @@ mod e2e {
                 .unwrap_or_default();
             let device_id = envelope.get("deviceId").and_then(Value::as_str);
             let reply = match kind {
-                REMOTE_PAIRING_REQUEST => Some((
-                    REMOTE_PAIRING_CONFIRMED,
-                    json!({ "hostId": "host-it", "deviceId": device_id.unwrap_or_default(),
-                            "token": "device-token-it", "hostName": "IT Host", "transports": [] }),
-                )),
                 REMOTE_FILE_LIST => Some((
                     REMOTE_FILE_LIST,
                     json!({ "path": "/remote", "parent": "/",
@@ -1257,10 +1316,10 @@ mod e2e {
                 if let Some(device_id) = device_id {
                     envelope["deviceId"] = json!(device_id);
                 }
-                if let (Ok(bytes), Ok(guard)) = (serde_json::to_vec(&envelope), reply_slot.lock()) {
-                    if let Some(transport) = guard.as_ref() {
-                        transport.send(bytes, device_id);
-                    }
+                if let (Ok(bytes), Ok(guard)) = (serde_json::to_vec(&envelope), reply_slot.lock())
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device_id);
                 }
             }
         });
@@ -1277,12 +1336,23 @@ mod e2e {
             };
             let host = codux_remote_transport::RemoteTransportFactory::connect_host(
                 &config,
-                on_message,
-                Arc::new(|_| Ok(())),
-                Arc::new(|_, _| {}),
-                Arc::new(|_| {}),
-                None,
-                None,
+                RemoteHostTransportHandlers {
+                    on_message,
+                    on_upload: Arc::new(|_| Ok(())),
+                    on_state: Arc::new(|_, _| {}),
+                    on_pairing: Arc::new(|handshake| {
+                        Some(json!({
+                            "hostId": "host-it",
+                            "deviceId": handshake.device_id,
+                            "token": "device-token-it",
+                            "hostName": "IT Host",
+                            "transports": [],
+                        }))
+                    }),
+                    on_authorize: Arc::new(|_, _| true),
+                    on_web_tunnel_tcp_connect: None,
+                    on_log: None,
+                },
             )
             .await
             .expect("host connects");
@@ -1349,17 +1419,13 @@ mod e2e {
                 .unwrap_or_default();
             let device_id = envelope.get("deviceId").and_then(Value::as_str);
             let send = |value: Value| {
-                if let (Ok(bytes), Ok(guard)) = (serde_json::to_vec(&value), reply_slot.lock()) {
-                    if let Some(transport) = guard.as_ref() {
-                        transport.send(bytes, device_id);
-                    }
+                if let (Ok(bytes), Ok(guard)) = (serde_json::to_vec(&value), reply_slot.lock())
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device_id);
                 }
             };
             match kind {
-                REMOTE_PAIRING_REQUEST => send(json!({
-                    "type": REMOTE_PAIRING_CONFIRMED, "deviceId": device_id,
-                    "payload": { "hostId": "h", "deviceId": device_id.unwrap_or_default(), "token": "device-token-it", "transports": [] },
-                })),
                 REMOTE_TERMINAL_CREATE => send(json!({
                     "type": REMOTE_TERMINAL_CREATED, "deviceId": device_id,
                     "payload": { "sessionId": "t1" },
@@ -1393,12 +1459,22 @@ mod e2e {
             };
             let host = codux_remote_transport::RemoteTransportFactory::connect_host(
                 &config,
-                on_message,
-                Arc::new(|_| Ok(())),
-                Arc::new(|_, _| {}),
-                Arc::new(|_| {}),
-                None,
-                None,
+                RemoteHostTransportHandlers {
+                    on_message,
+                    on_upload: Arc::new(|_| Ok(())),
+                    on_state: Arc::new(|_, _| {}),
+                    on_pairing: Arc::new(|handshake| {
+                        Some(json!({
+                            "hostId": "h",
+                            "deviceId": handshake.device_id,
+                            "token": "device-token-it",
+                            "transports": [],
+                        }))
+                    }),
+                    on_authorize: Arc::new(|_, _| true),
+                    on_web_tunnel_tcp_connect: None,
+                    on_log: None,
+                },
             )
             .await
             .expect("host");
@@ -1441,10 +1517,10 @@ mod e2e {
                 controller_for_calls.terminal_input(&session, "hello-remote-term");
                 // Poll until the echoed output is assembled by the router.
                 for _ in 0..50 {
-                    if let Some(content) = router.lock().unwrap().content(&session) {
-                        if content.contains("hello-remote-term") {
-                            return true;
-                        }
+                    if let Some(content) = router.lock().unwrap().content(&session)
+                        && content.contains("hello-remote-term")
+                    {
+                        return true;
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }
@@ -1484,10 +1560,10 @@ mod e2e {
                 .unwrap_or_default();
             let device_id = envelope.get("deviceId").and_then(Value::as_str);
             let send = |value: Value| {
-                if let (Ok(bytes), Ok(guard)) = (serde_json::to_vec(&value), reply_slot.lock()) {
-                    if let Some(transport) = guard.as_ref() {
-                        transport.send(bytes, device_id);
-                    }
+                if let (Ok(bytes), Ok(guard)) = (serde_json::to_vec(&value), reply_slot.lock())
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device_id);
                 }
             };
             match kind {
@@ -1538,12 +1614,15 @@ mod e2e {
             };
             let host = codux_remote_transport::RemoteTransportFactory::connect_host(
                 &config,
-                on_message,
-                Arc::new(|_| Ok(())),
-                Arc::new(|_, _| {}),
-                Arc::new(|_| {}),
-                None,
-                None,
+                RemoteHostTransportHandlers {
+                    on_message,
+                    on_upload: Arc::new(|_| Ok(())),
+                    on_state: Arc::new(|_, _| {}),
+                    on_pairing: Arc::new(|_| None),
+                    on_authorize: Arc::new(|_, _| true),
+                    on_web_tunnel_tcp_connect: None,
+                    on_log: None,
+                },
             )
             .await
             .expect("host");
@@ -1671,25 +1750,41 @@ mod tests {
                 return false;
             };
             self.sent.lock().unwrap().push(envelope.clone());
+            let request_id = envelope.get("requestId").cloned();
+            let reply = |kind: &str, payload: Value| {
+                let mut response = json!({ "type": kind, "payload": payload });
+                if let Some(request_id) = request_id.as_ref() {
+                    response["requestId"] = request_id.clone();
+                }
+                self.inner.route(&serde_json::to_vec(&response).unwrap());
+            };
             match envelope.get("type").and_then(Value::as_str) {
                 Some(REMOTE_TERMINAL_CREATE) => {
-                    self.inner.route(
-                        br#"{"type":"terminal.created","payload":{"sessionId":"session-1"}}"#,
-                    );
+                    reply(REMOTE_TERMINAL_CREATED, json!({ "sessionId": "session-1" }));
                 }
                 Some(REMOTE_TERMINAL_LIST) => {
-                    self.inner.route(
-                        br#"{"type":"terminal.list","payload":{"terminals":[{"id":"session-1"}]}}"#,
+                    reply(
+                        REMOTE_TERMINAL_LIST,
+                        json!({ "terminals": [{ "id": "session-1" }] }),
                     );
                 }
                 Some(REMOTE_TERMINAL_CLOSE) => {
-                    self.inner.route(
-                        br#"{"type":"terminal.closed","sessionId":"session-1","payload":{"id":"session-1"}}"#,
-                    );
+                    reply(REMOTE_TERMINAL_CLOSED, json!({ "id": "session-1" }));
                 }
                 Some(REMOTE_AI_STATS) => {
-                    self.inner
-                        .route(br#"{"type":"ai.stats","payload":{"sessions":[]}}"#);
+                    reply(REMOTE_AI_STATS, json!({ "sessions": [] }));
+                }
+                Some(REMOTE_MEMORY_READ) => {
+                    reply(
+                        REMOTE_MEMORY_RESULT,
+                        json!({ "op": "summary", "result": {} }),
+                    );
+                }
+                Some(REMOTE_AI_SESSION) => {
+                    reply(
+                        REMOTE_AI_SESSION_RESULT,
+                        json!({ "op": "detail", "result": {} }),
+                    );
                 }
                 _ => {}
             }
@@ -1702,7 +1797,7 @@ mod tests {
     fn waiter(inner: &ControllerInner, expect: &str) -> mpsc::Receiver<Result<Value, String>> {
         let (tx, rx) = mpsc::channel();
         inner.waiters.lock().unwrap().push(Waiter {
-            id: 1,
+            request_id: "1".to_string(),
             expect: expect.to_string(),
             tx,
         });
@@ -1728,6 +1823,54 @@ mod tests {
     }
 
     #[test]
+    fn route_matches_errors_by_request_id() {
+        let inner = ControllerInner::default();
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+        {
+            let mut waiters = inner.waiters.lock().unwrap();
+            waiters.push(Waiter {
+                request_id: "request-1".to_string(),
+                expect: REMOTE_MEMORY_RESULT.to_string(),
+                tx: tx1,
+            });
+            waiters.push(Waiter {
+                request_id: "request-2".to_string(),
+                expect: REMOTE_MEMORY_RESULT.to_string(),
+                tx: tx2,
+            });
+        }
+
+        inner.route(
+            br#"{"type":"error","requestId":"request-2","payload":{"message":"second failed"}}"#,
+        );
+        inner.route(
+            br#"{"type":"memory.result","requestId":"request-1","payload":{"result":{"available":true}}}"#,
+        );
+
+        assert_eq!(
+            rx1.recv_timeout(Duration::from_secs(1)).unwrap().unwrap()["result"]["available"],
+            json!(true)
+        );
+        assert_eq!(
+            rx2.recv_timeout(Duration::from_secs(1)).unwrap(),
+            Err("second failed".to_string())
+        );
+    }
+
+    #[test]
+    fn required_remote_result_rejects_malformed_success_payload() {
+        assert_eq!(
+            required_remote_result(json!({ "op": "summary" }), "memory"),
+            Err("Remote memory reply is missing result.".to_string())
+        );
+        assert_eq!(
+            required_remote_result(json!({ "result": null }), "memory").unwrap(),
+            Value::Null
+        );
+    }
+
+    #[test]
     fn route_unmatched_reply_is_queued_as_event() {
         let inner = ControllerInner::default();
         // An unsolicited message with no waiter (here a broadcast) is queued for
@@ -1737,6 +1880,30 @@ mod tests {
         let events = inner.events.lock().unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].0, "pairing.confirmed");
+    }
+
+    #[test]
+    fn route_bounds_unsolicited_events_and_preserves_pairing_result() {
+        let inner = ControllerInner::default();
+        inner.route(br#"{"type":"pairing.confirmed","payload":{"hostId":"h"}}"#);
+        for index in 0..CONTROLLER_EVENT_LIMIT {
+            inner.route(
+                json!({
+                    "type": REMOTE_TERMINAL_STATUS,
+                    "payload": { "index": index },
+                })
+                .to_string()
+                .as_bytes(),
+            );
+        }
+
+        let events = inner.events.lock().unwrap();
+        assert_eq!(events.len(), CONTROLLER_EVENT_LIMIT);
+        assert!(
+            events
+                .iter()
+                .any(|(kind, _)| kind == REMOTE_PAIRING_CONFIRMED)
+        );
     }
 
     #[test]
@@ -1837,18 +2004,16 @@ mod tests {
         };
 
         let session_id = controller
-            .open_terminal(
-                Some("/repo/worktree"),
-                None,
-                Some(120),
-                Some(32),
-                Some("project-1"),
-                Some("worktree-1"),
-                Some("Shell"),
-                Some("terminal-1"),
-                None,
-                None,
-            )
+            .open_terminal(&crate::terminal_pty::TerminalPtyConfig {
+                cwd: Some("/repo/worktree".to_string()),
+                cols: Some(120),
+                rows: Some(32),
+                root_project_id: Some("project-1".to_string()),
+                worktree_id: Some("worktree-1".to_string()),
+                title: Some("Shell".to_string()),
+                terminal_id: Some("terminal-1".to_string()),
+                ..Default::default()
+            })
             .expect("terminal created");
 
         assert_eq!(session_id, "session-1");
@@ -2039,12 +2204,12 @@ mod tests {
         {
             let mut waiters = inner.waiters.lock().unwrap();
             waiters.push(Waiter {
-                id: 1,
+                request_id: "1".to_string(),
                 expect: REMOTE_FILE_LIST.to_string(),
                 tx: tx1,
             });
             waiters.push(Waiter {
-                id: 2,
+                request_id: "2".to_string(),
                 expect: REMOTE_FILE_LIST.to_string(),
                 tx: tx2,
             });
@@ -2058,6 +2223,59 @@ mod tests {
         assert_eq!(
             rx2.recv_timeout(Duration::from_secs(1)).unwrap().unwrap()["n"],
             json!(2)
+        );
+    }
+
+    #[test]
+    fn route_matches_same_type_waiters_by_request_id() {
+        let inner = ControllerInner::default();
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+        {
+            let mut waiters = inner.waiters.lock().unwrap();
+            waiters.push(Waiter {
+                request_id: "request-1".to_string(),
+                expect: REMOTE_FILE_LIST.to_string(),
+                tx: tx1,
+            });
+            waiters.push(Waiter {
+                request_id: "request-2".to_string(),
+                expect: REMOTE_FILE_LIST.to_string(),
+                tx: tx2,
+            });
+        }
+        inner.route(br#"{"type":"file.list","requestId":"request-2","payload":{"n":2}}"#);
+        inner.route(br#"{"type":"file.list","requestId":"request-1","payload":{"n":1}}"#);
+        assert_eq!(
+            rx1.recv_timeout(Duration::from_secs(1)).unwrap().unwrap()["n"],
+            json!(1)
+        );
+        assert_eq!(
+            rx2.recv_timeout(Duration::from_secs(1)).unwrap().unwrap()["n"],
+            json!(2)
+        );
+    }
+
+    #[test]
+    fn memory_and_ai_session_send_correct_request_types() {
+        let inner = Arc::new(ControllerInner::default());
+        let transport = Arc::new(CapturingReplyTransport::new(Arc::clone(&inner)));
+        let controller = RemoteController {
+            transport: transport.clone(),
+            device_id: "device-1".to_string(),
+            inner,
+            next_id: AtomicU64::new(1),
+        };
+
+        controller.memory_read("summary", json!({})).unwrap();
+        controller.ai_session("detail", json!({})).unwrap();
+
+        let sent = transport.sent();
+        assert_eq!(sent[0]["type"], REMOTE_MEMORY_READ);
+        assert_eq!(sent[1]["type"], REMOTE_AI_SESSION);
+        assert!(
+            sent.iter()
+                .all(|envelope| envelope["requestId"].is_string())
         );
     }
 }

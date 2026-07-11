@@ -11,11 +11,8 @@ impl RemoteHostRuntime {
             &envelope.payload,
         ) {
             Ok(RemoteTerminalSubscriptionTarget::Project { project_id }) => {
-                self.register_project_terminal_viewers(&project_id, Some(device_id));
-                self.send_project_terminal_viewport_states(&project_id, Some(device_id));
-                if RemoteTerminalSubscriptionTarget::baseline_requested(&envelope.payload) {
-                    self.send_project_terminal_baselines(&project_id, Some(device_id), envelope);
-                }
+                self.register_project_terminal_subscription(&project_id, Some(device_id));
+                self.send_terminal_list(Some(device_id));
             }
             Ok(RemoteTerminalSubscriptionTarget::Session { session_id }) => {
                 self.register_terminal_viewer(&session_id, Some(device_id));
@@ -37,7 +34,7 @@ impl RemoteHostRuntime {
             &envelope.payload,
         ) {
             Ok(RemoteTerminalSubscriptionTarget::Project { project_id }) => {
-                self.remove_project_terminal_viewers(&project_id, Some(device_id));
+                self.remove_project_terminal_subscription(&project_id, Some(device_id));
             }
             Ok(RemoteTerminalSubscriptionTarget::Session { session_id }) => {
                 self.remove_terminal_viewer_for_session(&session_id, Some(device_id));
@@ -47,34 +44,25 @@ impl RemoteHostRuntime {
     }
 
     pub(super) fn handle_resource_subscribe(self: &Arc<Self>, envelope: &RemoteEnvelope) {
-        let change = match self.resource_subscriptions.subscribe_envelope(envelope) {
+        let change = match RuntimeSubscriptionRouter::parse_subscribe_envelope(envelope) {
             Ok(change) => change,
             Err(error) => {
                 self.send_error(envelope, &error);
                 return;
             }
         };
+        if let Err(error) = self.validate_resource_subscription(&change) {
+            self.send_error(envelope, &error);
+            return;
+        }
+        self.resource_subscriptions.subscribe_change(&change);
         match change.resource.as_str() {
-            REMOTE_RESOURCE_PROJECTS => self.send_project_list(envelope.device_id.as_deref()),
+            REMOTE_RESOURCE_PROJECTS => self.reply_project_list(envelope),
             REMOTE_RESOURCE_TERMINALS => {
-                if let Some(project_id) = change.project_id.as_deref() {
-                    self.register_project_terminal_viewers(
-                        project_id,
-                        envelope.device_id.as_deref(),
-                    );
-                    self.send_project_terminal_viewport_states(
-                        project_id,
-                        envelope.device_id.as_deref(),
-                    );
-                    if change.baseline {
-                        self.send_project_terminal_baselines(
-                            project_id,
-                            envelope.device_id.as_deref(),
-                            envelope,
-                        );
-                    }
+                if change.project_id.is_some() {
+                    self.reply_terminal_list(envelope);
                 } else if let Some(session_id) = change.session_id.as_deref() {
-                    self.register_terminal_viewer(session_id, envelope.device_id.as_deref());
+                    self.activate_terminal_viewer(session_id);
                     self.send_terminal_viewport_state(session_id, envelope.device_id.as_deref());
                     if change.baseline {
                         self.spawn_terminal_baseline(
@@ -84,13 +72,78 @@ impl RemoteHostRuntime {
                         );
                     }
                 } else {
-                    self.send_terminal_list(envelope.device_id.as_deref());
+                    self.reply_terminal_list(envelope);
                 }
             }
             REMOTE_RESOURCE_WORKTREES => self.handle_worktree_list(envelope),
             REMOTE_RESOURCE_GIT_STATUS => self.handle_git_status(envelope),
             REMOTE_RESOURCE_AI_STATS => self.handle_ai_stats(envelope),
-            _ => self.send_error(envelope, "Unsupported resource subscription."),
+            _ => unreachable!("validated resource subscription"),
+        }
+    }
+
+    fn validate_resource_subscription(
+        &self,
+        change: &codux_runtime_core::subscription::RuntimeSubscriptionChange,
+    ) -> Result<(), String> {
+        let project_id = change.project_id.as_deref();
+        let session_id = change.session_id.as_deref();
+        match change.resource.as_str() {
+            REMOTE_RESOURCE_PROJECTS => {
+                if project_id.is_some() || session_id.is_some() {
+                    return Err("Projects subscriptions must use global scope.".to_string());
+                }
+            }
+            REMOTE_RESOURCE_TERMINALS => {
+                if project_id.is_some() && session_id.is_some() {
+                    return Err(
+                        "Terminal subscriptions cannot combine project and session scope."
+                            .to_string(),
+                    );
+                }
+                if let Some(project_id) = project_id {
+                    self.validate_subscription_project(project_id)?;
+                }
+                if let Some(session_id) = session_id
+                    && !self
+                        .terminals
+                        .list()
+                        .iter()
+                        .any(|terminal| terminal.id == session_id && terminal.is_running)
+                {
+                    return Err("Terminal session not found.".to_string());
+                }
+            }
+            REMOTE_RESOURCE_WORKTREES | REMOTE_RESOURCE_GIT_STATUS | REMOTE_RESOURCE_AI_STATS => {
+                if session_id.is_some() {
+                    return Err("Resource subscription does not support session scope.".to_string());
+                }
+                let project_id = project_id
+                    .ok_or_else(|| "Project id is required for this resource.".to_string())?;
+                self.validate_subscription_project(project_id)?;
+            }
+            _ => return Err("Unsupported resource subscription.".to_string()),
+        }
+        Ok(())
+    }
+
+    fn validate_subscription_project(&self, project_id: &str) -> Result<(), String> {
+        let exists = ProjectStore::new(self.support_dir.clone())
+            .projects_snapshot()
+            .into_iter()
+            .any(|project| {
+                project.id == project_id
+                    && project
+                        .host_device_id
+                        .as_deref()
+                        .map(str::trim)
+                        .unwrap_or_default()
+                        .is_empty()
+            });
+        if exists {
+            Ok(())
+        } else {
+            Err("Project not found.".to_string())
         }
     }
 
@@ -98,14 +151,16 @@ impl RemoteHostRuntime {
         let Ok(change) = self.resource_subscriptions.unsubscribe_envelope(envelope) else {
             return;
         };
-        if change.resource.as_str() != REMOTE_RESOURCE_TERMINALS {
-            return;
-        }
-        if let Some(project_id) = change.project_id.as_deref() {
-            self.remove_project_terminal_viewers(project_id, Some(&change.device_id));
-        }
-        if let Some(session_id) = change.session_id.as_deref() {
-            self.remove_terminal_viewer_for_session(session_id, Some(&change.device_id));
+        match change.resource.as_str() {
+            REMOTE_RESOURCE_TERMINALS => {
+                if let Some(session_id) = change.session_id.as_deref() {
+                    self.clear_terminal_viewer_state(session_id, &change.device_id);
+                }
+            }
+            REMOTE_RESOURCE_AI_STATS => {
+                self.remove_ai_stats_watcher(change.project_id.as_deref(), &change.device_id)
+            }
+            _ => {}
         }
     }
 
@@ -131,43 +186,17 @@ impl RemoteHostRuntime {
                 }
             };
         self.set_remote_project_scope(envelope.device_id.as_deref(), &plan.scope.project_id);
-        // Subscribe the creating device to this project's terminal output BEFORE
-        // the shell starts. `queue_terminal_output_batch` drops output while a
-        // session has no viewers, and the per-session viewer is only registered
-        // after `create` + the layout persist below — a window during which the
-        // freshly spawned shell prints its prompt. The desktop renders only the
-        // live byte stream (it ignores the screen keyframe and the host's initial
-        // buffer push), so a prompt dropped in that window is lost forever and the
-        // terminal looks blank until the user types. A project-scoped subscription
-        // added up front covers the new session the instant it first emits.
-        if let Some(device_id) = envelope
-            .device_id
-            .as_deref()
-            .filter(|id| !id.trim().is_empty())
-        {
-            // Subscribe BEFORE the shell starts so its first prompt isn't dropped
-            // (`queue_terminal_output_batch` drops output with no viewers). The
-            // terminal is stored with `project_id = scope.worktree_id` (see
-            // `remote_terminal_pty_config`), and `terminal_output_viewers` resolves
-            // viewers by THAT id — so subscribing only under `scope.project_id`
-            // misses the window when project_id != worktree_id. Cover both.
-            for id in [
-                plan.scope.project_id.as_str(),
-                plan.scope.worktree_id.as_str(),
-            ] {
-                if !id.trim().is_empty() {
-                    self.terminal_subscriptions
-                        .add_project_subscriber(id, device_id);
-                }
-            }
-        }
         let lifecycle = prepare_terminal_create_lifecycle(
             self.terminals.as_ref(),
             &plan.config,
             envelope.device_id.as_deref(),
             |session_id, device_id| {
-                self.terminal_subscriptions
-                    .add_session_viewer(session_id, device_id);
+                self.resource_subscriptions.subscribe(
+                    REMOTE_RESOURCE_TERMINALS,
+                    None,
+                    Some(session_id),
+                    device_id,
+                );
             },
         );
         let event_key = plan
@@ -212,14 +241,14 @@ impl RemoteHostRuntime {
                         self.register_terminal_viewer(session_id, Some(device_id))
                     },
                 );
-                self.send_terminal_data(
-                    REMOTE_TERMINAL_CREATED,
-                    envelope.device_id.as_deref(),
+                self.reply_with_session(
+                    envelope,
                     Some(&session_id),
+                    REMOTE_TERMINAL_CREATED,
                     self.remote_terminal_payload(&session_id)
                         .unwrap_or_else(|| json!({ "id": session_id })),
                 );
-                self.send_terminal_list(envelope.device_id.as_deref());
+                self.broadcast_terminal_list(envelope.device_id.as_deref());
                 self.send_terminal_viewport_state(&session_id, envelope.device_id.as_deref());
                 if lifecycle.reattaching {
                     self.send_terminal_buffer(
@@ -236,7 +265,16 @@ impl RemoteHostRuntime {
                     );
                 }
             }
-            Err(error) => self.send_error(envelope, &error.to_string()),
+            Err(error) => {
+                rollback_terminal_create_viewer_lifecycle(
+                    &lifecycle,
+                    envelope.device_id.as_deref(),
+                    |session_id, device_id| {
+                        self.remove_terminal_viewer_for_session(session_id, Some(device_id));
+                    },
+                );
+                self.send_error(envelope, &error.to_string());
+            }
         }
     }
 
@@ -388,14 +426,15 @@ impl RemoteHostRuntime {
             // the new owner and flip to the placeholder. If it still owns, the
             // keepalive is a silent lease renewal -- echoing its own ownership back
             // every 8s would just trigger a redundant repaint on an idle terminal.
-            if let Ok(state) = self.terminals.viewport_state(session_id) {
-                if state.owner != owner {
-                    self.send_terminal_viewport_state_payload(
-                        session_id,
-                        envelope.device_id.as_deref(),
-                        &state,
-                    );
-                }
+            if let Ok(state) = self.terminals.viewport_state(session_id)
+                && state.owner != owner
+            {
+                self.send_terminal_viewport_state_payload(
+                    session_id,
+                    envelope.device_id.as_deref(),
+                    envelope.request_id.as_deref(),
+                    &state,
+                );
             }
             return;
         }
@@ -418,6 +457,7 @@ impl RemoteHostRuntime {
             self.send_terminal_viewport_state_payload(
                 session_id,
                 envelope.device_id.as_deref(),
+                envelope.request_id.as_deref(),
                 &state,
             );
         }
@@ -477,18 +517,21 @@ impl RemoteHostRuntime {
                 self.send_terminal_viewport_state_payload(
                     session_id,
                     envelope.device_id.as_deref(),
+                    envelope.request_id.as_deref(),
                     &state,
                 );
             }
             Ok(None) => {
-                self.send_terminal_viewport_state(session_id, envelope.device_id.as_deref())
+                if let Ok(state) = self.terminals.viewport_state(session_id) {
+                    self.send_terminal_viewport_state_payload(
+                        session_id,
+                        envelope.device_id.as_deref(),
+                        envelope.request_id.as_deref(),
+                        &state,
+                    );
+                }
             }
-            Err(error) => self.send(
-                "error",
-                envelope.device_id.as_deref(),
-                Some(session_id),
-                json!({ "message": error.to_string() }),
-            ),
+            Err(error) => self.send_error(envelope, &error.to_string()),
         }
     }
 
@@ -504,12 +547,35 @@ impl RemoteHostRuntime {
         let Some(session_id) = envelope.session_id.as_deref() else {
             return;
         };
+        let requesting_device = envelope
+            .device_id
+            .as_deref()
+            .filter(|device_id| !device_id.trim().is_empty());
+        let restore_requesting_viewer = requesting_device
+            .is_some_and(|device_id| self.terminal_output_viewers(session_id).contains(device_id));
+        let terminal_exit_will_broadcast = self
+            .terminal_event_subscriptions
+            .lock()
+            .map(|subscriptions| subscriptions.contains(session_id))
+            .unwrap_or(false);
+        if let Some(device_id) = requesting_device {
+            self.remove_terminal_viewer_for_session(session_id, Some(device_id));
+        }
         match self
             .terminals
             .kill_and_wait_if_present(session_id, Duration::from_secs(10))
         {
             Ok(_) => {}
             Err(error) => {
+                if restore_requesting_viewer && let Some(device_id) = requesting_device {
+                    self.resource_subscriptions.subscribe(
+                        REMOTE_RESOURCE_TERMINALS,
+                        None,
+                        Some(session_id),
+                        device_id,
+                    );
+                    self.terminals.restore_remote_screen_scrollback(session_id);
+                }
                 crate::runtime_trace::runtime_trace(
                     "remote",
                     &format!("terminal close failed session={session_id} error={error}"),
@@ -524,13 +590,15 @@ impl RemoteHostRuntime {
         if layout_removed {
             self.publish_remote_terminal_layout_changed();
         }
-        self.send_terminal_data(
-            REMOTE_TERMINAL_CLOSED,
-            envelope.device_id.as_deref(),
+        self.reply_with_session(
+            envelope,
             Some(session_id),
+            REMOTE_TERMINAL_CLOSED,
             json!({ "id": session_id }),
         );
-        self.send_terminal_list(envelope.device_id.as_deref());
+        if !terminal_exit_will_broadcast {
+            self.broadcast_terminal_list(None);
+        }
     }
 
     pub(super) fn write_terminal_upload_file(
@@ -585,16 +653,16 @@ impl RemoteTerminalDispatch for DesktopTerminalCtx<'_> {
         &self,
         device_id: Option<&str>,
         session_id: Option<&str>,
+        request_id: Option<&str>,
         kind: &str,
         payload: Value,
     ) {
         self.host
-            .send_terminal_data(kind, device_id, session_id, payload);
+            .send_transport_with_request_id(kind, device_id, session_id, request_id, payload);
     }
 
     fn handle_terminal_list_msg(&self, _msg: &TerminalMessage) {
-        self.host
-            .send_terminal_list(self.envelope.device_id.as_deref());
+        self.host.reply_terminal_list(self.envelope);
     }
 
     fn handle_terminal_subscribe_msg(&self, _msg: &TerminalMessage) {

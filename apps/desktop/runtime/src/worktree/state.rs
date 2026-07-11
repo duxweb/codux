@@ -57,12 +57,11 @@ pub(super) fn enrich_scanned_snapshot_from_state(
         let Some(existing) = existing_worktrees_by_id.get(&worktree.id) else {
             continue;
         };
-        if !worktree.is_default {
-            if let Some(name) = existing.get("name").and_then(Value::as_str) {
-                if !name.trim().is_empty() {
-                    worktree.name = name.to_string();
-                }
-            }
+        if !worktree.is_default
+            && let Some(name) = existing.get("name").and_then(Value::as_str)
+            && !name.trim().is_empty()
+        {
+            worktree.name = name.to_string();
         }
         worktree.status = existing
             .get("status")
@@ -133,12 +132,11 @@ pub(super) fn merge_worktree_snapshot(
 
     for worktree in &mut snapshot.worktrees {
         if let Some(existing) = existing_by_id.get(&worktree.id) {
-            if !worktree.is_default {
-                if let Some(name) = existing.get("name").and_then(Value::as_str) {
-                    if !name.trim().is_empty() {
-                        worktree.name = name.to_string();
-                    }
-                }
+            if !worktree.is_default
+                && let Some(name) = existing.get("name").and_then(Value::as_str)
+                && !name.trim().is_empty()
+            {
+                worktree.name = name.to_string();
             }
             worktree.status = existing
                 .get("status")

@@ -129,7 +129,6 @@ pub fn trim_memory_text(text: &str, max_tokens: i32) -> String {
             .take(max_chars)
             .collect::<String>()
             .trim()
-            .to_string()
     )
 }
 

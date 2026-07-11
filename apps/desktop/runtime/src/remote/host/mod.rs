@@ -1,25 +1,27 @@
 use super::crypto::remote_host_name;
 use super::protocol::{
     REMOTE_AI_SESSION, REMOTE_AI_SESSION_RESULT, REMOTE_AI_STATE, REMOTE_AI_STATS,
-    REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_ERROR, REMOTE_FILE_BYTES_WRITTEN,
-    REMOTE_FILE_COPIED, REMOTE_FILE_COPY, REMOTE_FILE_CREATE_DIRECTORY, REMOTE_FILE_DELETE,
-    REMOTE_FILE_DELETED, REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST, REMOTE_FILE_MOVE,
-    REMOTE_FILE_MOVED, REMOTE_FILE_READ, REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED,
-    REMOTE_FILE_WRITE, REMOTE_FILE_WRITE_BYTES, REMOTE_FILE_WRITTEN, REMOTE_GIT_INVOKE,
-    REMOTE_GIT_READ, REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_HOST_METRICS, REMOTE_HOST_OFFLINE,
-    REMOTE_PAIRING_CONFIRMED, REMOTE_PAIRING_REJECTED, REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT,
-    REMOTE_PROJECT_LIST, REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT, REMOTE_PROJECT_SELECTED,
-    REMOTE_PROJECT_UPDATED, REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_GIT_STATUS,
-    REMOTE_RESOURCE_PROJECTS, REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS,
-    REMOTE_RESOURCE_UNSUBSCRIBE, REMOTE_RESOURCE_WORKTREES, REMOTE_SSH_LIST,
-    REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE, REMOTE_SSH_UPSERT, REMOTE_TERMINAL_BUFFER_MAX_CHARS,
-    REMOTE_TERMINAL_CLOSED, REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT_ACK,
-    REMOTE_TERMINAL_LIST, REMOTE_TERMINAL_OUTPUT, REMOTE_TERMINAL_STATUS, REMOTE_TERMINAL_UPLOADED,
+    REMOTE_DEVICE_CONNECTED, REMOTE_DEVICE_DISCONNECTED, REMOTE_ERROR, REMOTE_FILE_BLOB,
+    REMOTE_FILE_BYTES_WRITTEN, REMOTE_FILE_COPIED, REMOTE_FILE_COPY, REMOTE_FILE_CREATE_DIRECTORY,
+    REMOTE_FILE_DELETE, REMOTE_FILE_DELETED, REMOTE_FILE_DIRECTORY_CREATED, REMOTE_FILE_LIST,
+    REMOTE_FILE_MOVE, REMOTE_FILE_MOVED, REMOTE_FILE_READ, REMOTE_FILE_READ_BLOB,
+    REMOTE_FILE_RENAME, REMOTE_FILE_RENAMED, REMOTE_FILE_WRITE, REMOTE_FILE_WRITE_BLOB,
+    REMOTE_FILE_WRITE_BYTES, REMOTE_FILE_WRITTEN, REMOTE_GIT_INVOKE, REMOTE_GIT_READ,
+    REMOTE_GIT_STATUS, REMOTE_HOST_INFO, REMOTE_HOST_METRICS, REMOTE_HOST_OFFLINE,
+    REMOTE_MEMORY_EXTRACT, REMOTE_MEMORY_READ, REMOTE_MEMORY_RESULT, REMOTE_PAIRING_CONFIRMED,
+    REMOTE_PAIRING_REJECTED, REMOTE_PROJECT_ADD, REMOTE_PROJECT_EDIT, REMOTE_PROJECT_LIST,
+    REMOTE_PROJECT_REMOVE, REMOTE_PROJECT_SELECT, REMOTE_PROJECT_SELECTED, REMOTE_PROJECT_UPDATED,
+    REMOTE_RESOURCE_AI_STATS, REMOTE_RESOURCE_GIT_STATUS, REMOTE_RESOURCE_PROJECTS,
+    REMOTE_RESOURCE_SUBSCRIBE, REMOTE_RESOURCE_TERMINALS, REMOTE_RESOURCE_UNSUBSCRIBE,
+    REMOTE_RESOURCE_WORKTREES, REMOTE_SSH_LIST, REMOTE_SSH_LIST_RESULT, REMOTE_SSH_REMOVE,
+    REMOTE_SSH_UPSERT, REMOTE_TERMINAL_BUFFER_MAX_CHARS, REMOTE_TERMINAL_CLOSED,
+    REMOTE_TERMINAL_CREATED, REMOTE_TERMINAL_INPUT_ACK, REMOTE_TERMINAL_LIST,
+    REMOTE_TERMINAL_OUTPUT, REMOTE_TERMINAL_STATUS, REMOTE_TERMINAL_UPLOADED,
     REMOTE_TERMINAL_VIEWPORT_STATE, REMOTE_TRANSPORT_PING, REMOTE_TRANSPORT_PONG,
     REMOTE_WORKTREE_CREATE, REMOTE_WORKTREE_DELETE, REMOTE_WORKTREE_LIST, REMOTE_WORKTREE_MERGE,
     REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_SELECT, REMOTE_WORKTREE_UPDATED,
-    RemoteTerminalBufferWindow, RemoteTerminalSubscriptionTarget, RemoteTerminalSubscriptions,
-    terminal_buffer_payloads, terminal_live_output_payload,
+    RemoteTerminalBufferWindow, RemoteTerminalSubscriptionTarget, terminal_buffer_payloads,
+    terminal_live_output_payload,
 };
 use super::relay::{remote_pairing_payload_url, remote_relay_url};
 use super::transport::RemoteTransport;
@@ -54,7 +56,7 @@ use codux_runtime_live::{
     remote_terminal_dispatch::{
         RemoteTerminalDispatch, TerminalMessage, apply_terminal_osc_color_env,
         finish_terminal_create_viewer_lifecycle, is_terminal_kind,
-        prepare_terminal_create_lifecycle,
+        prepare_terminal_create_lifecycle, rollback_terminal_create_viewer_lifecycle,
     },
 };
 use codux_terminal_core::{
@@ -138,10 +140,10 @@ pub struct RemoteHostRuntime {
     pub(crate) ai_current_sessions:
         Option<Arc<dyn runtime_ai_stats::RemoteAICurrentSessionProvider>>,
     pub(crate) terminals: Arc<TerminalManager>,
-    pub(crate) resource_subscriptions: RuntimeSubscriptionRouter,
-    // Arc so the viewport-owner resolver (registered on the TerminalManager) can
-    // read the live viewer set when a remote lease expires.
-    pub(crate) terminal_subscriptions: Arc<RemoteTerminalSubscriptions>,
+    authorization: authorization::RemoteAuthorizationCache,
+    // Arc so protocol dispatch, output fan-out, and the viewport-owner resolver
+    // all use one authoritative subscription state.
+    pub(crate) resource_subscriptions: Arc<RuntimeSubscriptionRouter>,
     pub(crate) terminal_output_seq_by_session: Mutex<HashMap<String, TerminalSequence>>,
     pub(crate) terminal_output_ack_by_viewer: Mutex<HashMap<(String, String), TerminalSequence>>,
     pub(crate) terminal_output_batches: Mutex<HashMap<String, RemoteTerminalOutputBatch>>,
@@ -172,8 +174,10 @@ pub struct RemoteHostRuntime {
 }
 
 mod ai_stats;
+mod authorization;
 mod files;
 mod git;
+mod memory;
 mod pairing;
 mod projects;
 mod send;
@@ -252,16 +256,19 @@ impl RemoteHostRuntime {
         terminals: Arc<TerminalManager>,
     ) -> Self {
         let snapshot = RemoteService::new(support_dir.clone()).summary();
-        let terminal_subscriptions = Arc::new(RemoteTerminalSubscriptions::default());
+        let authorization = authorization::RemoteAuthorizationCache::new(
+            crate::config::settings_file_path(support_dir.clone()),
+        );
+        let resource_subscriptions = Arc::new(RuntimeSubscriptionRouter::default());
         // When a remote viewport lease expires, hand it to another phone still
         // viewing the same terminal (if any) instead of snapping back to the
         // desktop; only fall back to the desktop when no other viewer remains.
         {
-            let subscriptions = Arc::clone(&terminal_subscriptions);
+            let subscriptions = Arc::clone(&resource_subscriptions);
             terminals.set_viewport_owner_resolver(Arc::new(
                 move |session_id: &str, expired_owner: &str| {
                     subscriptions
-                        .viewers_for_session(session_id, None)
+                        .devices_for_exact(REMOTE_RESOURCE_TERMINALS, None, Some(session_id))
                         .into_iter()
                         .map(|device| terminal_viewport_remote_owner(&device))
                         .find(|owner| owner != expired_owner)
@@ -274,8 +281,8 @@ impl RemoteHostRuntime {
             ai_history,
             ai_current_sessions,
             terminals,
-            resource_subscriptions: RuntimeSubscriptionRouter::default(),
-            terminal_subscriptions,
+            authorization,
+            resource_subscriptions,
             terminal_output_seq_by_session: Mutex::new(HashMap::new()),
             terminal_output_ack_by_viewer: Mutex::new(HashMap::new()),
             terminal_output_batches: Mutex::new(HashMap::new()),
@@ -359,6 +366,14 @@ impl RemoteHostRuntime {
     /// list updates live instead of only on reconnect or pull-to-refresh.
     pub fn broadcast_project_list_change(&self) {
         self.broadcast_project_list(None);
+    }
+
+    pub(crate) fn remove_project_state(&self, project_id: &str) {
+        self.clear_remote_project_scope_for_project(project_id);
+        self.resource_subscriptions.remove_project(project_id);
+        if let Ok(mut watchers) = self.ai_stats_watchers.lock() {
+            watchers.remove(project_id);
+        }
     }
 
     /// Push refreshed git status to controllers subscribed to this project after
@@ -469,9 +484,9 @@ impl RemoteHostRuntime {
     /// message does not flush before the socket closes, the relay grace still
     /// catches it.
     fn broadcast_host_offline(&self, message: &str) {
-        let device_ids =
-            self.resource_subscriptions
-                .devices_for(REMOTE_RESOURCE_TERMINALS, None, None);
+        let device_ids = self
+            .resource_subscriptions
+            .devices_for_resource(REMOTE_RESOURCE_TERMINALS);
         let payload = json!({ "message": message });
         for device_id in device_ids {
             self.send_plain(REMOTE_HOST_OFFLINE, Some(&device_id), None, payload.clone());
@@ -482,7 +497,6 @@ impl RemoteHostRuntime {
         self.broadcast_host_offline("Remote Host stopped.");
         self.stop_with_message("Remote Host stopped.");
         self.resource_subscriptions.clear();
-        self.terminal_subscriptions.clear();
         for terminal in self.terminals.list() {
             let _ = self.terminals.kill(&terminal.id);
         }
@@ -503,18 +517,18 @@ impl RemoteHostRuntime {
 
     fn handle_remote_envelope(self: &Arc<Self>, envelope: RemoteEnvelope) {
         match envelope.kind.as_str() {
-            REMOTE_HOST_INFO => self.send_host_info(envelope.device_id.as_deref()),
-            REMOTE_HOST_METRICS => self.handle_host_metrics(envelope.device_id.as_deref()),
+            REMOTE_HOST_INFO => self.send_host_info(&envelope),
+            REMOTE_HOST_METRICS => self.handle_host_metrics(&envelope),
             REMOTE_DEVICE_CONNECTED => {
                 self.update_device_online(envelope.device_id.as_deref(), true);
-                self.send_project_and_terminal_lists(envelope.device_id.as_deref());
+                self.send_project_and_terminal_snapshots(envelope.device_id.as_deref());
             }
             REMOTE_DEVICE_DISCONNECTED => {
                 self.update_device_online(envelope.device_id.as_deref(), false);
                 self.clear_remote_project_scope(envelope.device_id.as_deref());
                 self.remove_terminal_viewer(envelope.device_id.as_deref());
             }
-            REMOTE_PROJECT_LIST => self.send_project_list(envelope.device_id.as_deref()),
+            REMOTE_PROJECT_LIST => self.reply_project_list(&envelope),
             REMOTE_PROJECT_SELECT => self.handle_project_select(&envelope),
             REMOTE_RESOURCE_SUBSCRIBE => self.handle_resource_subscribe(&envelope),
             REMOTE_RESOURCE_UNSUBSCRIBE => self.handle_resource_unsubscribe(&envelope),
@@ -542,20 +556,21 @@ impl RemoteHostRuntime {
                     kind,
                     device_id: envelope.device_id.as_deref(),
                     session_id: envelope.session_id.as_deref(),
+                    request_id: envelope.request_id.as_deref(),
                     payload: &envelope.payload,
                 });
             }
             REMOTE_FILE_LIST => {
                 let path = envelope.payload.get("path").and_then(Value::as_str);
                 let purpose = envelope.payload.get("purpose").and_then(Value::as_str);
-                self.send(
+                self.reply(
+                    &envelope,
                     REMOTE_FILE_LIST,
-                    envelope.device_id.as_deref(),
-                    None,
                     files::remote_file_list(path, purpose),
                 );
             }
             REMOTE_FILE_READ => self.handle_file_read(&envelope),
+            REMOTE_FILE_READ_BLOB => self.handle_file_read_blob(&envelope),
             REMOTE_FILE_WRITE => self.handle_file_write(&envelope),
             REMOTE_FILE_RENAME => self.handle_file_rename(&envelope),
             REMOTE_FILE_DELETE => self.handle_file_delete(&envelope),
@@ -563,6 +578,7 @@ impl RemoteHostRuntime {
             REMOTE_FILE_COPY => self.handle_file_copy(&envelope),
             REMOTE_FILE_MOVE => self.handle_file_move(&envelope),
             REMOTE_FILE_WRITE_BYTES => self.handle_file_write_bytes(&envelope),
+            REMOTE_FILE_WRITE_BLOB => self.handle_file_write_blob(&envelope),
             REMOTE_GIT_STATUS => self.handle_git_status(&envelope),
             REMOTE_GIT_INVOKE => self.handle_git_invoke(&envelope),
             REMOTE_GIT_READ => self.handle_git_read(&envelope),
@@ -572,6 +588,8 @@ impl RemoteHostRuntime {
             REMOTE_AI_STATS => self.handle_ai_stats(&envelope),
             REMOTE_AI_STATE => self.handle_ai_state(&envelope),
             REMOTE_AI_SESSION => self.handle_ai_session(&envelope),
+            REMOTE_MEMORY_READ => self.handle_memory_read(&envelope),
+            REMOTE_MEMORY_EXTRACT => self.handle_memory_extract(&envelope),
             REMOTE_SSH_LIST => self.handle_ssh_list(&envelope),
             REMOTE_SSH_UPSERT => self.handle_ssh_upsert(&envelope),
             REMOTE_SSH_REMOVE => self.handle_ssh_remove(&envelope),
@@ -587,38 +605,42 @@ impl RemoteHostRuntime {
         }
     }
 
-    fn send_host_info(self: &Arc<Self>, device_id: Option<&str>) {
+    fn send_host_info(self: &Arc<Self>, envelope: &RemoteEnvelope) {
         let transports = self.transport_candidates_snapshot();
-        self.send(
+        self.reply(
+            envelope,
             REMOTE_HOST_INFO,
-            device_id,
-            None,
             runtime_host::host_info_payload(runtime_host::HostInfoPayload {
                 host_id: self.snapshot().host_id,
                 runtime_instance_id: self.runtime_instance_id.clone(),
                 name: remote_host_name(),
                 platform: std::env::consts::OS.to_string(),
                 app: "Codux".to_string(),
+                resource_subscriptions: vec![
+                    REMOTE_RESOURCE_PROJECTS.to_string(),
+                    REMOTE_RESOURCE_TERMINALS.to_string(),
+                    REMOTE_RESOURCE_WORKTREES.to_string(),
+                    REMOTE_RESOURCE_GIT_STATUS.to_string(),
+                    REMOTE_RESOURCE_AI_STATS.to_string(),
+                ],
                 transports,
             }),
         );
     }
 
-    fn handle_host_metrics(self: &Arc<Self>, device_id: Option<&str>) {
+    fn handle_host_metrics(self: &Arc<Self>, envelope: &RemoteEnvelope) {
         let runtime = Arc::clone(self);
-        let device_id = device_id.map(str::to_string);
+        let envelope = envelope.clone();
         crate::async_runtime::spawn(async move {
             match crate::async_runtime::spawn_blocking(sample_host_metrics).await {
                 Ok(metrics) => {
                     let payload = serde_json::to_value(metrics).unwrap_or(Value::Null);
-                    runtime.send(REMOTE_HOST_METRICS, device_id.as_deref(), None, payload);
+                    runtime.reply(&envelope, REMOTE_HOST_METRICS, payload);
                 }
                 Err(error) => {
-                    runtime.send(
-                        REMOTE_ERROR,
-                        device_id.as_deref(),
-                        None,
-                        json!({ "message": format!("Unable to sample host metrics: {error}") }),
+                    runtime.send_error(
+                        &envelope,
+                        &format!("Unable to sample host metrics: {error}"),
                     );
                 }
             }

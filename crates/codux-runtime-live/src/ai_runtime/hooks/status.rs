@@ -27,9 +27,8 @@ pub fn hook_config_status_in(wrapper_dir: &Path) -> AIRuntimeHookConfigStatus {
             }
             AIRuntimeToolHookDriver::OpenCodePlugin | AIRuntimeToolHookDriver::None => continue,
         };
-        match driver.id {
-            "codewhale" => codewhale = status,
-            _ => {}
+        if driver.id == "codewhale" {
+            codewhale = status;
         }
     }
 

@@ -10,7 +10,7 @@ use crate::{
     MemoryConfig, MemoryProjectInfo, MemoryProjectRecord, MemorySessionSnapshot, MemorySettings,
     llm,
     extraction::{
-        PromptMemoryEntry, PromptMemorySummary, decode_extraction_response_detailed,
+        PromptMemoryContext, PromptMemorySummary, decode_extraction_response_detailed,
         ensure_memory_provider_available, extraction_system_prompt, make_extraction_prompt,
         memory_extraction_json_schema, provider_summary, select_memory_provider,
         should_stop_memory_queue_after_error,
@@ -39,6 +39,16 @@ pub use types::{
     MemoryExtractionTask,
 };
 
+pub(crate) struct MemoryExtractionEnqueue<'a> {
+    pub(crate) project_id: &'a str,
+    pub(crate) workspace_path: &'a str,
+    pub(crate) tool: &'a str,
+    pub(crate) session_id: &'a str,
+    pub(crate) transcript_path: &'a str,
+    pub(crate) source_fingerprint: &'a str,
+    pub(crate) allow_retry_failed: bool,
+}
+
 include!("queue/enqueue.rs");
-include!("queue/process.rs");
 include!("queue/service_helpers.rs");
+include!("queue/process.rs");

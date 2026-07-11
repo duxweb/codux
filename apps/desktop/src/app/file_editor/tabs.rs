@@ -267,25 +267,23 @@ impl CoduxApp {
             .file_editor_tabs
             .iter_mut()
             .find(|tab| tab.relative_path == relative_path)
+            && tab.dirty != dirty
         {
-            if tab.dirty != dirty {
-                tab.dirty = dirty;
-                changed = true;
-            }
+            tab.dirty = dirty;
+            changed = true;
         }
-        if self.active_file_editor_tab.as_deref() == Some(relative_path) {
-            if self.file_dirty != dirty {
-                self.file_dirty = dirty;
-                changed = true;
-            }
+        if self.active_file_editor_tab.as_deref() == Some(relative_path) && self.file_dirty != dirty
+        {
+            self.file_dirty = dirty;
+            changed = true;
         }
         if !changed {
             return;
         }
-        if self.workspace_view == WorkspaceView::Files {
-            if !self.update_file_editor_workspace_view(cx) {
-                self.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
-            }
+        if self.workspace_view == WorkspaceView::Files
+            && !self.update_file_editor_workspace_view(cx)
+        {
+            self.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
         }
     }
 

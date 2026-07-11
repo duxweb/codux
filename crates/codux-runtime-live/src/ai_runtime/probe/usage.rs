@@ -26,17 +26,17 @@ pub(super) fn usage_totals_from_fields(fields: &UsageTotalsFields) -> Option<Usa
         .or(fields.cache_read_input_tokens)
         .unwrap_or(0);
     let reasoning_output_tokens = fields.reasoning_output_tokens.unwrap_or(0);
-    if raw_input_tokens == 0 && raw_output_tokens == 0 {
-        if let Some(raw_total_tokens) = fields.total_tokens {
-            if raw_total_tokens > 0 {
-                return Some(UsageTotals {
-                    input_tokens: raw_total_tokens,
-                    output_tokens: 0,
-                    cached_input_tokens,
-                    total_tokens: raw_total_tokens,
-                });
-            }
-        }
+    if raw_input_tokens == 0
+        && raw_output_tokens == 0
+        && let Some(raw_total_tokens) = fields.total_tokens
+        && raw_total_tokens > 0
+    {
+        return Some(UsageTotals {
+            input_tokens: raw_total_tokens,
+            output_tokens: 0,
+            cached_input_tokens,
+            total_tokens: raw_total_tokens,
+        });
     }
     let input_tokens = (raw_input_tokens - cached_input_tokens).max(0);
     let output_tokens = (raw_output_tokens - reasoning_output_tokens).max(0);

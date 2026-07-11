@@ -348,6 +348,12 @@ pub(in crate::app) fn git_review_file_list(
                 })
                 .into_any_element()
         } else {
+            let tree_context = GitReviewTreeContext {
+                selected_path,
+                expanded_dirs: &expanded_dirs,
+                labels,
+                app_entity,
+            };
             div()
                 .flex_1()
                 .min_h_0()
@@ -357,59 +363,71 @@ pub(in crate::app) fn git_review_file_list(
                     &review.files,
                     "",
                     0,
-                    selected_path,
-                    &expanded_dirs,
-                    labels.clone(),
-                    app_entity.clone(),
+                    &tree_context,
                     cx,
                 ))
                 .into_any_element()
         })
 }
 
+struct GitReviewTreeContext<'a> {
+    selected_path: Option<&'a str>,
+    expanded_dirs: &'a HashSet<String>,
+    labels: Rc<GitSidebarLabels>,
+    app_entity: gpui::Entity<CoduxApp>,
+}
+
 fn git_review_directory_rows(
     files: &[GitReviewFile],
     base_path: &str,
     depth: usize,
-    selected_path: Option<&str>,
-    expanded_dirs: &HashSet<String>,
-    labels: Rc<GitSidebarLabels>,
-    app_entity: gpui::Entity<CoduxApp>,
+    tree_context: &GitReviewTreeContext<'_>,
     cx: &mut Context<workspace_views::ReviewFileListView>,
 ) -> Vec<AnyElement> {
     let (dirs, direct_files) = collect_immediate_git_review_entries(base_path, files);
     let mut rows = Vec::new();
     for (name, dir) in dirs {
         if rows.len() >= MAX_GIT_REVIEW_TREE_ROWS {
-            rows.push(git_review_tree_limit_row(files.len(), &labels).into_any_element());
+            rows.push(
+                git_review_tree_limit_row(files.len(), &tree_context.labels).into_any_element(),
+            );
             return rows;
         }
-        let expanded = expanded_dirs.contains(&git_status_tree_key("review", &dir.path));
+        let expanded = tree_context
+            .expanded_dirs
+            .contains(&git_status_tree_key("review", &dir.path));
         rows.push(
-            git_review_dir_row(&name, &dir, expanded, depth, app_entity.clone(), cx)
-                .into_any_element(),
+            git_review_dir_row(
+                &name,
+                &dir,
+                expanded,
+                depth,
+                tree_context.app_entity.clone(),
+                cx,
+            )
+            .into_any_element(),
         );
         if expanded {
             rows.extend(git_review_directory_rows(
                 files,
                 &dir.path,
                 depth + 1,
-                selected_path,
-                expanded_dirs,
-                labels.clone(),
-                app_entity.clone(),
+                tree_context,
                 cx,
             ));
         }
     }
     for file in direct_files {
         if rows.len() >= MAX_GIT_REVIEW_TREE_ROWS {
-            rows.push(git_review_tree_limit_row(files.len(), &labels).into_any_element());
+            rows.push(
+                git_review_tree_limit_row(files.len(), &tree_context.labels).into_any_element(),
+            );
             return rows;
         }
-        let selected = selected_path == Some(file.path.as_str());
+        let selected = tree_context.selected_path == Some(file.path.as_str());
         rows.push(
-            git_review_file_row(file, selected, depth, app_entity.clone(), cx).into_any_element(),
+            git_review_file_row(file, selected, depth, tree_context.app_entity.clone(), cx)
+                .into_any_element(),
         );
     }
     rows

@@ -148,6 +148,7 @@ pub(super) fn write_two_project_state(support_dir: &Path) -> (PathBuf, PathBuf) 
 }
 
 mod ai_stats;
+mod memory;
 mod projects;
 mod resources;
 mod terminal_buffer;

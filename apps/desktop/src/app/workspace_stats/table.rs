@@ -113,7 +113,7 @@ impl TableDelegate for StatsProjectTableDelegate {
     ) -> gpui::Stateful<gpui::Div> {
         div()
             .id(("stats-project-row", row_ix))
-            .bg(if row_ix % 2 == 0 {
+            .bg(if row_ix.is_multiple_of(2) {
                 cx.theme().secondary.opacity(0.12)
             } else {
                 cx.theme().transparent

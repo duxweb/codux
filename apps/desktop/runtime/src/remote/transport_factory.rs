@@ -1,6 +1,7 @@
 use super::types::RemoteSettings;
 use codux_remote_transport::{
-    RemoteControllerTransportConfig, RemoteHostTransportConfig, RemoteTransport,
+    RemoteControllerTransportConfig, RemoteHostTransportConfig, RemoteHostTransportHandlers,
+    RemoteTransport, RemoteTransportAuthorizationHandler,
     RemoteTransportFactory as SharedTransportFactory, RemoteTransportMessageHandler,
     RemoteTransportPairingHandler, RemoteTransportStateHandler, RemoteTransportUploadHandler,
     WebTunnelTcpConnectHandler,
@@ -34,18 +35,22 @@ impl RemoteTransportFactory {
         on_upload: RemoteTransportUploadHandler,
         on_state: RemoteTransportStateHandler,
         on_pairing: RemoteTransportPairingHandler,
+        on_authorize: RemoteTransportAuthorizationHandler,
         on_web_tunnel_tcp_connect: Option<WebTunnelTcpConnectHandler>,
     ) -> Result<Arc<dyn RemoteTransport>, String> {
         SharedTransportFactory::connect_host(
             &host_transport_config(settings),
-            on_message,
-            on_upload,
-            on_state,
-            on_pairing,
-            on_web_tunnel_tcp_connect,
-            Some(Arc::new(|message| {
-                crate::runtime_trace::runtime_trace("remote", &message);
-            })),
+            RemoteHostTransportHandlers {
+                on_message,
+                on_upload,
+                on_state,
+                on_pairing,
+                on_authorize,
+                on_web_tunnel_tcp_connect,
+                on_log: Some(Arc::new(|message| {
+                    crate::runtime_trace::runtime_trace("remote", &message);
+                })),
+            },
         )
         .await
     }

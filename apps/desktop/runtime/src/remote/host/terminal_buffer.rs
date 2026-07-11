@@ -9,10 +9,9 @@ impl RemoteHostRuntime {
         mut options: TerminalBaselineOptions,
     ) {
         self.register_terminal_viewer(session_id, device_id);
-        if !options.tail {
-            options.viewport = None;
-        } else if options.viewport.is_some()
-            && !self.apply_terminal_baseline_viewport(session_id, device_id, options.viewport)
+        if !options.tail
+            || (options.viewport.is_some()
+                && !self.apply_terminal_baseline_viewport(session_id, device_id, options.viewport))
         {
             options.viewport = None;
         }
@@ -102,7 +101,7 @@ impl RemoteHostRuntime {
 
     pub(super) fn send_terminal_viewport_state(&self, session_id: &str, device_id: Option<&str>) {
         if let Ok(state) = self.terminals.viewport_state(session_id) {
-            self.send_terminal_viewport_state_payload(session_id, device_id, &state);
+            self.send_terminal_viewport_state_payload(session_id, device_id, None, &state);
         }
     }
 
@@ -110,12 +109,14 @@ impl RemoteHostRuntime {
         &self,
         session_id: &str,
         device_id: Option<&str>,
+        request_id: Option<&str>,
         state: &TerminalViewportState,
     ) {
-        self.send_terminal_data(
+        self.send_transport_with_request_id(
             REMOTE_TERMINAL_VIEWPORT_STATE,
             device_id,
             Some(session_id),
+            request_id,
             self.terminal_viewport_state_payload(session_id, device_id, state),
         );
     }
@@ -248,10 +249,8 @@ impl RemoteHostRuntime {
             .take(max_chars)
             .collect::<String>();
         let truncated = clamped + chunk.chars().count() < total_characters;
-        if !truncated {
-            if let Some(request_id) = request_id_for_window.as_deref() {
-                self.remove_terminal_buffer_baseline(session_id, request_id);
-            }
+        if !truncated && let Some(request_id) = request_id_for_window.as_deref() {
+            self.remove_terminal_buffer_baseline(session_id, request_id);
         }
         Ok(RemoteTerminalBufferWindow {
             data: chunk,
@@ -310,10 +309,10 @@ impl RemoteHostRuntime {
             output_seq: baseline.output_seq,
             created_at: baseline.created_at,
         };
-        if max_chars < total_characters {
-            if let Ok(mut baselines) = self.terminal_buffer_baselines.lock() {
-                baselines.insert(key, baseline);
-            }
+        if max_chars < total_characters
+            && let Ok(mut baselines) = self.terminal_buffer_baselines.lock()
+        {
+            baselines.insert(key, baseline);
         }
         Ok(Some(returned))
     }
@@ -347,6 +346,7 @@ impl RemoteHostRuntime {
             .terminals
             .list()
             .into_iter()
+            .filter(|terminal| terminal.is_running)
             .map(|terminal| {
                 let fallback_worktree_id = terminal.project_id.clone();
                 let workspace_scope = workspace_scopes.get(&terminal.project_id);

@@ -119,7 +119,7 @@ fn macos_global_preferred_locale() -> Option<String> {
         return None;
     }
 
-    let locale = unsafe {
+    unsafe {
         let count = CFArrayGetCount(value_ref.cast());
         let locale = if count > 0 {
             let first_ref = CFArrayGetValueAtIndex(value_ref.cast(), 0) as CFStringRef;
@@ -129,9 +129,7 @@ fn macos_global_preferred_locale() -> Option<String> {
         };
         CFRelease(value_ref.cast());
         locale
-    };
-
-    locale
+    }
 }
 
 #[cfg(target_os = "macos")]

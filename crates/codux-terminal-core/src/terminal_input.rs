@@ -357,12 +357,13 @@ pub fn terminal_mouse_input_bytes(input: TerminalMouseInput) -> Option<Vec<u8>> 
     let mut bytes = vec![0x1b, b'[', b'M'];
     let push = |bytes: &mut Vec<u8>, value: u32| {
         let value = value.saturating_add(32);
-        if utf8 && value > 127 {
-            if let Some(ch) = char::from_u32(value) {
-                let mut buffer = [0u8; 4];
-                bytes.extend_from_slice(ch.encode_utf8(&mut buffer).as_bytes());
-                return;
-            }
+        if utf8
+            && value > 127
+            && let Some(ch) = char::from_u32(value)
+        {
+            let mut buffer = [0u8; 4];
+            bytes.extend_from_slice(ch.encode_utf8(&mut buffer).as_bytes());
+            return;
         }
         bytes.push(value.min(255) as u8);
     };

@@ -73,14 +73,14 @@ impl PerformanceMonitor {
     }
 
     fn cpu_percent(&self, raw: &RawSample) -> f64 {
-        if let Some(percent) = raw.cpu_percent_override {
-            if percent.is_finite() {
-                let Ok(mut previous) = self.previous.lock() else {
-                    return percent;
-                };
-                *previous = Some(raw.clone());
-                return ((normalize_cpu_percent(percent)) * 10.0).round() / 10.0;
-            }
+        if let Some(percent) = raw.cpu_percent_override
+            && percent.is_finite()
+        {
+            let Ok(mut previous) = self.previous.lock() else {
+                return percent;
+            };
+            *previous = Some(raw.clone());
+            return ((normalize_cpu_percent(percent)) * 10.0).round() / 10.0;
         }
 
         let Ok(mut previous) = self.previous.lock() else {

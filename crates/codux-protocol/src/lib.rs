@@ -6,6 +6,7 @@ use std::sync::Mutex;
 pub const REMOTE_PROTOCOL_VERSION: &str = "v3.2";
 pub const REMOTE_TERMINAL_BUFFER_MAX_CHARS: usize = 200_000;
 pub const REMOTE_TERMINAL_BUFFER_CHUNK_CHARS: usize = 16_384;
+pub const REMOTE_BLOB_MAX_BYTES: usize = 20 * 1024 * 1024;
 pub const REMOTE_RELAY_TICKET_TTL_SECS: u64 = 60;
 pub const REMOTE_RELAY_TICKET_MAX_ENTRIES: usize = 4096;
 pub const REMOTE_RELAY_TICKET_PAYLOAD_MAX_BYTES: usize = 64 << 10;
@@ -356,8 +357,12 @@ pub fn pairing_request_matches(
     active_pairing_id: &str,
     active_code: &str,
     active_secret: &str,
+    active_expired: bool,
     request: &RemoteTransportPairingRequest,
 ) -> Result<(), &'static str> {
+    if active_expired {
+        return Err("pairing_expired");
+    }
     if request.pairing_id.as_deref() != Some(active_pairing_id) {
         return Err("pairing_id_mismatch");
     }
@@ -593,6 +598,8 @@ pub struct RemoteEnvelope {
     pub device_id: Option<String>,
     #[serde(default, rename = "sessionId")]
     pub session_id: Option<String>,
+    #[serde(default, rename = "requestId")]
+    pub request_id: Option<String>,
     #[serde(default)]
     pub seq: Option<i64>,
     #[serde(default)]
@@ -607,6 +614,8 @@ pub struct RemoteOutgoingEnvelope {
     pub device_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "sessionId")]
     pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "requestId")]
+    pub request_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seq: Option<i64>,
     pub payload: Value,
@@ -998,6 +1007,36 @@ impl RemoteResourceSubscriptions {
         }
         devices
     }
+
+    pub fn devices_for_resource(&self, resource: &str) -> HashSet<String> {
+        let Some(resource) = clean_subscription_part(resource) else {
+            return HashSet::new();
+        };
+        let Ok(subscriptions) = self.devices_by_resource.lock() else {
+            return HashSet::new();
+        };
+        subscriptions
+            .iter()
+            .filter(|(key, _)| key.resource == resource)
+            .flat_map(|(_, devices)| devices.iter().cloned())
+            .collect()
+    }
+
+    pub fn devices_for_exact(
+        &self,
+        resource: &str,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+    ) -> HashSet<String> {
+        let Some(key) = RemoteResourceSubscriptionKey::new(resource, project_id, session_id) else {
+            return HashSet::new();
+        };
+        self.devices_by_resource
+            .lock()
+            .ok()
+            .and_then(|subscriptions| subscriptions.get(&key).cloned())
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Default)]
@@ -1031,18 +1070,12 @@ impl RemoteTerminalSubscriptions {
             .devices_for(REMOTE_RESOURCE_TERMINALS, Some(project_id), None)
     }
 
-    pub fn remove_project_session_viewers<'a>(
-        &self,
-        session_ids: impl IntoIterator<Item = &'a str>,
-        device_id: &str,
-    ) {
-        for session_id in session_ids {
-            self.remove_session_viewer(session_id, device_id);
-        }
-    }
-
     pub fn remove_device(&self, device_id: &str) {
         self.resources.remove_device(device_id);
+    }
+
+    pub fn remove_project(&self, project_id: &str) {
+        self.resources.remove_project(project_id);
     }
 
     pub fn remove_session(&self, session_id: &str) {
@@ -1053,13 +1086,14 @@ impl RemoteTerminalSubscriptions {
         self.resources.clear();
     }
 
-    pub fn viewers_for_session(
-        &self,
-        session_id: &str,
-        project_id: Option<&str>,
-    ) -> HashSet<String> {
+    pub fn subscribers(&self) -> HashSet<String> {
         self.resources
-            .devices_for(REMOTE_RESOURCE_TERMINALS, project_id, Some(session_id))
+            .devices_for_resource(REMOTE_RESOURCE_TERMINALS)
+    }
+
+    pub fn viewers_for_session(&self, session_id: &str) -> HashSet<String> {
+        self.resources
+            .devices_for_exact(REMOTE_RESOURCE_TERMINALS, None, Some(session_id))
     }
 }
 
@@ -1175,10 +1209,9 @@ fn terminal_buffer_payload(
     if chunk
         .map(|(_, chunk_index, _)| chunk_index == 0)
         .unwrap_or(true)
+        && let Some(screen_data) = window.screen_data.as_deref()
     {
-        if let Some(screen_data) = window.screen_data.as_deref() {
-            payload["screenData"] = json!(screen_data);
-        }
+        payload["screenData"] = json!(screen_data);
     }
     if let Some((snapshot_id, chunk_index, chunk_count)) = chunk {
         payload["snapshotId"] = json!(snapshot_id);
@@ -1399,6 +1432,23 @@ mod tests {
     }
 
     #[test]
+    fn pairing_request_rejects_expired_credentials() {
+        let request = RemoteTransportPairingRequest {
+            device_id: "device-1".to_string(),
+            device_name: "Phone".to_string(),
+            platform: Some("ios".to_string()),
+            pairing_id: Some("pair-1".to_string()),
+            pairing_code: Some("123456".to_string()),
+            pairing_secret: Some("secret".to_string()),
+        };
+
+        assert_eq!(
+            pairing_request_matches("pair-1", "123456", "secret", true, &request),
+            Err("pairing_expired")
+        );
+    }
+
+    #[test]
     fn parse_pairing_payload_reports_missing_iroh_transport() {
         // A candidate with neither ticket nor nodeId+relayUrl isn't dialable.
         let payload = json!({
@@ -1552,15 +1602,37 @@ mod tests {
     }
 
     #[test]
-    fn terminal_subscriptions_merge_session_and_project_viewers() {
+    fn terminal_project_subscribers_are_not_session_viewers() {
         let subscriptions = RemoteTerminalSubscriptions::default();
         subscriptions.add_session_viewer("session-1", "device-a");
         subscriptions.add_project_subscriber("project-1", "device-b");
 
-        let viewers = subscriptions.viewers_for_session("session-1", Some("project-1"));
+        let viewers = subscriptions.viewers_for_session("session-1");
 
         assert!(viewers.contains("device-a"));
-        assert!(viewers.contains("device-b"));
+        assert!(!viewers.contains("device-b"));
+        assert!(
+            subscriptions
+                .project_subscribers("project-1")
+                .contains("device-b")
+        );
+    }
+
+    #[test]
+    fn exact_resource_subscriptions_exclude_global_watchers() {
+        let subscriptions = RemoteResourceSubscriptions::default();
+        subscriptions.subscribe(REMOTE_RESOURCE_TERMINALS, None, None, "global");
+        subscriptions.subscribe(
+            REMOTE_RESOURCE_TERMINALS,
+            None,
+            Some("session-1"),
+            "session",
+        );
+
+        let viewers =
+            subscriptions.devices_for_exact(REMOTE_RESOURCE_TERMINALS, None, Some("session-1"));
+
+        assert_eq!(viewers, HashSet::from(["session".to_string()]));
     }
 
     #[test]

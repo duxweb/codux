@@ -170,10 +170,10 @@ impl AIUsageStore {
         let Some(state_modified_at) = state_modified_at else {
             return Ok(None);
         };
-        if let Some(modified_at) = modified_at {
-            if !same_timestamp(state_modified_at, modified_at) {
-                return Ok(None);
-            }
+        if let Some(modified_at) = modified_at
+            && !same_timestamp(state_modified_at, modified_at)
+        {
+            return Ok(None);
         }
 
         let usage_buckets = self.load_usage_buckets(conn, source, file_path, project_path)?;

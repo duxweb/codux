@@ -72,11 +72,11 @@ impl TerminalOutputSequencer {
                     self.seq_by_session
                         .insert(session_id.to_string(), output_seq);
                 }
-            } else if let Some(output_seq) = output_seq {
-                if output_seq >= previous_seq {
-                    self.seq_by_session
-                        .insert(session_id.to_string(), output_seq);
-                }
+            } else if let Some(output_seq) = output_seq
+                && output_seq >= previous_seq
+            {
+                self.seq_by_session
+                    .insert(session_id.to_string(), output_seq);
             }
             return TerminalOutputSequenceResult {
                 action: TerminalOutputSequenceAction::Baseline,

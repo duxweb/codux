@@ -81,7 +81,7 @@ extension _HomePageTerminal on HomeController {
         sessionId == _sessionId &&
         !_terminalOutputController.hasActiveBufferRequest(sessionId)) {
       if (!_terminalBaselineResyncAllowed(sessionId)) return;
-      final requested = _terminalBindingCoordinator.subscribeSessionBaseline(
+      final requested = _terminalBindingCoordinator.subscribeSession(
         sessionId: sessionId,
         reason: 'stale-output-state',
         capability: _terminalBufferCapability,
@@ -110,7 +110,7 @@ extension _HomePageTerminal on HomeController {
     }
     if (!_terminalBaselineResyncAllowed(sessionId)) return;
     _viewportOwnerRefreshAfterBaseline.remove(sessionId);
-    final requested = _terminalBindingCoordinator.subscribeSessionBaseline(
+    final requested = _terminalBindingCoordinator.subscribeSession(
       sessionId: sessionId,
       reason: 'viewport-owner-refresh',
       capability: _terminalBufferCapability,
@@ -218,7 +218,7 @@ extension _HomePageTerminal on HomeController {
     CoduxLog.warn(
       '[codux-flutter-terminal] sequence gap resync session=$sessionId',
     );
-    final requested = _terminalBindingCoordinator.subscribeSessionBaseline(
+    final requested = _terminalBindingCoordinator.subscribeSession(
       sessionId: sessionId,
       reason: 'sequence-gap',
       capability: _terminalBufferCapability,
@@ -327,7 +327,7 @@ extension _HomePageTerminal on HomeController {
   bool _retryTerminalBaseline(String sessionId) {
     if (!mounted || _sessionId != sessionId) return false;
     CoduxLog.info('[codux-flutter-terminal] baseline retry session=$sessionId');
-    return _terminalBindingCoordinator.subscribeSessionBaseline(
+    return _terminalBindingCoordinator.subscribeSession(
       sessionId: sessionId,
       reason: 'baseline-retry',
       capability: _terminalBufferCapability,
@@ -345,7 +345,7 @@ extension _HomePageTerminal on HomeController {
       _terminalBaselineRearmTimer = null;
       if (!mounted || _disposing) return;
       if (_sessionId != sessionId || !_transportConnected) return;
-      final requested = _terminalBindingCoordinator.subscribeSessionBaseline(
+      final requested = _terminalBindingCoordinator.subscribeSession(
         sessionId: sessionId,
         reason: 'baseline-rearm',
         capability: _terminalBufferCapability,

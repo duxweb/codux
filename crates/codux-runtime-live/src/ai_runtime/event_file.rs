@@ -28,7 +28,7 @@ pub fn drain_runtime_event_dir(dir: &Path, now: f64) -> Vec<Vec<u8>> {
         .map(|entry| entry.path())
         .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
         .collect::<Vec<_>>();
-    paths.sort_by(|left, right| file_name(left).cmp(&file_name(right)));
+    paths.sort_by_key(|path| file_name(path));
 
     for path in paths {
         let age = fs::metadata(&path)

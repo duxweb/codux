@@ -16,7 +16,7 @@ impl MemoryScope {
         }
     }
 
-    pub fn from_str(value: &str) -> Self {
+    pub fn from_token(value: &str) -> Self {
         match normalized_token(value).as_str() {
             "user" | "global" | "developer" | "crossproject" | "cross_project" => Self::User,
             _ => Self::Project,
@@ -41,7 +41,7 @@ impl MemoryTier {
         }
     }
 
-    pub fn from_str(value: &str) -> Self {
+    pub fn from_token(value: &str) -> Self {
         match normalized_token(value).as_str() {
             "core" | "stable" | "pinned" | "important" => Self::Core,
             "archive" | "archived" => Self::Archive,
@@ -69,7 +69,7 @@ impl MemoryKind {
         }
     }
 
-    pub fn from_str(value: &str) -> Self {
+    pub fn from_token(value: &str) -> Self {
         match normalized_token(value).as_str() {
             "preference" | "preferences" | "userpreference" | "style" | "workflow" => {
                 Self::Preference
@@ -121,4 +121,11 @@ pub struct PromptMemoryEntry {
     pub kind: String,
     pub content: String,
     pub rationale: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PromptMemoryContext {
+    pub(crate) user_summary: Option<PromptMemorySummary>,
+    pub(crate) user_memories: Vec<PromptMemoryEntry>,
+    pub(crate) project_memories: Vec<PromptMemoryEntry>,
 }

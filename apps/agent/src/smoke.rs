@@ -3,8 +3,8 @@
 
 use codux_protocol::REMOTE_HOST_INFO;
 use codux_remote_transport::{
-    RemoteControllerTransportConfig, RemoteHostTransportConfig, RemoteTransportCandidate,
-    RemoteTransportFactory,
+    RemoteControllerTransportConfig, RemoteHostTransportConfig, RemoteHostTransportHandlers,
+    RemoteTransportCandidate, RemoteTransportFactory,
 };
 use codux_runtime_core::terminal::terminal_snapshot_payload;
 use codux_terminal_core::{TerminalDriver, TerminalLaunchConfig, TerminalSessionHandle};
@@ -80,24 +80,27 @@ async fn run_transport_smoke_async() -> Result<String, String> {
     let received_tx = Arc::new(Mutex::new(Some(received_tx)));
     let host = RemoteTransportFactory::connect_host(
         &config,
-        {
-            let received_tx = Arc::clone(&received_tx);
-            Arc::new(move |source, data| {
-                let Ok(mut guard) = received_tx.lock() else {
-                    return;
-                };
-                let Some(tx) = guard.take() else {
-                    return;
-                };
-                let text = String::from_utf8(data).unwrap_or_default();
-                let _ = tx.send(format!("{source}:{text}"));
-            })
+        RemoteHostTransportHandlers {
+            on_message: {
+                let received_tx = Arc::clone(&received_tx);
+                Arc::new(move |source, data| {
+                    let Ok(mut guard) = received_tx.lock() else {
+                        return;
+                    };
+                    let Some(tx) = guard.take() else {
+                        return;
+                    };
+                    let text = String::from_utf8(data).unwrap_or_default();
+                    let _ = tx.send(format!("{source}:{text}"));
+                })
+            },
+            on_upload: Arc::new(|_| Ok(())),
+            on_state: Arc::new(|_, _| {}),
+            on_pairing: Arc::new(|_| None),
+            on_authorize: Arc::new(|_, _| true),
+            on_web_tunnel_tcp_connect: None,
+            on_log: None,
         },
-        Arc::new(|_| Ok(())),
-        Arc::new(|_, _| {}),
-        Arc::new(|_| {}),
-        None,
-        None,
     )
     .await?;
     let (node_id, relay_url) = host

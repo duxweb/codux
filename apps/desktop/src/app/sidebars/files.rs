@@ -33,7 +33,7 @@ struct FileSidebarLabels {
 }
 
 fn file_sidebar_labels(language: &str) -> FileSidebarLabels {
-    let locale = locale_from_language_setting(&language);
+    let locale = locale_from_language_setting(language);
     let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
     FileSidebarLabels {
         title: tr("files.panel.title", "Files"),
@@ -77,20 +77,23 @@ pub(in crate::app) fn parent_relative_directory(value: &str) -> String {
 pub(in crate::app) fn file_section(
     app_entity: gpui::Entity<CoduxApp>,
     focus_handle: FocusHandle,
-    _project_name: &str,
-    files_empty: bool,
-    draft_kind: Option<FileNameDraftKind>,
-    draft_parent: Option<&str>,
-    draft_value: &str,
-    draft_select_all: bool,
-    rows: Rc<Vec<FileTreeRow>>,
+    snapshot: FileSidebarSnapshot,
     tree_scroll_handle: UniformListScrollHandle,
-    language: &str,
-    refreshing: bool,
     window: &mut Window,
     cx: &mut Context<FileSidebarView>,
 ) -> impl IntoElement {
-    let labels = file_sidebar_labels(language);
+    let FileSidebarSnapshot {
+        files_empty,
+        rows,
+        language,
+        refreshing,
+        draft_kind,
+        draft_parent,
+        draft_value,
+        draft_select_all,
+        fingerprint: _,
+    } = snapshot;
+    let labels = file_sidebar_labels(&language);
     let row_count = rows.len();
     let draft_at_top =
         draft_kind.is_some_and(|kind| kind != FileNameDraftKind::Rename) && draft_parent.is_none();
@@ -175,9 +178,8 @@ pub(in crate::app) fn file_section(
                 }
                 if unmodified_action {
                     let key = keystroke.key.as_str();
-                    let action = if key.eq_ignore_ascii_case("f2") {
-                        Some(FileSidebarKeyAction::Rename)
-                    } else if key.eq_ignore_ascii_case("enter")
+                    let action = if key.eq_ignore_ascii_case("f2")
+                        || key.eq_ignore_ascii_case("enter")
                         || key.eq_ignore_ascii_case("return")
                     {
                         Some(FileSidebarKeyAction::Rename)
@@ -288,15 +290,13 @@ pub(in crate::app) fn file_section(
                                     this.child(file_name_draft_row(
                                         app_entity.clone(),
                                         kind,
-                                        draft_value,
+                                        &draft_value,
                                         draft_select_all,
                                         window,
                                         cx,
                                     ))
                                 })
-                                .child(if files_empty && !draft_at_top {
-                                    file_empty_state(labels.empty.clone()).into_any_element()
-                                } else if row_count == 0 && !draft_at_top {
+                                .child(if (files_empty || row_count == 0) && !draft_at_top {
                                     file_empty_state(labels.empty.clone()).into_any_element()
                                 } else {
                                     div()
@@ -592,18 +592,32 @@ impl Render for FileTreeDrag {
     }
 }
 
-pub(in crate::app) fn file_tree_rows(
-    files: &[FileEntry],
-    tree_children: &HashMap<String, Vec<FileEntry>>,
-    expanded_dirs: &HashSet<String>,
-    selected_entry: Option<&str>,
-    selected_entries: &HashSet<String>,
-    draft_kind: Option<FileNameDraftKind>,
-    draft_target: Option<&str>,
-    draft_parent: Option<&str>,
-    draft_value: &str,
-    depth: usize,
-) -> Vec<FileTreeRow> {
+pub(in crate::app) struct FileTreeRowsInput<'a> {
+    pub(in crate::app) files: &'a [FileEntry],
+    pub(in crate::app) tree_children: &'a HashMap<String, Vec<FileEntry>>,
+    pub(in crate::app) expanded_dirs: &'a HashSet<String>,
+    pub(in crate::app) selected_entry: Option<&'a str>,
+    pub(in crate::app) selected_entries: &'a HashSet<String>,
+    pub(in crate::app) draft_kind: Option<FileNameDraftKind>,
+    pub(in crate::app) draft_target: Option<&'a str>,
+    pub(in crate::app) draft_parent: Option<&'a str>,
+    pub(in crate::app) draft_value: &'a str,
+    pub(in crate::app) depth: usize,
+}
+
+pub(in crate::app) fn file_tree_rows(input: FileTreeRowsInput<'_>) -> Vec<FileTreeRow> {
+    let FileTreeRowsInput {
+        files,
+        tree_children,
+        expanded_dirs,
+        selected_entry,
+        selected_entries,
+        draft_kind,
+        draft_target,
+        draft_parent,
+        draft_value,
+        depth,
+    } = input;
     let mut rows = Vec::new();
     for file in files {
         let active = selected_entry
@@ -659,8 +673,8 @@ pub(in crate::app) fn file_tree_rows(
                 });
             }
             if let Some(children) = tree_children.get(&file.relative_path) {
-                rows.extend(file_tree_rows(
-                    children,
+                rows.extend(file_tree_rows(FileTreeRowsInput {
+                    files: children,
                     tree_children,
                     expanded_dirs,
                     selected_entry,
@@ -669,8 +683,8 @@ pub(in crate::app) fn file_tree_rows(
                     draft_target,
                     draft_parent,
                     draft_value,
-                    depth + 1,
-                ));
+                    depth: depth + 1,
+                }));
             }
         }
     }
@@ -1105,7 +1119,10 @@ fn clipboard_text_line_may_be_file_path(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{clipboard_image_extension, clipboard_text_line_may_be_file_path, file_tree_rows};
+    use super::{
+        FileTreeRowsInput, clipboard_image_extension, clipboard_text_line_may_be_file_path,
+        file_tree_rows,
+    };
     use crate::app::FileNameDraftKind;
     use codux_runtime::runtime_state::{FileEntry, FileKind};
     use gpui::ImageFormat;
@@ -1139,18 +1156,18 @@ mod tests {
         }];
         let expanded_dirs = HashSet::from(["src".to_string()]);
 
-        let rows = file_tree_rows(
-            &files,
-            &HashMap::new(),
-            &expanded_dirs,
-            None,
-            &HashSet::new(),
-            Some(FileNameDraftKind::CreateFile),
-            None,
-            Some("src"),
-            "main.rs",
-            0,
-        );
+        let rows = file_tree_rows(FileTreeRowsInput {
+            files: &files,
+            tree_children: &HashMap::new(),
+            expanded_dirs: &expanded_dirs,
+            selected_entry: None,
+            selected_entries: &HashSet::new(),
+            draft_kind: Some(FileNameDraftKind::CreateFile),
+            draft_target: None,
+            draft_parent: Some("src"),
+            draft_value: "main.rs",
+            depth: 0,
+        });
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[1].file.relative_path, "src/main.rs");

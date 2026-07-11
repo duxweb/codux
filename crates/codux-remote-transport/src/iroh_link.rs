@@ -1,23 +1,32 @@
 use crate::{
-    RemoteControllerTransportConfig, RemoteHostTransportConfig, RemoteTransport,
-    RemoteTransportCandidate, RemoteTransportLogHandler, RemoteTransportMessageHandler,
-    RemoteTransportPairingHandler, RemoteTransportStateHandler, RemoteTransportUpload,
-    RemoteTransportUploadHandler, WebTunnelIoStream, WebTunnelResponse, WebTunnelTcpConnectHandler,
-    WebTunnelTcpConnectRequest,
+    RemoteControllerTransportConfig, RemoteHostTransportConfig, RemoteHostTransportHandlers,
+    RemoteTransport, RemoteTransportAuthorizationHandler, RemoteTransportCandidate,
+    RemoteTransportLogHandler, RemoteTransportMessageHandler, RemoteTransportPairingHandler,
+    RemoteTransportStateHandler, RemoteTransportUpload, RemoteTransportUploadHandler,
+    WebTunnelIoStream, WebTunnelResponse, WebTunnelTcpConnectHandler, WebTunnelTcpConnectRequest,
     web_tunnel::{
         CODUX_WEB_TUNNEL_ALPN, WEB_TUNNEL_KIND_TCP_CONNECT, WebTunnelHeader,
         WebTunnelRequestEnvelope, WebTunnelResponseEnvelope,
     },
 };
 use async_trait::async_trait;
-use codux_protocol::{REMOTE_TERMINAL_UPLOAD_BLOB, RemoteEnvelope, RemoteTransportKind};
+use codux_protocol::{
+    REMOTE_BLOB_MAX_BYTES, REMOTE_TERMINAL_UPLOAD_BLOB, RemoteEnvelope, RemoteTransportKind,
+};
 use futures_util::StreamExt;
 use iroh::{
     Endpoint, EndpointAddr, RelayMap, RelayMode, RelayUrl, SecretKey, TransportAddr,
     endpoint::{Connection, PathEvent, RecvStream, SendStream, presets},
     protocol::{AcceptError, ProtocolHandler, Router},
 };
-use iroh_blobs::{BlobsProtocol, store::mem::MemStore, ticket::BlobTicket};
+use iroh_blobs::{
+    BlobsProtocol, HashAndFormat,
+    store::{
+        GcConfig,
+        mem::{MemStore, Options as MemStoreOptions},
+    },
+    ticket::BlobTicket,
+};
 use iroh_mdns_address_lookup::MdnsAddressLookup;
 use iroh_tickets::endpoint::EndpointTicket;
 use sha2::{Digest, Sha256};
@@ -35,7 +44,6 @@ use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
 pub const CODUX_REMOTE_ALPN: &[u8] = b"/codux/remote/1";
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
-const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
 const STREAM_KIND_CONTROL: u8 = 0;
 const STREAM_KIND_TERMINAL: u8 = 1;
 const IROH_RELAY_URL_ENV: &str = "CODUX_IROH_RELAY_URL";
@@ -44,6 +52,11 @@ const IROH_RELAY_URL_ENV: &str = "CODUX_IROH_RELAY_URL";
 /// same-network direct connections — useful on networks that block multicast.
 const IROH_DISABLE_LAN_MDNS_ENV: &str = "CODUX_IROH_DISABLE_LAN_MDNS";
 const IROH_ONLINE_TIMEOUT: Duration = Duration::from_secs(12);
+const BLOB_GC_INTERVAL: Duration = Duration::from_secs(30);
+const BLOB_TICKET_LEASE: Duration = Duration::from_secs(5 * 60);
+const CONTROL_QUEUE_CAPACITY: usize = 64;
+const TERMINAL_QUEUE_CAPACITY: usize = 256;
+const UPLOAD_QUEUE_CAPACITY: usize = 2;
 /// Upper bound on a SINGLE controller→host dial attempt. Kept short on purpose:
 /// the first relay-routed dial to a peer routinely stalls while the relay primes
 /// the cross-path between the two nodes (measured: first dial times out, the very
@@ -55,7 +68,7 @@ const IROH_DIAL_BASE_TIMEOUT: Duration = Duration::from_secs(4);
 /// gets `BASE + 2s * attempt`, so 4s + 6s + 8s = 18s of dialling on one online().
 const IROH_DIAL_ATTEMPTS: usize = 3;
 
-type IrohSender = mpsc::UnboundedSender<Vec<u8>>;
+type IrohSender = mpsc::Sender<Vec<u8>>;
 static HOST_PEER_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone)]
@@ -76,6 +89,7 @@ pub struct RemoteIrohHostTransport {
     on_upload: RemoteTransportUploadHandler,
     on_state: RemoteTransportStateHandler,
     on_pairing: RemoteTransportPairingHandler,
+    on_authorize: RemoteTransportAuthorizationHandler,
     on_web_tunnel_tcp_connect: Option<WebTunnelTcpConnectHandler>,
     on_log: Option<RemoteTransportLogHandler>,
     /// The iroh `Router` driving our accept loop. Stored so it stays alive (it
@@ -120,13 +134,17 @@ impl ProtocolHandler for CoduxWebTunnelProtocol {
 impl RemoteIrohHostTransport {
     pub async fn connect(
         config: &RemoteHostTransportConfig,
-        on_message: RemoteTransportMessageHandler,
-        on_upload: RemoteTransportUploadHandler,
-        on_state: RemoteTransportStateHandler,
-        on_pairing: RemoteTransportPairingHandler,
-        on_web_tunnel_tcp_connect: Option<WebTunnelTcpConnectHandler>,
-        on_log: Option<RemoteTransportLogHandler>,
+        handlers: RemoteHostTransportHandlers,
     ) -> Result<Arc<Self>, String> {
+        let RemoteHostTransportHandlers {
+            on_message,
+            on_upload,
+            on_state,
+            on_pairing,
+            on_authorize,
+            on_web_tunnel_tcp_connect,
+            on_log,
+        } = handlers;
         let configured_relay_url = iroh_relay_url(config)?;
         let relay_authentication = config.iroh_relay_authentication.trim().to_string();
         let endpoint = endpoint_builder(
@@ -158,7 +176,7 @@ impl RemoteIrohHostTransport {
             .cloned()
             .or(configured_relay_url)
             .ok_or_else(|| "iroh host has no relay url".to_string())?;
-        let blob_store = MemStore::new();
+        let blob_store = new_blob_store();
         let transport = Arc::new(Self {
             node_id: endpoint.id().to_string(),
             endpoint,
@@ -169,6 +187,7 @@ impl RemoteIrohHostTransport {
             on_upload,
             on_state,
             on_pairing,
+            on_authorize,
             on_web_tunnel_tcp_connect,
             on_log,
             router: OnceLock::new(),
@@ -208,8 +227,8 @@ impl RemoteIrohHostTransport {
 
     async fn handle_connection(self: Arc<Self>, connection: Connection) {
         let peer_key = connection.remote_id().to_string();
-        let (control_tx, control_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-        let (terminal_tx, terminal_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (control_tx, control_rx) = mpsc::channel::<Vec<u8>>(CONTROL_QUEUE_CAPACITY);
+        let (terminal_tx, terminal_rx) = mpsc::channel::<Vec<u8>>(TERMINAL_QUEUE_CAPACITY);
         let peer_senders = PeerSenders {
             id: HOST_PEER_ID.fetch_add(1, Ordering::Relaxed),
             control: control_tx,
@@ -432,21 +451,55 @@ impl RemoteIrohHostTransport {
         fallback_device_id: String,
         data: Vec<u8>,
     ) {
-        let Ok(raw) = serde_json::from_slice::<RemoteEnvelope>(&data) else {
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) else {
             self.log("iroh_host_recv drop reason=decode".to_string());
             return;
         };
-        if raw.kind == codux_protocol::REMOTE_PAIRING_REQUEST {
-            if let Some(handshake) = crate::control_messages::pairing_handshake_from_envelope(&raw)
-            {
-                (self.on_pairing)(handshake);
-            }
-        }
+        let Ok(raw) = serde_json::from_value::<RemoteEnvelope>(value.clone()) else {
+            self.log("iroh_host_recv drop reason=envelope".to_string());
+            return;
+        };
         let device_id = raw
             .device_id
             .clone()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or(fallback_device_id);
+        if raw.kind == codux_protocol::REMOTE_PAIRING_REQUEST {
+            let handshake = crate::control_messages::pairing_handshake_from_envelope(&raw);
+            let pairing_device_id = handshake
+                .as_ref()
+                .map(|handshake| handshake.device_id.clone());
+            let response_payload = handshake.and_then(|handshake| (self.on_pairing)(handshake));
+            let Some(response_payload) = response_payload else {
+                self.send_transport_rejection(senders, &raw, true);
+                return;
+            };
+            let pairing_device_id = pairing_device_id.unwrap_or(device_id);
+            if !pairing_device_id.trim().is_empty() {
+                self.bind_peer_alias(peer_key, &pairing_device_id, senders);
+                (self.on_state)(pairing_device_id.clone(), "connected".to_string());
+            }
+            let mut response = serde_json::json!({
+                "type": codux_protocol::REMOTE_PAIRING_CONFIRMED,
+                "deviceId": pairing_device_id,
+                "payload": response_payload,
+            });
+            if let Some(request_id) = value.get("requestId") {
+                response["requestId"] = request_id.clone();
+            }
+            if let Ok(response) = serde_json::to_vec(&response) {
+                let _ = senders.control.try_send(response);
+            }
+            return;
+        }
+        let device_token = value
+            .get("deviceToken")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if !(self.on_authorize)(&device_id, device_token) {
+            self.send_transport_rejection(senders, &raw, false);
+            return;
+        }
         if !device_id.trim().is_empty() {
             self.bind_peer_alias(peer_key, &device_id, senders);
             (self.on_state)(device_id.clone(), "connected".to_string());
@@ -465,10 +518,10 @@ impl RemoteIrohHostTransport {
             tokio::spawn(async move {
                 match download_terminal_upload_blob(&blob_store, &endpoint, upload).await {
                     Ok(upload) => {
-                        if let Err(error) = on_upload(upload) {
-                            if let Some(on_log) = on_log.as_ref() {
-                                on_log(format!("iroh_host_blob_upload failed error={error}"));
-                            }
+                        if let Err(error) = on_upload(upload)
+                            && let Some(on_log) = on_log.as_ref()
+                        {
+                            on_log(format!("iroh_host_blob_upload failed error={error}"));
                         }
                     }
                     Err(error) => {
@@ -481,6 +534,41 @@ impl RemoteIrohHostTransport {
             return;
         }
         (self.on_message)(device_id, data);
+    }
+
+    fn send_transport_rejection(
+        &self,
+        senders: &PeerSenders,
+        request: &RemoteEnvelope,
+        pairing: bool,
+    ) {
+        let (kind, payload) = if pairing {
+            (
+                codux_protocol::REMOTE_PAIRING_REJECTED,
+                serde_json::json!({ "reason": "pairing_invalid" }),
+            )
+        } else {
+            (
+                codux_protocol::REMOTE_ERROR,
+                serde_json::json!({
+                    "code": "device_unauthorized",
+                    "message": "This device is no longer authorized. Please pair it again."
+                }),
+            )
+        };
+        let mut envelope = serde_json::json!({
+            "type": kind,
+            "payload": payload,
+        });
+        if let Some(device_id) = request.device_id.as_deref() {
+            envelope["deviceId"] = serde_json::json!(device_id);
+        }
+        if let Some(request_id) = request.request_id.as_deref() {
+            envelope["requestId"] = serde_json::json!(request_id);
+        }
+        if let Ok(data) = serde_json::to_vec(&envelope) {
+            let _ = senders.control.try_send(data);
+        }
     }
 
     fn insert_peer(&self, device_id: String, senders: PeerSenders) {
@@ -531,7 +619,7 @@ impl RemoteIrohHostTransport {
             return peers
                 .get(device_id)
                 .filter(|peer| !peer.closed.load(Ordering::SeqCst))
-                .map(|peer| select(peer).send(data).is_ok())
+                .map(|peer| select(peer).try_send(data).is_ok())
                 .unwrap_or(false);
         }
         let mut sent = false;
@@ -542,7 +630,7 @@ impl RemoteIrohHostTransport {
                 .map(select),
         );
         for tx in unique {
-            sent |= tx.send(data.clone()).is_ok();
+            sent |= tx.try_send(data.clone()).is_ok();
         }
         sent
     }
@@ -573,7 +661,8 @@ fn remove_peer_aliases_by_id(
 ) -> Vec<String> {
     let aliases = peers
         .iter()
-        .filter_map(|(alias, current)| (current.id == peer_id).then(|| alias.clone()))
+        .filter(|(_, current)| current.id == peer_id)
+        .map(|(alias, _)| alias.clone())
         .collect::<Vec<_>>();
     peers.retain(|_, current| current.id != peer_id);
     aliases
@@ -639,8 +728,7 @@ struct SharedControllerEndpoint {
     // shared endpoint and could serve from the wrong store.) Held here so they
     // live as long as the pooled endpoint; dropping the entry aborts the Router.
     blob_store: MemStore,
-    #[allow(dead_code)]
-    router: Router,
+    _router: Router,
     // Identity of THIS pooled build. A connect that fails its dials carries the
     // generation it dialed on and only retires the pool entry when it still
     // matches — so a late evict from an ABANDONED reconnect (the Dart layer gave
@@ -716,7 +804,7 @@ async fn acquire_controller_endpoint(
     // One blob store + Router for every transport that shares this endpoint, so
     // iroh-blobs is served by a single accept loop instead of per-transport
     // loops racing on the shared endpoint.
-    let blob_store = MemStore::new();
+    let blob_store = new_blob_store();
     let router = Router::builder(endpoint.clone())
         .accept(
             iroh_blobs::ALPN,
@@ -728,7 +816,7 @@ async fn acquire_controller_endpoint(
         relay_key: key,
         endpoint: endpoint.clone(),
         blob_store: blob_store.clone(),
-        router,
+        _router: router,
         generation,
     });
     Ok((endpoint, blob_store, generation))
@@ -753,10 +841,10 @@ async fn acquire_controller_endpoint(
 async fn evict_controller_endpoint(generation: u64) {
     if let Some(cell) = SHARED_CONTROLLER_ENDPOINT.get() {
         let mut guard = cell.lock().await;
-        if let Some(shared) = guard.as_ref() {
-            if shared.generation == generation {
-                *guard = None;
-            }
+        if let Some(shared) = guard.as_ref()
+            && shared.generation == generation
+        {
+            *guard = None;
         }
     }
 }
@@ -767,8 +855,15 @@ pub struct RemoteIrohControllerTransport {
     connection: Mutex<Option<Connection>>,
     tx: Mutex<Option<IrohSender>>,
     terminal_tx: Mutex<Option<IrohSender>>,
-    upload_tx: Mutex<Option<mpsc::UnboundedSender<RemoteTransportUpload>>>,
+    upload_tx: Mutex<Option<mpsc::Sender<RemoteTransportUpload>>>,
     closed: Arc<AtomicBool>,
+    credentials: Arc<Mutex<ControllerCredentials>>,
+}
+
+#[derive(Clone, Default)]
+struct ControllerCredentials {
+    device_id: String,
+    device_token: String,
 }
 
 impl RemoteIrohControllerTransport {
@@ -865,10 +960,14 @@ impl RemoteIrohControllerTransport {
             .open_bi()
             .await
             .map_err(|error| format!("iroh controller open terminal stream failed: {error}"))?;
-        let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
-        let (terminal_tx, terminal_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-        let (upload_tx, upload_rx) = mpsc::unbounded_channel::<RemoteTransportUpload>();
+        let (tx, rx) = mpsc::channel::<Vec<u8>>(CONTROL_QUEUE_CAPACITY);
+        let (terminal_tx, terminal_rx) = mpsc::channel::<Vec<u8>>(TERMINAL_QUEUE_CAPACITY);
+        let (upload_tx, upload_rx) = mpsc::channel::<RemoteTransportUpload>(UPLOAD_QUEUE_CAPACITY);
         let upload_control_tx = tx.clone();
+        let credentials = Arc::new(Mutex::new(ControllerCredentials {
+            device_id: config.device_id.clone(),
+            device_token: config.device_token.clone(),
+        }));
         let transport = Arc::new(Self {
             endpoint,
             blob_store: blob_store.clone(),
@@ -877,6 +976,7 @@ impl RemoteIrohControllerTransport {
             terminal_tx: Mutex::new(Some(terminal_tx)),
             upload_tx: Mutex::new(Some(upload_tx)),
             closed: Arc::new(AtomicBool::new(false)),
+            credentials: Arc::clone(&credentials),
         });
         publish_path_state(&connection, &on_state);
         spawn_path_watcher(connection.clone(), Arc::clone(&on_state));
@@ -887,6 +987,7 @@ impl RemoteIrohControllerTransport {
             transport.endpoint.clone(),
             upload_rx,
             upload_control_tx,
+            credentials,
             on_log.clone(),
         );
         let close_controller: Arc<dyn Fn() + Send + Sync + 'static> = {
@@ -954,11 +1055,14 @@ impl RemoteTransport for RemoteIrohControllerTransport {
         if self.closed.load(Ordering::SeqCst) {
             return false;
         }
+        let Some(data) = authenticated_controller_envelope(data, &self.credentials) else {
+            return false;
+        };
         self.tx
             .lock()
             .ok()
             .and_then(|tx| tx.clone())
-            .map(|tx| tx.send(data).is_ok())
+            .map(|tx| tx.try_send(data).is_ok())
             .unwrap_or(false)
     }
 
@@ -966,11 +1070,14 @@ impl RemoteTransport for RemoteIrohControllerTransport {
         if self.closed.load(Ordering::SeqCst) {
             return false;
         }
+        let Some(data) = authenticated_controller_envelope(data, &self.credentials) else {
+            return false;
+        };
         self.terminal_tx
             .lock()
             .ok()
             .and_then(|tx| tx.clone())
-            .map(|tx| tx.send(data).is_ok())
+            .map(|tx| tx.try_send(data).is_ok())
             .unwrap_or(false)
     }
 
@@ -982,8 +1089,17 @@ impl RemoteTransport for RemoteIrohControllerTransport {
             .lock()
             .ok()
             .and_then(|tx| tx.clone())
-            .map(|tx| tx.send(upload).is_ok())
+            .map(|tx| tx.try_send(upload).is_ok())
             .unwrap_or(false)
+    }
+
+    fn set_device_credentials(&self, device_id: &str, device_token: &str) -> bool {
+        let Ok(mut credentials) = self.credentials.lock() else {
+            return false;
+        };
+        credentials.device_id = device_id.to_string();
+        credentials.device_token = device_token.to_string();
+        true
     }
 
     async fn publish_blob(&self, bytes: Vec<u8>) -> Result<String, String> {
@@ -1163,7 +1279,7 @@ async fn read_loop(
 
 fn spawn_writer(
     mut send: SendStream,
-    mut rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    mut rx: mpsc::Receiver<Vec<u8>>,
     on_log: Option<RemoteTransportLogHandler>,
     on_close: impl Fn() + Send + 'static,
 ) {
@@ -1183,7 +1299,7 @@ fn spawn_writer(
 fn spawn_control_stream(
     mut send: SendStream,
     mut recv: RecvStream,
-    rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    rx: mpsc::Receiver<Vec<u8>>,
     on_message: RemoteTransportMessageHandler,
     on_log: Option<RemoteTransportLogHandler>,
     on_close: Arc<dyn Fn() + Send + Sync + 'static>,
@@ -1206,10 +1322,10 @@ fn spawn_control_stream(
             Ok(kind) => Err(format!("unexpected controller stream kind {kind}")),
             Err(error) => Err(error),
         };
-        if let Err(error) = result {
-            if let Some(on_log) = on_log.as_ref() {
-                on_log(format!("iroh_controller_read failed error={error}"));
-            }
+        if let Err(error) = result
+            && let Some(on_log) = on_log.as_ref()
+        {
+            on_log(format!("iroh_controller_read failed error={error}"));
         }
         on_close();
     });
@@ -1218,7 +1334,7 @@ fn spawn_control_stream(
 fn spawn_terminal_stream(
     mut send: SendStream,
     mut recv: RecvStream,
-    rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    rx: mpsc::Receiver<Vec<u8>>,
     on_message: RemoteTransportMessageHandler,
     on_log: Option<RemoteTransportLogHandler>,
     on_close: Arc<dyn Fn() + Send + Sync + 'static>,
@@ -1242,12 +1358,12 @@ fn spawn_terminal_stream(
             Ok(kind) => Err(format!("unexpected terminal stream kind {kind}")),
             Err(error) => Err(error),
         };
-        if let Err(error) = result {
-            if let Some(on_log) = on_log.as_ref() {
-                on_log(format!(
-                    "iroh_controller_terminal_read failed error={error}"
-                ));
-            }
+        if let Err(error) = result
+            && let Some(on_log) = on_log.as_ref()
+        {
+            on_log(format!(
+                "iroh_controller_terminal_read failed error={error}"
+            ));
         }
         on_close();
     });
@@ -1256,18 +1372,19 @@ fn spawn_terminal_stream(
 fn spawn_upload_writer(
     blob_store: MemStore,
     endpoint: Endpoint,
-    mut rx: mpsc::UnboundedReceiver<RemoteTransportUpload>,
+    mut rx: mpsc::Receiver<RemoteTransportUpload>,
     control_tx: IrohSender,
+    credentials: Arc<Mutex<ControllerCredentials>>,
     on_log: Option<RemoteTransportLogHandler>,
 ) {
     tokio::spawn(async move {
         while let Some(upload) = rx.recv().await {
             if let Err(error) =
-                send_terminal_upload_blob(&blob_store, &endpoint, &control_tx, upload).await
+                send_terminal_upload_blob(&blob_store, &endpoint, &control_tx, &credentials, upload)
+                    .await
+                && let Some(on_log) = on_log.as_ref()
             {
-                if let Some(on_log) = on_log.as_ref() {
-                    on_log(format!("iroh_upload_blob failed error={error}"));
-                }
+                on_log(format!("iroh_upload_blob failed error={error}"));
             }
         }
     });
@@ -1277,20 +1394,22 @@ async fn send_terminal_upload_blob(
     blob_store: &MemStore,
     endpoint: &Endpoint,
     control_tx: &IrohSender,
+    credentials: &Arc<Mutex<ControllerCredentials>>,
     upload: RemoteTransportUpload,
 ) -> Result<(), String> {
-    if upload.bytes.is_empty() || upload.bytes.len() > MAX_UPLOAD_BYTES {
+    if upload.bytes.is_empty() || upload.bytes.len() > REMOTE_BLOB_MAX_BYTES {
         return Err("upload size is not supported".to_string());
     }
     let total_bytes = upload.bytes.len();
-    let tag = blob_store
-        .add_bytes(upload.bytes)
-        .await
-        .map_err(|error| error.to_string())?;
-    let ticket = BlobTicket::new(endpoint.addr(), tag.hash, tag.format).to_string();
+    let ticket = publish_blob_bytes(blob_store, endpoint, upload.bytes).await?;
+    let credentials = credentials
+        .lock()
+        .map(|credentials| credentials.clone())
+        .map_err(|_| "controller credentials unavailable".to_string())?;
     let envelope = serde_json::json!({
         "type": REMOTE_TERMINAL_UPLOAD_BLOB,
-        "deviceId": upload.device_id,
+        "deviceId": credentials.device_id,
+        "deviceToken": credentials.device_token,
         "sessionId": upload.session_id,
         "payload": {
             "name": upload.name,
@@ -1301,7 +1420,29 @@ async fn send_terminal_upload_blob(
         },
     });
     let data = serde_json::to_vec(&envelope).map_err(|error| error.to_string())?;
-    control_tx.send(data).map_err(|error| error.to_string())
+    control_tx.try_send(data).map_err(|error| error.to_string())
+}
+
+fn authenticated_controller_envelope(
+    data: Vec<u8>,
+    credentials: &Arc<Mutex<ControllerCredentials>>,
+) -> Option<Vec<u8>> {
+    let credentials = credentials.lock().ok()?.clone();
+    let mut envelope = serde_json::from_slice::<serde_json::Value>(&data).ok()?;
+    let object = envelope.as_object_mut()?;
+    if !credentials.device_id.trim().is_empty() {
+        object.insert(
+            "deviceId".to_string(),
+            serde_json::json!(credentials.device_id),
+        );
+    }
+    if !credentials.device_token.trim().is_empty() {
+        object.insert(
+            "deviceToken".to_string(),
+            serde_json::json!(credentials.device_token),
+        );
+    }
+    serde_json::to_vec(&envelope).ok()
 }
 
 fn upload_metadata_from_blob_envelope(
@@ -1349,20 +1490,11 @@ async fn download_terminal_upload_blob(
         .ticket
         .parse::<BlobTicket>()
         .map_err(|error| error.to_string())?;
-    let downloader = blob_store.downloader(endpoint);
-    downloader
-        .download(ticket.hash(), Some(ticket.addr().id))
-        .await
-        .map_err(|error| error.to_string())?;
-    let bytes = blob_store
-        .export_bao(ticket.hash(), iroh_blobs::protocol::ChunkRanges::all())
-        .data_to_bytes()
-        .await
-        .map_err(|error| error.to_string())?;
-    if bytes.is_empty() || bytes.len() > MAX_UPLOAD_BYTES {
+    let bytes = fetch_blob_ticket_bytes(blob_store, endpoint, &ticket).await?;
+    if bytes.is_empty() {
         return Err("upload size is not supported".to_string());
     }
-    upload.bytes = bytes.to_vec();
+    upload.bytes = bytes;
     Ok(upload)
 }
 
@@ -1373,14 +1505,29 @@ async fn publish_blob_bytes(
     endpoint: &Endpoint,
     bytes: Vec<u8>,
 ) -> Result<String, String> {
-    if bytes.len() > MAX_UPLOAD_BYTES {
+    if bytes.len() > REMOTE_BLOB_MAX_BYTES {
         return Err("blob size is not supported".to_string());
     }
+    let content = add_blob_with_lease(blob_store, bytes, BLOB_TICKET_LEASE).await?;
+    Ok(BlobTicket::new(endpoint.addr(), content.hash, content.format).to_string())
+}
+
+async fn add_blob_with_lease(
+    blob_store: &MemStore,
+    bytes: Vec<u8>,
+    lease: Duration,
+) -> Result<HashAndFormat, String> {
     let tag = blob_store
         .add_bytes(bytes)
+        .temp_tag()
         .await
         .map_err(|error| error.to_string())?;
-    Ok(BlobTicket::new(endpoint.addr(), tag.hash, tag.format).to_string())
+    let content = tag.hash_and_format();
+    tokio::spawn(async move {
+        tokio::time::sleep(lease).await;
+        drop(tag);
+    });
+    Ok(content)
 }
 
 /// Generic blob fetch: download the bytes a peer published under `ticket`.
@@ -1392,6 +1539,32 @@ async fn fetch_blob_bytes(
     let ticket = ticket
         .parse::<BlobTicket>()
         .map_err(|error| error.to_string())?;
+    fetch_blob_ticket_bytes(blob_store, endpoint, &ticket).await
+}
+
+async fn fetch_blob_ticket_bytes(
+    blob_store: &MemStore,
+    endpoint: &Endpoint,
+    ticket: &BlobTicket,
+) -> Result<Vec<u8>, String> {
+    if ticket.recursive() {
+        return Err("blob format is not supported".to_string());
+    }
+    let connection = endpoint
+        .connect(ticket.addr().clone(), iroh_blobs::ALPN)
+        .await
+        .map_err(|error| error.to_string())?;
+    let (size, _) = iroh_blobs::get::request::get_verified_size(&connection, &ticket.hash())
+        .await
+        .map_err(|error| error.to_string())?;
+    if size > REMOTE_BLOB_MAX_BYTES as u64 {
+        return Err("blob size is not supported".to_string());
+    }
+    let _read_guard = blob_store
+        .tags()
+        .temp_tag(ticket.hash_and_format())
+        .await
+        .map_err(|error| error.to_string())?;
     let downloader = blob_store.downloader(endpoint);
     downloader
         .download(ticket.hash(), Some(ticket.addr().id))
@@ -1402,10 +1575,23 @@ async fn fetch_blob_bytes(
         .data_to_bytes()
         .await
         .map_err(|error| error.to_string())?;
-    if bytes.len() > MAX_UPLOAD_BYTES {
+    if bytes.len() > REMOTE_BLOB_MAX_BYTES {
         return Err("blob size is not supported".to_string());
     }
     Ok(bytes.to_vec())
+}
+
+fn new_blob_store() -> MemStore {
+    new_blob_store_with_gc_interval(BLOB_GC_INTERVAL)
+}
+
+fn new_blob_store_with_gc_interval(interval: Duration) -> MemStore {
+    MemStore::new_with_opts(MemStoreOptions {
+        gc_config: Some(GcConfig {
+            interval,
+            add_protected: None,
+        }),
+    })
 }
 
 fn spawn_path_watcher(connection: Connection, on_state: RemoteTransportStateHandler) {
@@ -1606,14 +1792,23 @@ mod tests {
     use super::*;
 
     fn peer(id: u64) -> PeerSenders {
-        let (control, _control_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-        let (terminal, _terminal_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (control, _control_rx) = mpsc::channel::<Vec<u8>>(CONTROL_QUEUE_CAPACITY);
+        let (terminal, _terminal_rx) = mpsc::channel::<Vec<u8>>(TERMINAL_QUEUE_CAPACITY);
         PeerSenders {
             id,
             control,
             terminal,
             closed: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    #[test]
+    fn outbound_queue_rejects_excess_without_growing() {
+        let (sender, mut receiver) = mpsc::channel::<Vec<u8>>(1);
+
+        assert!(sender.try_send(vec![1]).is_ok());
+        assert!(sender.try_send(vec![2]).is_err());
+        assert_eq!(receiver.try_recv().unwrap(), vec![1]);
     }
 
     #[test]
@@ -1646,5 +1841,58 @@ mod tests {
         assert!(aliases.is_empty());
         assert_eq!(peers.get("node-id").map(|peer| peer.id), Some(8));
         assert_eq!(peers.get("device-id").map(|peer| peer.id), Some(8));
+    }
+
+    #[test]
+    fn controller_envelope_attaches_current_device_credentials() {
+        let credentials = Arc::new(Mutex::new(ControllerCredentials {
+            device_id: "device-1".to_string(),
+            device_token: "token-1".to_string(),
+        }));
+        let encoded = authenticated_controller_envelope(
+            br#"{"type":"host.info","deviceId":"spoofed","payload":{}}"#.to_vec(),
+            &credentials,
+        )
+        .expect("encoded envelope");
+        let envelope: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(envelope["deviceId"], "device-1");
+        assert_eq!(envelope["deviceToken"], "token-1");
+        assert!(envelope["payload"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pairing_envelope_keeps_credentials_empty() {
+        let credentials = Arc::new(Mutex::new(ControllerCredentials::default()));
+        let encoded = authenticated_controller_envelope(
+            br#"{"type":"pairing.request","deviceId":"pending","payload":{}}"#.to_vec(),
+            &credentials,
+        )
+        .expect("encoded envelope");
+        let envelope: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+
+        assert_eq!(envelope["deviceId"], "pending");
+        assert!(envelope.get("deviceToken").is_none());
+    }
+
+    #[tokio::test]
+    async fn leased_blob_is_collected_after_expiry() {
+        let store = new_blob_store_with_gc_interval(Duration::from_millis(10));
+        let content = add_blob_with_lease(
+            &store,
+            b"temporary transfer".to_vec(),
+            Duration::from_millis(20),
+        )
+        .await
+        .unwrap();
+        assert!(store.blobs().has(content.hash).await.unwrap());
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while store.blobs().has(content.hash).await.unwrap() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("leased blob should be collected");
     }
 }

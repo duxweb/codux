@@ -22,13 +22,13 @@ use codux_protocol::{
     REMOTE_WORKTREE_MERGE, REMOTE_WORKTREE_REMOVE, REMOTE_WORKTREE_UPDATED,
 };
 use codux_remote_transport::{
-    RemoteHostTransportConfig, RemoteTransport, RemoteTransportCandidate, RemoteTransportFactory,
-    WebTunnelTcpConnectRequest,
+    RemoteHostTransportConfig, RemoteHostTransportHandlers, RemoteTransport,
+    RemoteTransportCandidate, RemoteTransportFactory, WebTunnelTcpConnectRequest,
 };
 use codux_runtime_core::{
     file::{
         file_copy, file_delete, file_list_payload, file_make_directory, file_move,
-        file_read_payload, file_rename, file_write, file_write_bytes,
+        file_read_blob_bytes, file_read_payload, file_rename, file_write, file_write_bytes,
     },
     git::git_status_payload,
     host::{HostInfoPayload, host_info_payload},
@@ -44,6 +44,7 @@ use codux_ai_history::indexer::AIHistoryIndexer;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
@@ -68,12 +69,145 @@ type CandidateSlot = Arc<Mutex<Option<(String, String)>>>;
 /// when the live AI runtime changes, so remote views tick like the desktop's.
 type AIStatsWatchers = Arc<Mutex<HashMap<String, HashSet<String>>>>;
 
+#[derive(Clone)]
+struct AgentPairingState {
+    active: Arc<Mutex<AgentPairingCredential>>,
+    device_store_path: PathBuf,
+    authorization: Arc<crate::device_store::DeviceAuthorizationCache>,
+    ticket_path: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentPairingCredential {
+    pairing_id: String,
+    code: String,
+    secret: String,
+}
+
+impl AgentPairingState {
+    fn new() -> Result<Self, String> {
+        let device_store_path = crate::paths::devices_path();
+        Ok(Self {
+            active: Arc::new(Mutex::new(new_agent_pairing_credential()?)),
+            authorization: Arc::new(crate::device_store::DeviceAuthorizationCache::new(
+                device_store_path.clone(),
+            )),
+            device_store_path,
+            ticket_path: crate::paths::ticket_path(),
+        })
+    }
+
+    #[cfg(test)]
+    fn with_paths(device_store_path: PathBuf, ticket_path: PathBuf) -> Result<Self, String> {
+        Ok(Self {
+            active: Arc::new(Mutex::new(new_agent_pairing_credential()?)),
+            authorization: Arc::new(crate::device_store::DeviceAuthorizationCache::new(
+                device_store_path.clone(),
+            )),
+            device_store_path,
+            ticket_path,
+        })
+    }
+
+    fn publish(
+        &self,
+        candidate: &(String, String),
+        relay_authentication: &str,
+    ) -> Result<String, String> {
+        let credential = self
+            .active
+            .lock()
+            .map(|active| active.clone())
+            .map_err(|_| "agent pairing state is unavailable".to_string())?;
+        Ok(pairing_ticket_url(
+            &credential,
+            &candidate.0,
+            &candidate.1,
+            relay_authentication,
+        ))
+    }
+
+    fn confirm(
+        &self,
+        handshake: codux_protocol::RemoteTransportPairingRequest,
+        candidate: &CandidateSlot,
+        host_id: &str,
+        name: &str,
+        relay_authentication: &str,
+    ) -> Result<Value, String> {
+        let mut active = self
+            .active
+            .lock()
+            .map_err(|_| "agent pairing state is unavailable".to_string())?;
+        codux_protocol::pairing_request_matches(
+            &active.pairing_id,
+            &active.code,
+            &active.secret,
+            false,
+            &handshake,
+        )?;
+        let device_token = random_token()?;
+        let next = new_agent_pairing_credential()?;
+        *active = next.clone();
+        let candidate = candidate
+            .lock()
+            .ok()
+            .and_then(|candidate| candidate.clone());
+        if let Some(candidate) = candidate.as_ref() {
+            let ticket =
+                pairing_ticket_url(&next, &candidate.0, &candidate.1, relay_authentication);
+            crate::runstate::write_ticket_at(&self.ticket_path, &ticket)?;
+        }
+        let devices = crate::device_store::record_at(
+            &self.device_store_path,
+            &handshake.device_id,
+            &device_token,
+            &handshake.device_name,
+            handshake.platform.as_deref().unwrap_or_default(),
+        )?;
+        self.authorization.replace_after_write(&devices);
+        let transports = candidate
+            .map(|(node_id, relay_url)| {
+                let transport =
+                    codux_protocol::iroh_transport_candidate_with_ticket_and_authentication(
+                        &relay_url,
+                        node_id,
+                        relay_url.clone(),
+                        "",
+                        relay_authentication,
+                    );
+                vec![codux_protocol::confirmed_transport_entry(&transport)]
+            })
+            .unwrap_or_default();
+        Ok(json!({
+            "hostId": host_id,
+            "deviceId": handshake.device_id,
+            "token": device_token,
+            "hostName": name,
+            "platform": std::env::consts::OS,
+            "transports": transports,
+        }))
+    }
+
+    fn is_authorized(&self, device_id: &str, device_token: &str) -> bool {
+        let device_id = device_id.trim();
+        let device_token = device_token.trim();
+        self.authorization.is_authorized(device_id, device_token)
+    }
+}
+
 fn remove_ai_stats_watcher_device(device_id: &str, watchers: &AIStatsWatchers) {
     if let Ok(mut watchers) = watchers.lock() {
         for devices in watchers.values_mut() {
             devices.remove(device_id);
         }
         watchers.retain(|_, devices| !devices.is_empty());
+    }
+}
+
+fn remove_ai_stats_watcher_project(project_id: &str, watchers: &AIStatsWatchers) {
+    if let Ok(mut watchers) = watchers.lock() {
+        watchers.remove(project_id);
     }
 }
 
@@ -109,18 +243,32 @@ fn remove_device_state(
 
 /// Build the message handler that dispatches incoming envelopes to the served
 /// domains and replies through the (post-connect) transport handle.
-fn make_handler(
+struct AgentMessageHandlerContext {
     slot: TransportSlot,
+    runtime: tokio::runtime::Handle,
     driver: Arc<TerminalManager>,
     fanout: crate::terminals::TerminalFanout,
     indexer: AIHistoryIndexer,
     ai_current_sessions: Arc<AgentAICurrentSessionProvider>,
     ai_stats_watchers: AIStatsWatchers,
-    candidate: CandidateSlot,
     host_id: String,
     name: String,
-    relay_authentication: String,
+}
+
+fn make_handler(
+    context: AgentMessageHandlerContext,
 ) -> codux_remote_transport::RemoteTransportMessageHandler {
+    let AgentMessageHandlerContext {
+        slot,
+        runtime,
+        driver,
+        fanout,
+        indexer,
+        ai_current_sessions,
+        ai_stats_watchers,
+        host_id,
+        name,
+    } = context;
     Arc::new(move |source: String, data: Vec<u8>| {
         let Ok(envelope) = serde_json::from_slice::<Value>(&data) else {
             return;
@@ -149,26 +297,33 @@ fn make_handler(
             let request = request_id.map(str::to_string);
             let payload = payload.clone();
             std::thread::spawn(move || {
-                let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
-                    .build()
-                else {
-                    return;
+                    .build();
+                let (reply_kind, result) = match runtime {
+                    Ok(runtime) => {
+                        match runtime.block_on(crate::memory::memory_extract_payload(&payload)) {
+                            Ok(result) => (REMOTE_MEMORY_RESULT, result),
+                            Err(error) => (REMOTE_ERROR, json!({ "message": error })),
+                        }
+                    }
+                    Err(error) => (
+                        REMOTE_ERROR,
+                        json!({ "message": format!("Unable to start memory extraction: {error}") }),
+                    ),
                 };
-                let result = runtime.block_on(crate::memory::memory_extract_payload(&payload));
-                let mut envelope = json!({ "type": REMOTE_MEMORY_RESULT, "payload": result });
+                let mut envelope = json!({ "type": reply_kind, "payload": result });
                 if let Some(device) = device.as_deref() {
                     envelope["deviceId"] = json!(device);
                 }
                 if let Some(request) = request.as_deref() {
                     envelope["requestId"] = json!(request);
                 }
-                if let Ok(bytes) = serde_json::to_vec(&envelope) {
-                    if let Ok(guard) = slot.lock() {
-                        if let Some(transport) = guard.as_ref() {
-                            transport.send(bytes, device.as_deref());
-                        }
-                    }
+                if let Ok(bytes) = serde_json::to_vec(&envelope)
+                    && let Ok(guard) = slot.lock()
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device.as_deref());
                 }
             });
             return;
@@ -189,12 +344,11 @@ fn make_handler(
                 if let Some(request) = request.as_deref() {
                     envelope["requestId"] = json!(request);
                 }
-                if let Ok(bytes) = serde_json::to_vec(&envelope) {
-                    if let Ok(guard) = slot.lock() {
-                        if let Some(transport) = guard.as_ref() {
-                            transport.send(bytes, device.as_deref());
-                        }
-                    }
+                if let Ok(bytes) = serde_json::to_vec(&envelope)
+                    && let Ok(guard) = slot.lock()
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device.as_deref());
                 }
             });
             return;
@@ -213,11 +367,8 @@ fn make_handler(
                 .to_string();
             // Run on the agent runtime (where the iroh endpoint lives), not a
             // fresh thread runtime — blob transfer drives the endpoint.
-            let Ok(handle) = tokio::runtime::Handle::try_current() else {
-                return;
-            };
-            handle.spawn(async move {
-                let result = match std::fs::read(&path) {
+            runtime.spawn(async move {
+                let result = match file_read_blob_bytes(&path) {
                     Ok(bytes) => {
                         let transport = slot.lock().ok().and_then(|guard| guard.as_ref().cloned());
                         match transport {
@@ -237,12 +388,11 @@ fn make_handler(
                 if let Some(request) = request.as_deref() {
                     envelope["requestId"] = json!(request);
                 }
-                if let Ok(bytes) = serde_json::to_vec(&envelope) {
-                    if let Ok(guard) = slot.lock() {
-                        if let Some(transport) = guard.as_ref() {
-                            transport.send(bytes, device.as_deref());
-                        }
-                    }
+                if let Ok(bytes) = serde_json::to_vec(&envelope)
+                    && let Ok(guard) = slot.lock()
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device.as_deref());
                 }
             });
             return;
@@ -269,10 +419,7 @@ fn make_handler(
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let Ok(handle) = tokio::runtime::Handle::try_current() else {
-                return;
-            };
-            handle.spawn(async move {
+            runtime.spawn(async move {
                 let (reply_kind, result) = {
                     let transport = slot.lock().ok().and_then(|guard| guard.as_ref().cloned());
                     let bytes = match transport {
@@ -296,12 +443,11 @@ fn make_handler(
                 if let Some(request) = request.as_deref() {
                     envelope["requestId"] = json!(request);
                 }
-                if let Ok(bytes) = serde_json::to_vec(&envelope) {
-                    if let Ok(guard) = slot.lock() {
-                        if let Some(transport) = guard.as_ref() {
-                            transport.send(bytes, device.as_deref());
-                        }
-                    }
+                if let Ok(bytes) = serde_json::to_vec(&envelope)
+                    && let Ok(guard) = slot.lock()
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, device.as_deref());
                 }
             });
             return;
@@ -319,62 +465,6 @@ fn make_handler(
                 }
                 None
             }
-            // Headless pairing: reaching us means the controller already holds
-            // the iroh ticket (the real access gate), so auto-confirm and hand
-            // back our reconnect candidate. No operator, no code validation.
-            REMOTE_PAIRING_REQUEST => {
-                let confirm_device = payload
-                    .get("deviceId")
-                    .and_then(Value::as_str)
-                    .or(device_id)
-                    .unwrap_or_default()
-                    .to_string();
-                // Record the device so `codux device` can list it.
-                let device_name = payload
-                    .get("deviceName")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let device_platform = payload
-                    .get("platform")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let device_token = random_token();
-                crate::device_store::record(
-                    &confirm_device,
-                    &device_token,
-                    device_name,
-                    device_platform,
-                );
-                let mut transports = Vec::new();
-                if let Ok(guard) = candidate.lock() {
-                    if let Some((node_id, relay_url)) = guard.as_ref() {
-                        // Carry the relay auth (the QR already does) through the
-                        // SHARED builder, so a custom-relay agent can be
-                        // reconnected from the confirm transports — not only the
-                        // QR — instead of dropping the token here.
-                        let transport =
-                            codux_protocol::iroh_transport_candidate_with_ticket_and_authentication(
-                                relay_url,
-                                node_id,
-                                relay_url,
-                                "",
-                                &relay_authentication,
-                            );
-                        transports.push(codux_protocol::confirmed_transport_entry(&transport));
-                    }
-                }
-                Some((
-                    REMOTE_PAIRING_CONFIRMED,
-                    json!({
-                        "hostId": host_id.clone(),
-                        "deviceId": confirm_device,
-                        "token": device_token,
-                        "hostName": name.clone(),
-                        "platform": std::env::consts::OS,
-                        "transports": transports,
-                    }),
-                ))
-            }
             REMOTE_HOST_INFO => Some((
                 REMOTE_HOST_INFO,
                 // Transports left empty: the controller already knows the path
@@ -385,6 +475,9 @@ fn make_handler(
                     name: name.clone(),
                     platform: std::env::consts::OS.to_string(),
                     app: "codux-agent".to_string(),
+                    resource_subscriptions: vec![
+                        codux_protocol::REMOTE_RESOURCE_TERMINALS.to_string(),
+                    ],
                     transports: Vec::new(),
                 }),
             )),
@@ -520,6 +613,8 @@ fn make_handler(
                 match id {
                     Some(id) => match AgentProjectStore::new().remove(id) {
                         Ok(items) => {
+                            fanout.remove_project(id);
+                            remove_ai_stats_watcher_project(id, &ai_stats_watchers);
                             Some((REMOTE_PROJECT_LIST, project_list_payload(items, None, None)))
                         }
                         Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
@@ -666,19 +761,18 @@ fn make_handler(
                         // Register the requesting device as a watcher (one project
                         // per device) so the poller re-pushes on runtime change.
                         if let Some(device_id) = device_id.filter(|value| !value.trim().is_empty())
+                            && let Ok(mut watchers) = ai_stats_watchers.lock()
                         {
-                            if let Ok(mut watchers) = ai_stats_watchers.lock() {
-                                for (id, devices) in watchers.iter_mut() {
-                                    if id != &project.id {
-                                        devices.remove(device_id);
-                                    }
+                            for (id, devices) in watchers.iter_mut() {
+                                if id != &project.id {
+                                    devices.remove(device_id);
                                 }
-                                watchers.retain(|_, devices| !devices.is_empty());
-                                watchers
-                                    .entry(project.id.clone())
-                                    .or_default()
-                                    .insert(device_id.to_string());
                             }
+                            watchers.retain(|_, devices| !devices.is_empty());
+                            watchers
+                                .entry(project.id.clone())
+                                .or_default()
+                                .insert(device_id.to_string());
                         }
                         Some((
                             REMOTE_AI_STATS,
@@ -699,17 +793,17 @@ fn make_handler(
             }
             REMOTE_MEMORY_READ => {
                 // The host runs the codux-memory engine against its own store.
-                Some((
-                    REMOTE_MEMORY_RESULT,
-                    crate::memory::memory_read_payload(&payload),
-                ))
+                match crate::memory::memory_read_payload(&payload) {
+                    Ok(result) => Some((REMOTE_MEMORY_RESULT, result)),
+                    Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                }
             }
             REMOTE_AI_SESSION => {
                 // The host runs the codux-ai-sessions engine against its own history.
-                Some((
-                    REMOTE_AI_SESSION_RESULT,
-                    crate::sessions::ai_session_payload(&payload),
-                ))
+                match crate::sessions::ai_session_payload(&payload) {
+                    Ok(result) => Some((REMOTE_AI_SESSION_RESULT, result)),
+                    Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                }
             }
             REMOTE_SSH_LIST => {
                 // The headless host has no saved SSH profiles of its own yet, so
@@ -763,10 +857,10 @@ fn make_handler(
         let Ok(bytes) = serde_json::to_vec(&reply_envelope) else {
             return;
         };
-        if let Ok(guard) = slot.lock() {
-            if let Some(transport) = guard.as_ref() {
-                transport.send(bytes, device_id);
-            }
+        if let Ok(guard) = slot.lock()
+            && let Some(transport) = guard.as_ref()
+        {
+            transport.send(bytes, device_id);
         }
     })
 }
@@ -798,47 +892,24 @@ fn git_project_target(payload: &Value) -> (String, String) {
     (project_id.to_string(), project_path.to_string())
 }
 
-fn random_token() -> String {
+fn random_token() -> Result<String, String> {
     let mut bytes = [0u8; 32];
-    if getrandom::getrandom(&mut bytes).is_ok() {
-        return bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-    }
-    short_token(
-        &format!(
-            "{}:{}:{}",
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
-            uuid_like_counter()
-        ),
-        7,
-    )
+    getrandom::getrandom(&mut bytes)
+        .map_err(|error| format!("operating system random source unavailable: {error}"))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-fn uuid_like_counter() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-    COUNTER.fetch_add(1, Ordering::Relaxed)
-}
-
-fn authorize_web_tunnel_tcp_connect(request: WebTunnelTcpConnectRequest) -> Result<(), String> {
-    if !is_authorized_device_token(&request.device_id, &request.device_token) {
+fn authorize_web_tunnel_tcp_connect(
+    pairing: &AgentPairingState,
+    request: WebTunnelTcpConnectRequest,
+) -> Result<(), String> {
+    if !pairing.is_authorized(&request.device_id, &request.device_token) {
         return Err("device is not authorized".to_string());
     }
     if is_forbidden_host(&request.host) {
         return Err("target is not allowed".to_string());
     }
     Ok(())
-}
-
-fn is_authorized_device_token(device_id: &str, device_token: &str) -> bool {
-    let device_id = device_id.trim();
-    let device_token = device_token.trim();
-    if device_id.is_empty() || device_token.is_empty() {
-        return false;
-    }
-    crate::device_store::list()
-        .into_iter()
-        .any(|device| device.id == device_id && device.token == device_token)
 }
 
 fn is_forbidden_host(host: &str) -> bool {
@@ -860,9 +931,10 @@ fn is_forbidden_ip(ip: IpAddr) -> bool {
 /// handle and the slot it has been stored in (for replies).
 async fn connect_serving_host(
     cfg: &AgentHostConfig,
-) -> Result<(Arc<dyn RemoteTransport>, TransportSlot), String> {
+) -> Result<(Arc<dyn RemoteTransport>, TransportSlot, AgentPairingState), String> {
     let slot: TransportSlot = Arc::new(Mutex::new(None));
     let candidate: CandidateSlot = Arc::new(Mutex::new(None));
+    let pairing = AgentPairingState::new()?;
     let ai_runtime = Arc::new(AIRuntimeBridge::new());
     let driver = Arc::new(TerminalManager::with_ai_runtime(Arc::clone(&ai_runtime)));
     let fanout = crate::terminals::TerminalFanout::new();
@@ -904,32 +976,64 @@ async fn connect_serving_host(
     };
     let host = RemoteTransportFactory::connect_host(
         &config,
-        make_handler(
-            Arc::clone(&slot),
-            Arc::clone(&driver),
-            fanout.clone(),
-            indexer.clone(),
-            Arc::clone(&ai_current_sessions),
-            Arc::clone(&ai_stats_watchers),
-            Arc::clone(&candidate),
-            cfg.host_id.clone(),
-            cfg.name.clone(),
-            cfg.relay_authentication.clone(),
-        ),
-        Arc::new(|_| Ok(())),
-        {
-            let driver = Arc::clone(&driver);
-            let fanout = fanout.clone();
-            let ai_stats_watchers = Arc::clone(&ai_stats_watchers);
-            Arc::new(move |device_id, state| {
-                if matches!(state.as_str(), "closed" | "failed" | "disconnected") {
-                    remove_device_state(&device_id, &driver, &fanout, &ai_stats_watchers);
-                }
-            })
+        RemoteHostTransportHandlers {
+            on_message: make_handler(AgentMessageHandlerContext {
+                slot: Arc::clone(&slot),
+                runtime: tokio::runtime::Handle::current(),
+                driver: Arc::clone(&driver),
+                fanout: fanout.clone(),
+                indexer: indexer.clone(),
+                ai_current_sessions: Arc::clone(&ai_current_sessions),
+                ai_stats_watchers: Arc::clone(&ai_stats_watchers),
+                host_id: cfg.host_id.clone(),
+                name: cfg.name.clone(),
+            }),
+            on_upload: Arc::new(|_| Ok(())),
+            on_state: {
+                let driver = Arc::clone(&driver);
+                let fanout = fanout.clone();
+                let ai_stats_watchers = Arc::clone(&ai_stats_watchers);
+                Arc::new(move |device_id, state| {
+                    if matches!(state.as_str(), "closed" | "failed" | "disconnected") {
+                        remove_device_state(&device_id, &driver, &fanout, &ai_stats_watchers);
+                    }
+                })
+            },
+            on_pairing: {
+                let pairing = pairing.clone();
+                let candidate = Arc::clone(&candidate);
+                let host_id = cfg.host_id.clone();
+                let name = cfg.name.clone();
+                let relay_authentication = cfg.relay_authentication.clone();
+                Arc::new(move |handshake| {
+                    pairing
+                        .confirm(
+                            handshake,
+                            &candidate,
+                            &host_id,
+                            &name,
+                            &relay_authentication,
+                        )
+                        .map_err(|error| {
+                            eprintln!("Agent pairing rejected: {error}");
+                        })
+                        .ok()
+                })
+            },
+            on_authorize: {
+                let pairing = pairing.clone();
+                Arc::new(move |device_id, device_token| {
+                    pairing.is_authorized(device_id, device_token)
+                })
+            },
+            on_web_tunnel_tcp_connect: {
+                let pairing = pairing.clone();
+                Some(Arc::new(move |request| {
+                    authorize_web_tunnel_tcp_connect(&pairing, request)
+                }))
+            },
+            on_log: None,
         },
-        Arc::new(|_| {}),
-        Some(Arc::new(authorize_web_tunnel_tcp_connect)),
-        None,
     )
     .await?;
     if let Ok(mut guard) = slot.lock() {
@@ -945,7 +1049,7 @@ async fn connect_serving_host(
         ai_stats_watchers,
     );
     spawn_terminal_status_poller(Arc::clone(&slot), ai_runtime);
-    Ok((host, slot))
+    Ok((host, slot, pairing))
 }
 
 /// Watch the live AI runtime and re-push `ai.stats` to watching devices whenever
@@ -965,14 +1069,24 @@ fn spawn_ai_stats_poller(
         let mut ticker = tokio::time::interval(std::time::Duration::from_millis(1000));
         loop {
             ticker.tick().await;
+            let projects = AgentProjectStore::new().list();
+            let project_ids = projects
+                .iter()
+                .map(|project| project.id.as_str())
+                .collect::<HashSet<_>>();
             let snapshot = match watchers.lock() {
-                Ok(watchers) => watchers.clone(),
+                Ok(mut watchers) => {
+                    watchers.retain(|project_id, devices| {
+                        !devices.is_empty() && project_ids.contains(project_id.as_str())
+                    });
+                    watchers.clone()
+                }
                 Err(_) => continue,
             };
+            last.retain(|project_id, _| snapshot.contains_key(project_id));
             if snapshot.is_empty() {
                 continue;
             }
-            let projects = AgentProjectStore::new().list();
             for (project_id, devices) in snapshot {
                 if devices.is_empty() {
                     continue;
@@ -998,10 +1112,10 @@ fn spawn_ai_stats_poller(
                     let Ok(bytes) = serde_json::to_vec(&envelope) else {
                         continue;
                     };
-                    if let Ok(guard) = slot.lock() {
-                        if let Some(transport) = guard.as_ref() {
-                            transport.send(bytes, Some(device));
-                        }
+                    if let Ok(guard) = slot.lock()
+                        && let Some(transport) = guard.as_ref()
+                    {
+                        transport.send(bytes, Some(device));
                     }
                 }
             }
@@ -1029,10 +1143,10 @@ fn spawn_terminal_status_poller(slot: TransportSlot, ai_runtime: Arc<AIRuntimeBr
                 let Ok(bytes) = serde_json::to_vec(&envelope) else {
                     continue;
                 };
-                if let Ok(guard) = slot.lock() {
-                    if let Some(transport) = guard.as_ref() {
-                        transport.send(bytes, None);
-                    }
+                if let Ok(guard) = slot.lock()
+                    && let Some(transport) = guard.as_ref()
+                {
+                    transport.send(bytes, None);
                 }
             }
         }
@@ -1059,7 +1173,7 @@ impl codux_runtime_core::ai_stats::RemoteAICurrentSessionProvider
 /// Run the headless host until the process is stopped, printing the pairing
 /// candidate so a controller can connect.
 pub async fn run_host(cfg: AgentHostConfig) -> Result<(), String> {
-    let (host, _slot) = connect_serving_host(&cfg).await?;
+    let (host, _slot, pairing) = connect_serving_host(&cfg).await?;
     let web_test = match crate::web_test::start_background() {
         Ok(server) => Some(server),
         Err(error) => {
@@ -1073,10 +1187,7 @@ pub async fn run_host(cfg: AgentHostConfig) -> Result<(), String> {
     if let Some(server) = &web_test {
         println!("  web:    http://{}/", server.address);
     }
-    let (node_id, relay) = host
-        .iroh_candidate()
-        .map(|(node_id, relay)| (node_id, relay))
-        .unwrap_or_default();
+    let (node_id, relay) = host.iroh_candidate().unwrap_or_default();
     if !node_id.is_empty() {
         println!("  node:   {node_id}");
         println!("  relay:  {relay}");
@@ -1084,18 +1195,19 @@ pub async fn run_host(cfg: AgentHostConfig) -> Result<(), String> {
         // ticket) so it stays small and phone-scannable — matching the desktop
         // host's format. The controller dials from nodeId + relayUrl and the full
         // ticket is exchanged after it connects.
-        let pairing = pairing_ticket_url(&cfg.host_id, &node_id, &relay, &cfg.relay_authentication);
+        let pairing =
+            pairing.publish(&(node_id.clone(), relay.clone()), &cfg.relay_authentication)?;
         println!("  pair:   run `codux link` or `codux qrcode`");
         if verbose_startup_output() {
             println!("pairingTicket={pairing}");
         }
         // Publish for `codux link` / `codux qrcode` to read.
-        crate::runstate::write_ticket(&pairing);
+        crate::runstate::write_ticket(&pairing)?;
     }
-    if let Some(ticket) = host.iroh_endpoint_ticket() {
-        if verbose_startup_output() {
-            println!("ticket={ticket}");
-        }
+    if let Some(ticket) = host.iroh_endpoint_ticket()
+        && verbose_startup_output()
+    {
+        println!("ticket={ticket}");
     }
     // Publish status for `codux status` / `codux stop`.
     crate::runstate::write_status(&crate::runstate::DaemonStatus {
@@ -1125,11 +1237,10 @@ fn verbose_startup_output() -> bool {
 /// Build the `codux://pair?payload=<base64url>` pairing URL the desktop
 /// controller pastes / the phone scans. Carries the minimum needed to dial —
 /// nodeId + relayUrl (+ relay auth) — NOT the bulky iroh endpoint ticket, so the
-/// QR stays small and scannable (the ticket ~doubles QR density). The code/
-/// secret/pairingId are present only because the controller parser requires
-/// them (the headless host auto-confirms without validating them).
+/// QR stays small and scannable (the ticket ~doubles QR density). The random
+/// pairing credential is single-use and rotates after confirmation.
 fn pairing_ticket_url(
-    host_id: &str,
+    credential: &AgentPairingCredential,
     node_id: &str,
     relay_url: &str,
     relay_authentication: &str,
@@ -1146,9 +1257,9 @@ fn pairing_ticket_url(
         relay_authentication,
     );
     let payload = codux_protocol::pairing_payload(
-        &short_token(host_id, 1),
-        &short_token(host_id, 2),
-        &format!("{host_id}-pairing"),
+        &credential.code,
+        &credential.secret,
+        &credential.pairing_id,
         &[candidate],
     );
     let bytes = serde_json::to_vec(&payload).unwrap_or_default();
@@ -1156,14 +1267,13 @@ fn pairing_ticket_url(
     format!("codux://pair?payload={encoded}")
 }
 
-/// A short non-empty token derived from a seed (not cryptographic — the iroh
-/// ticket is the actual credential).
-fn short_token(seed: &str, salt: u64) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    seed.hash(&mut hasher);
-    salt.hash(&mut hasher);
-    format!("{:08x}", hasher.finish() & 0xffff_ffff)
+fn new_agent_pairing_credential() -> Result<AgentPairingCredential, String> {
+    let token = random_token()?;
+    Ok(AgentPairingCredential {
+        pairing_id: random_token()?,
+        code: token.chars().take(6).collect(),
+        secret: random_token()?,
+    })
 }
 
 /// In-process round trip: stand up the serving host, connect a controller, and
@@ -1187,7 +1297,7 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     unsafe {
         std::env::set_var("CODUX_AGENT_DATA_DIR", &data_dir);
     }
-    let (host, _slot) = connect_serving_host(&cfg).await?;
+    let (host, _slot, pairing) = connect_serving_host(&cfg).await?;
     let (node_id, relay_url) = host
         .iroh_candidate()
         .ok_or_else(|| "iroh host candidate missing".to_string())?;
@@ -1212,11 +1322,11 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     let controller = RemoteTransportFactory::connect_controller(
         &controller_config,
         Arc::new(move |_source: String, data: Vec<u8>| {
-            if let Ok(envelope) = serde_json::from_slice::<Value>(&data) {
-                if let Some(kind) = envelope.get("type").and_then(Value::as_str) {
-                    let payload = envelope.get("payload").cloned().unwrap_or(Value::Null);
-                    let _ = reply_tx.send((kind.to_string(), payload));
-                }
+            if let Ok(envelope) = serde_json::from_slice::<Value>(&data)
+                && let Some(kind) = envelope.get("type").and_then(Value::as_str)
+            {
+                let payload = envelope.get("payload").cloned().unwrap_or(Value::Null);
+                let _ = reply_tx.send((kind.to_string(), payload));
             }
         }),
         Arc::new(|_, _| {}),
@@ -1257,13 +1367,14 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     }
 
     let run = async {
-        // 0. pairing handshake (headless auto-confirm)
+        let pairing = pairing.active.lock().unwrap().clone();
+        // 0. pairing handshake
         request(
             REMOTE_PAIRING_REQUEST,
             json!({
-                "pairingId": "smoke-pairing",
-                "code": "code",
-                "secret": "secret",
+                "pairingId": pairing.pairing_id,
+                "code": pairing.code,
+                "secret": pairing.secret,
                 "deviceName": "smoke-controller",
                 "deviceId": device_id,
             }),
@@ -1276,6 +1387,13 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
         }
         if confirmed.get("deviceId").and_then(Value::as_str) != Some(device_id.as_str()) {
             return Err("pairing.confirmed did not echo the device id".to_string());
+        }
+        let device_token = confirmed
+            .get("token")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "pairing.confirmed missing device token".to_string())?;
+        if !controller.set_device_credentials(&device_id, device_token) {
+            return Err("failed to activate paired device credentials".to_string());
         }
 
         request(REMOTE_HOST_METRICS, json!({}))?;
@@ -1581,16 +1699,15 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
             return Err(format!("memory.extract reply missing op: {extract}"));
         }
 
-        // ai.session: the host runs the codux-ai-sessions engine. A detail query
-        // for an unknown session returns null (no error path), exercising the
-        // dispatch end to end.
+        // ai.session: the host runs the codux-ai-sessions engine. An unknown
+        // detail request must return a correlated protocol error.
         request(
             REMOTE_AI_SESSION,
             json!({ "op": "detail", "projectPath": stats_project, "sessionId": "none" }),
         )?;
-        let session = expect(&mut reply_rx, REMOTE_AI_SESSION_RESULT).await?;
-        if session.get("op").and_then(Value::as_str) != Some("detail") {
-            return Err(format!("ai.session reply missing op: {session}"));
+        let session = expect(&mut reply_rx, REMOTE_ERROR).await?;
+        if session.get("message").and_then(Value::as_str) != Some("Session not found.") {
+            return Err(format!("ai.session reply missing error: {session}"));
         }
 
         Ok::<(), String>(())
@@ -1628,5 +1745,136 @@ mod tests {
             Some(HashSet::from(["phone-b".to_string()]))
         );
         assert!(!watchers.lock().unwrap().contains_key("project-2"));
+    }
+
+    #[test]
+    fn remove_ai_stats_watcher_project_clears_every_device() {
+        let watchers: AIStatsWatchers = Arc::new(Mutex::new(HashMap::from([
+            (
+                "project-1".to_string(),
+                HashSet::from(["phone-a".to_string(), "phone-b".to_string()]),
+            ),
+            (
+                "project-2".to_string(),
+                HashSet::from(["phone-a".to_string()]),
+            ),
+        ])));
+
+        remove_ai_stats_watcher_project("project-1", &watchers);
+
+        let watchers = watchers.lock().unwrap();
+        assert!(!watchers.contains_key("project-1"));
+        assert!(watchers.contains_key("project-2"));
+    }
+
+    #[test]
+    fn pairing_credentials_are_random_and_rotate_after_confirmation() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "codux-agent-pairing-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let state = AgentPairingState::with_paths(
+            data_dir.join("devices.json"),
+            data_dir.join("pair-ticket.json"),
+        )
+        .unwrap();
+        let first = state.active.lock().unwrap().clone();
+        let candidate = Arc::new(Mutex::new(None));
+        let response = state.confirm(
+            codux_protocol::RemoteTransportPairingRequest {
+                device_id: "phone-1".to_string(),
+                device_name: "Phone".to_string(),
+                platform: Some("ios".to_string()),
+                pairing_id: Some(first.pairing_id.clone()),
+                pairing_code: Some(first.code.clone()),
+                pairing_secret: Some(first.secret.clone()),
+            },
+            &candidate,
+            "host-1",
+            "Agent",
+            "",
+        );
+        let second = state.active.lock().unwrap().clone();
+
+        assert!(response.is_ok());
+        assert_ne!(first, second);
+        assert!(
+            state
+                .confirm(
+                    codux_protocol::RemoteTransportPairingRequest {
+                        device_id: "phone-2".to_string(),
+                        device_name: "Other".to_string(),
+                        platform: None,
+                        pairing_id: Some(first.pairing_id),
+                        pairing_code: Some(first.code),
+                        pairing_secret: Some(first.secret),
+                    },
+                    &candidate,
+                    "host-1",
+                    "Agent",
+                    "",
+                )
+                .is_err()
+        );
+        assert!(
+            state.is_authorized(
+                "phone-1",
+                response
+                    .as_ref()
+                    .ok()
+                    .and_then(|value| value.get("token"))
+                    .and_then(Value::as_str)
+                    .unwrap()
+            )
+        );
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn pairing_ticket_write_failure_still_invalidates_used_credential() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "codux-agent-pairing-write-failure-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let ticket_path = data_dir.join("ticket-directory");
+        std::fs::create_dir_all(&ticket_path).unwrap();
+        let state =
+            AgentPairingState::with_paths(data_dir.join("devices.json"), ticket_path).unwrap();
+        let first = state.active.lock().unwrap().clone();
+        let candidate = Arc::new(Mutex::new(Some((
+            "node-1".to_string(),
+            "https://relay.example".to_string(),
+        ))));
+        let request = codux_protocol::RemoteTransportPairingRequest {
+            device_id: "phone-1".to_string(),
+            device_name: "Phone".to_string(),
+            platform: Some("ios".to_string()),
+            pairing_id: Some(first.pairing_id.clone()),
+            pairing_code: Some(first.code.clone()),
+            pairing_secret: Some(first.secret.clone()),
+        };
+
+        assert!(
+            state
+                .confirm(request.clone(), &candidate, "host-1", "Agent", "")
+                .is_err()
+        );
+        assert_ne!(*state.active.lock().unwrap(), first);
+        assert!(
+            state
+                .confirm(request, &candidate, "host-1", "Agent", "")
+                .is_err()
+        );
+        assert!(!state.device_store_path.exists());
+
+        let _ = std::fs::remove_dir_all(data_dir);
     }
 }

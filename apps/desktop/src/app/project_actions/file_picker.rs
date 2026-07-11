@@ -1,16 +1,27 @@
 use super::*;
 
+pub(in crate::app) struct FilePickerOpenRequest {
+    pub(in crate::app) mode: FilePickerMode,
+    pub(in crate::app) target: FilePickerTarget,
+    pub(in crate::app) device_id: Option<String>,
+    pub(in crate::app) start_path: Option<String>,
+    pub(in crate::app) default_filename: Option<String>,
+}
+
 impl CoduxApp {
     pub(in crate::app) fn open_file_picker_window(
         &mut self,
-        mode: FilePickerMode,
-        target: FilePickerTarget,
-        device_id: Option<String>,
-        start_path: Option<String>,
-        default_filename: Option<String>,
+        request: FilePickerOpenRequest,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let FilePickerOpenRequest {
+            mode,
+            target,
+            device_id,
+            start_path,
+            default_filename,
+        } = request;
         let locale = locale_from_language_setting(&self.state.settings.language);
         let title = translate(
             &locale,
@@ -61,7 +72,7 @@ impl CoduxApp {
                 let handle = window.window_handle();
                 let device = device_id.clone();
                 let start = start_path.clone();
-                let _ = view.update(cx, |app, cx| {
+                view.update(cx, |app, cx| {
                     app.load_project_editor_browse(device, start, handle, cx);
                 });
             },
@@ -94,13 +105,12 @@ impl CoduxApp {
             return;
         }
         // Selecting a file (Save mode prefills the filename from it).
-        if self.file_picker_mode == FilePickerMode::Save {
-            if let Some(name) = std::path::Path::new(&path)
+        if self.file_picker_mode == FilePickerMode::Save
+            && let Some(name) = std::path::Path::new(&path)
                 .file_name()
                 .and_then(|name| name.to_str())
-            {
-                self.file_picker_filename = name.to_string();
-            }
+        {
+            self.file_picker_filename = name.to_string();
         }
         self.file_picker_selected = Some(path);
         self.invalidate_project_management(cx);
@@ -162,7 +172,7 @@ impl CoduxApp {
             .and_then(|parent| parent.upgrade())
         {
             let device = self.project_editor_host_device_id.clone();
-            let _ = parent.update(cx, |opener, cx| {
+            parent.update(cx, |opener, cx| {
                 opener.apply_file_picker_result(target, device.clone(), path.clone(), cx);
             });
         }
@@ -517,7 +527,7 @@ impl CoduxApp {
         let device_id = self.project_editor_host_device_id.clone();
         let reload_path = self.project_editor_browse_path.clone();
         let entry_path = entry.path.clone();
-        let window_handle = self.file_picker_window.clone();
+        let window_handle = self.file_picker_window;
         self.project_editor_browse_busy = true;
         self.project_editor_browse_error = None;
         self.invalidate_project_management(cx);
@@ -857,12 +867,11 @@ fn clean_dialog_path(path: &str) -> String {
     if path.is_empty() {
         return String::new();
     }
-    if let Ok(url) = url::Url::parse(path) {
-        if url.scheme() == "file" {
-            if let Ok(file_path) = url.to_file_path() {
-                return file_path.to_string_lossy().into_owned();
-            }
-        }
+    if let Ok(url) = url::Url::parse(path)
+        && url.scheme() == "file"
+        && let Ok(file_path) = url.to_file_path()
+    {
+        return file_path.to_string_lossy().into_owned();
     }
     codux_runtime::path::display_path(path)
 }

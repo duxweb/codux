@@ -13,6 +13,8 @@ struct FileMutationResult {
     saved_editor_content: Option<String>,
 }
 
+type FileMutationTree = (Vec<FileEntry>, HashMap<String, Vec<FileEntry>>);
+
 #[derive(Default)]
 enum FileMutationSelection {
     #[default]
@@ -47,7 +49,7 @@ fn load_file_mutation_tree(
     project_path: &str,
     directory: Option<&str>,
     expanded_dirs: &[String],
-) -> Result<(Vec<FileEntry>, HashMap<String, Vec<FileEntry>>), String> {
+) -> Result<FileMutationTree, String> {
     let files = runtime_service.try_reload_project_files(project_path, directory)?;
     let file_tree_children =
         load_file_mutation_children(runtime_service, project_path, expanded_dirs)?;
@@ -299,12 +301,13 @@ impl CoduxApp {
                                 .unwrap_or(self.file_preview == *content)
                         })
                     });
-                if selection_unchanged && saved_editor_unchanged {
-                    if let Some((preview, editable, dirty)) = result.preview {
-                        self.file_preview = preview;
-                        self.file_editable = editable;
-                        self.file_dirty = dirty;
-                    }
+                if selection_unchanged
+                    && saved_editor_unchanged
+                    && let Some((preview, editable, dirty)) = result.preview
+                {
+                    self.file_preview = preview;
+                    self.file_editable = editable;
+                    self.file_dirty = dirty;
                 }
                 self.state.git = result.git;
                 self.normalize_selected_git_file();
@@ -312,12 +315,10 @@ impl CoduxApp {
                 if result.clear_draft && self.file_mutation_draft_state() == started_draft {
                     self.clear_file_name_draft();
                 }
-                if saved_editor_unchanged {
-                    if let Some(path) = result.saved_editor_path.as_deref() {
-                        self.mark_file_editor_dirty(path, false, window, cx);
-                        self.normalize_file_search_index();
-                        self.persist_file_editor_layout_async(cx);
-                    }
+                if saved_editor_unchanged && let Some(path) = result.saved_editor_path.as_deref() {
+                    self.mark_file_editor_dirty(path, false, window, cx);
+                    self.normalize_file_search_index();
+                    self.persist_file_editor_layout_async(cx);
                 }
                 self.status_message = result.status;
                 self.remember_current_file_panel_state();

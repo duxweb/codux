@@ -69,28 +69,28 @@ impl CoduxApp {
             UiRegion::WorkspaceBody => {
                 self.record_ui_performance_event("invalidate", region.label());
                 if self.workspace_view == WorkspaceView::Terminal {
-                    if !self.update_terminal_workspace_view(cx) {
-                        if let Some(view) = &self.workspace_body_view {
-                            view.update(cx, |_view, cx| cx.notify());
-                        }
+                    if !self.update_terminal_workspace_view(cx)
+                        && let Some(view) = &self.workspace_body_view
+                    {
+                        view.update(cx, |_view, cx| cx.notify());
                     }
                 } else if self.workspace_view == WorkspaceView::Files {
-                    if !self.update_file_editor_workspace_view(cx) {
-                        if let Some(view) = &self.workspace_body_view {
-                            view.update(cx, |_view, cx| cx.notify());
-                        }
+                    if !self.update_file_editor_workspace_view(cx)
+                        && let Some(view) = &self.workspace_body_view
+                    {
+                        view.update(cx, |_view, cx| cx.notify());
                     }
                 } else if self.workspace_view == WorkspaceView::Review {
-                    if !self.update_review_workspace_view(cx) {
-                        if let Some(view) = &self.workspace_body_view {
-                            view.update(cx, |_view, cx| cx.notify());
-                        }
+                    if !self.update_review_workspace_view(cx)
+                        && let Some(view) = &self.workspace_body_view
+                    {
+                        view.update(cx, |_view, cx| cx.notify());
                     }
                 } else if self.workspace_view == WorkspaceView::Stats {
-                    if !self.update_stats_workspace_view(cx) {
-                        if let Some(view) = &self.workspace_body_view {
-                            view.update(cx, |_view, cx| cx.notify());
-                        }
+                    if !self.update_stats_workspace_view(cx)
+                        && let Some(view) = &self.workspace_body_view
+                    {
+                        view.update(cx, |_view, cx| cx.notify());
                     }
                 } else if let Some(view) = &self.workspace_body_view {
                     view.update(cx, |_view, cx| cx.notify());

@@ -31,6 +31,34 @@ fn ai_stats_watcher_tracks_one_project_per_device_and_clears_on_disconnect() {
 }
 
 #[test]
+fn ai_stats_resource_unsubscribe_removes_runtime_watcher() {
+    let support_dir = temp_support_dir("codux-remote-ai-stats-unsubscribe");
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    runtime.register_ai_stats_watcher("project-a", "device-1", "project-a");
+    runtime.resource_subscriptions.subscribe(
+        REMOTE_RESOURCE_AI_STATS,
+        Some("project-a"),
+        None,
+        "device-1",
+    );
+
+    runtime.handle_resource_unsubscribe(&RemoteEnvelope {
+        kind: REMOTE_RESOURCE_UNSUBSCRIBE.to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: None,
+        request_id: None,
+        seq: None,
+        payload: json!({
+            "resource": REMOTE_RESOURCE_AI_STATS,
+            "projectId": "project-a",
+        }),
+    });
+
+    assert!(runtime.ai_stats_watchers.lock().unwrap().is_empty());
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn ai_stats_rejects_unknown_project_instead_of_using_first_project() {
     let support_dir = temp_support_dir("codux-remote-ai-stats-project-scope");
     write_two_project_state(&support_dir);
@@ -44,6 +72,7 @@ fn ai_stats_rejects_unknown_project_instead_of_using_first_project() {
         kind: REMOTE_AI_STATS.to_string(),
         device_id: Some("device-1".to_string()),
         session_id: None,
+        request_id: None,
         seq: None,
         payload: json!({
             "projectId": "missing-project",
@@ -60,6 +89,38 @@ fn ai_stats_rejects_unknown_project_instead_of_using_first_project() {
         "Project not found for AI stats."
     );
     assert!(runtime.ai_stats_watchers.lock().unwrap().is_empty());
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn ai_session_error_reply_preserves_request_id() {
+    let support_dir = temp_support_dir("codux-remote-ai-session-error");
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    let transport = Arc::new(CapturingTransport::default());
+    if let Ok(mut current) = runtime.transport.lock() {
+        *current = Some(transport.clone());
+    }
+
+    runtime.handle_ai_session(&RemoteEnvelope {
+        kind: REMOTE_AI_SESSION.to_string(),
+        device_id: Some("device-1".to_string()),
+        session_id: None,
+        request_id: Some("request-ai-error".to_string()),
+        seq: None,
+        payload: json!({
+            "op": "detail",
+            "projectPath": "/missing/project",
+            "sessionId": "missing-session",
+        }),
+    });
+
+    let messages = transport.take_messages();
+    assert_eq!(messages.len(), 1);
+    let envelope: Value = serde_json::from_slice(&messages[0].1).expect("error envelope");
+    assert_eq!(envelope["type"], REMOTE_ERROR);
+    assert_eq!(envelope["requestId"], "request-ai-error");
+    assert!(envelope["payload"]["message"].is_string());
 
     fs::remove_dir_all(support_dir).ok();
 }

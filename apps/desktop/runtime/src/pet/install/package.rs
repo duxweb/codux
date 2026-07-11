@@ -4,7 +4,10 @@ use super::super::{
     now_seconds, sanitize_custom_pet_id,
 };
 use super::types::StagingCleanup;
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 use uuid::Uuid;
 use zip::ZipArchive;
 
@@ -44,7 +47,7 @@ pub(super) fn install_custom_pet_package(
     Ok(pet)
 }
 
-fn extract_zip_bytes(bytes: &[u8], destination: &PathBuf) -> Result<(), String> {
+fn extract_zip_bytes(bytes: &[u8], destination: &Path) -> Result<(), String> {
     let reader = io::Cursor::new(bytes);
     let mut archive =
         ZipArchive::new(reader).map_err(|_| "Failed to unpack the pet package.".to_string())?;

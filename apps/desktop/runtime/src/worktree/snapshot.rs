@@ -6,16 +6,7 @@ use super::{
 };
 
 pub(super) fn scanned_worktree_to_snapshot(worktree: ScannedWorktree) -> ProjectWorktreeSnapshot {
-    project_worktree_snapshot(
-        worktree.id,
-        worktree.project_id,
-        worktree.name,
-        worktree.branch,
-        worktree.path,
-        worktree.status,
-        worktree.is_default,
-        worktree.created_at,
-    )
+    project_worktree_snapshot(worktree)
 }
 
 pub(super) fn scanned_task_to_snapshot(task: ScannedTask) -> WorktreeTaskSnapshot {
@@ -32,27 +23,18 @@ pub(super) fn scanned_task_to_snapshot(task: ScannedTask) -> WorktreeTaskSnapsho
     }
 }
 
-pub(super) fn project_worktree_snapshot(
-    id: String,
-    project_id: String,
-    name: String,
-    branch: String,
-    path: String,
-    status: String,
-    is_default: bool,
-    now: i64,
-) -> ProjectWorktreeSnapshot {
-    let git_summary = project_worktree_git_summary(&path);
+pub(super) fn project_worktree_snapshot(worktree: ScannedWorktree) -> ProjectWorktreeSnapshot {
+    let git_summary = project_worktree_git_summary(&worktree.path);
     ProjectWorktreeSnapshot {
-        id,
-        project_id,
-        name,
-        branch,
-        path,
-        status,
-        is_default,
-        created_at: now,
-        updated_at: now,
+        id: worktree.id,
+        project_id: worktree.project_id,
+        name: worktree.name,
+        branch: worktree.branch,
+        path: worktree.path,
+        status: worktree.status,
+        is_default: worktree.is_default,
+        created_at: worktree.created_at,
+        updated_at: worktree.updated_at,
         git_summary,
     }
 }

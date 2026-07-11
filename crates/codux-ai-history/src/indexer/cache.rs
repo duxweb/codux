@@ -15,7 +15,7 @@ pub fn indexed_project_snapshot(
     let project_id = project.id.clone();
     load_indexed_project_history_at(database_path.to_path_buf(), project)
         .map_err(|error| error.to_string())
-        .map(|snapshot| {
+        .inspect(|snapshot| {
             runtime_trace_elapsed(
                 "ai-history",
                 "load_project_cache",
@@ -30,7 +30,6 @@ pub fn indexed_project_snapshot(
                         .unwrap_or(0)
                 ),
             );
-            snapshot
         })
 }
 
@@ -42,7 +41,7 @@ pub fn indexed_global_snapshot(
     let project_count = projects.len();
     load_indexed_global_history_at(database_path.to_path_buf(), projects)
         .map_err(|error| error.to_string())
-        .map(|snapshot| {
+        .inspect(|snapshot| {
             runtime_trace_elapsed(
                 "ai-history",
                 "load_global_cache",
@@ -57,7 +56,6 @@ pub fn indexed_global_snapshot(
                         .unwrap_or(0)
                 ),
             );
-            snapshot
         })
 }
 

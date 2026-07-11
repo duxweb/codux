@@ -231,7 +231,7 @@ impl Render for WorkspaceAssistantView {
                         AssistantPanel::ServerInfo => self.app_entity.update(cx, |app, cx| {
                             gpui::AnyView::from(app.server_info_sidebar_view(cx)).into_any_element()
                         }),
-                        AssistantPanel::SSH => self.app_entity.update(cx, |app, cx| {
+                        AssistantPanel::Ssh => self.app_entity.update(cx, |app, cx| {
                             gpui::AnyView::from(app.ssh_sidebar_view(cx)).into_any_element()
                         }),
                         AssistantPanel::DB => self.app_entity.update(cx, |app, cx| {
@@ -263,7 +263,7 @@ pub(super) fn assistant_panel_available(
     snapshot: &WorkspaceAssistantSnapshot,
 ) -> bool {
     match panel {
-        AssistantPanel::SSH => true,
+        AssistantPanel::Ssh => true,
         AssistantPanel::ServerInfo => snapshot.has_project,
         _ => snapshot.has_project,
     }
@@ -323,7 +323,7 @@ fn assistant_panel_key(panel: Option<AssistantPanel>) -> &'static str {
     match panel {
         Some(AssistantPanel::AIStats) => "ai_stats",
         Some(AssistantPanel::ServerInfo) => "server_info",
-        Some(AssistantPanel::SSH) => "ssh",
+        Some(AssistantPanel::Ssh) => "ssh",
         Some(AssistantPanel::DB) => "db",
         Some(AssistantPanel::FileManager) => "file_manager",
         Some(AssistantPanel::Git) => "git",

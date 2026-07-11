@@ -4,24 +4,43 @@ mod items;
 
 use items::*;
 
+pub(super) struct GitBranchMenuInput {
+    pub(super) branches: Vec<GitBranchSummary>,
+    pub(super) remote_branches: Vec<String>,
+    pub(super) remotes: Vec<GitRemoteSummary>,
+    pub(super) default_push_remote: Option<String>,
+    pub(super) current_branch: String,
+    pub(super) upstream: Option<String>,
+    pub(super) has_commits: bool,
+    pub(super) stashes: Vec<GitStashSummary>,
+    pub(super) tags: Vec<String>,
+    pub(super) changed_paths: Vec<String>,
+    pub(super) has_staged: bool,
+    pub(super) language: String,
+    pub(super) app_entity: gpui::Entity<CoduxApp>,
+}
+
 pub(super) fn git_branch_dropdown_menu(
     menu: PopupMenu,
+    input: GitBranchMenuInput,
     window: &mut Window,
     cx: &mut Context<PopupMenu>,
-    branches: Vec<GitBranchSummary>,
-    remote_branches: Vec<String>,
-    remotes: Vec<GitRemoteSummary>,
-    default_push_remote: Option<String>,
-    current_branch: String,
-    upstream: Option<String>,
-    has_commits: bool,
-    stashes: Vec<GitStashSummary>,
-    tags: Vec<String>,
-    changed_paths: Vec<String>,
-    has_staged: bool,
-    language: String,
-    app_entity: gpui::Entity<CoduxApp>,
 ) -> PopupMenu {
+    let GitBranchMenuInput {
+        branches,
+        remote_branches,
+        remotes,
+        default_push_remote,
+        current_branch,
+        upstream,
+        has_commits,
+        stashes,
+        tags,
+        changed_paths,
+        has_staged,
+        language,
+        app_entity,
+    } = input;
     let labels = Rc::new(GitBranchMenuLabels::load(&language));
     let has_remotes = !remotes.is_empty();
     let has_changes = !changed_paths.is_empty();

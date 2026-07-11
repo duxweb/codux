@@ -1,5 +1,7 @@
 use super::*;
 
+type CleanFileEditorReloadResult = Vec<(String, std::result::Result<(String, bool), String>)>;
+
 impl CoduxApp {
     pub(super) fn spawn_file_editor_state_load(
         &mut self,
@@ -51,15 +53,14 @@ impl CoduxApp {
         match result {
             Some(Ok((content, editable))) => {
                 let language = file_language_for_path(&relative_path).to_string();
-                if is_current_file_context {
-                    if let Some(tab) = self
+                if is_current_file_context
+                    && let Some(tab) = self
                         .file_editor_tabs
                         .iter_mut()
                         .find(|tab| tab.relative_path == relative_path)
-                    {
-                        tab.editable = editable;
-                        tab.language = language.clone();
-                    }
+                {
+                    tab.editable = editable;
+                    tab.language = language.clone();
                 }
                 self.ensure_file_editor_state(
                     key,
@@ -71,10 +72,9 @@ impl CoduxApp {
                 );
                 if is_current_file_context
                     && self.active_file_editor_tab.as_deref() == Some(relative_path.as_str())
+                    && let Some(editor) = self.active_file_editor_state()
                 {
-                    if let Some(editor) = self.active_file_editor_state() {
-                        editor.update(cx, |state, cx| state.focus(window, cx));
-                    }
+                    editor.update(cx, |state, cx| state.focus(window, cx));
                 }
             }
             Some(Err(error)) => {
@@ -90,10 +90,11 @@ impl CoduxApp {
                 }
             }
         }
-        if is_current_file_context && self.workspace_view == WorkspaceView::Files {
-            if !self.update_file_editor_workspace_view(cx) {
-                self.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
-            }
+        if is_current_file_context
+            && self.workspace_view == WorkspaceView::Files
+            && !self.update_file_editor_workspace_view(cx)
+        {
+            self.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
         }
         if is_current_file_context {
             self.invalidate_ui_region(cx, UiRegion::FileSidebar);
@@ -170,7 +171,7 @@ impl CoduxApp {
 
     fn apply_clean_file_editor_tab_reload(
         &mut self,
-        result: Option<Vec<(String, std::result::Result<(String, bool), String>)>>,
+        result: Option<CleanFileEditorReloadResult>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {

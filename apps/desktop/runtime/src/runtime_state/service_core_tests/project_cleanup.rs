@@ -230,3 +230,92 @@ fn project_close_cleans_workspace_cache_for_root_and_worktrees() {
 
     let _ = fs::remove_dir_all(support_dir);
 }
+
+#[test]
+fn project_close_cleans_remote_project_state() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-project-close-remote-state-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let project_dir = support_dir.join("project");
+    fs::create_dir_all(&project_dir).expect("create project dir");
+    fs::write(
+        support_dir.join("state.json"),
+        json!({
+            "projects": [{
+                "id": "project-1",
+                "name": "Project",
+                "path": project_dir.to_string_lossy()
+            }],
+            "selectedProjectId": "project-1"
+        })
+        .to_string(),
+    )
+    .expect("write state");
+    let service = RuntimeService::new(support_dir.clone());
+    let resource = codux_protocol::REMOTE_RESOURCE_AI_STATS;
+    service.remote_host.resource_subscriptions.subscribe(
+        resource,
+        Some("project-1"),
+        None,
+        "device-1",
+    );
+    service.remote_host.resource_subscriptions.next_version(
+        resource,
+        Some("project-1"),
+        None,
+    );
+    service
+        .remote_host
+        .remote_project_scope_by_device
+        .lock()
+        .expect("project scopes")
+        .insert("device-1".to_string(), "project-1".to_string());
+    service
+        .remote_host
+        .ai_stats_watchers
+        .lock()
+        .expect("ai stats watchers")
+        .entry("project-1".to_string())
+        .or_default()
+        .insert("device-1".to_string(), "project-1".to_string());
+
+    service
+        .project_close(ProjectCloseRequest {
+            project_id: "project-1".to_string(),
+        })
+        .expect("close project");
+
+    assert!(
+        service
+            .remote_host
+            .resource_subscriptions
+            .devices_for(resource, Some("project-1"), None)
+            .is_empty()
+    );
+    assert_eq!(
+        service
+            .remote_host
+            .resource_subscriptions
+            .current_version(resource, Some("project-1"), None),
+        0
+    );
+    assert!(
+        service
+            .remote_host
+            .remote_project_scope_by_device
+            .lock()
+            .expect("project scopes")
+            .is_empty()
+    );
+    assert!(
+        service
+            .remote_host
+            .ai_stats_watchers
+            .lock()
+            .expect("ai stats watchers")
+            .is_empty()
+    );
+
+    let _ = fs::remove_dir_all(support_dir);
+}

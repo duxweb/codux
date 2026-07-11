@@ -165,9 +165,9 @@ pub(in crate::ai_runtime::store) fn apply_runtime_snapshot_unlocked(
             (snapshot.was_interrupted || snapshot.has_completed_turn).then_some(snapshot.updated_at)
         });
         let silent_stale_prelaunch_open_turn = is_silent_stale_prelaunch_open_turn(&snapshot);
-        let can_resolve_idle = if silent_stale_prelaunch_open_turn {
-            true
-        } else if snapshot_tool == "kiro" && snapshot.has_completed_turn {
+        let can_resolve_idle = if silent_stale_prelaunch_open_turn
+            || (snapshot_tool == "kiro" && snapshot.has_completed_turn)
+        {
             true
         } else if snapshot.was_interrupted || snapshot.has_completed_turn {
             turn_completed_at
@@ -356,10 +356,10 @@ fn runtime_turn_started_at_for_responding_snapshot(
     prompt_turn_started_at: f64,
     fallback: f64,
 ) -> f64 {
-    if let Some(started_at) = snapshot.started_at {
-        if started_at >= prompt_turn_started_at {
-            return started_at;
-        }
+    if let Some(started_at) = snapshot.started_at
+        && started_at >= prompt_turn_started_at
+    {
+        return started_at;
     }
     snapshot.updated_at.max(fallback)
 }
