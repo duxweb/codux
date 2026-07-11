@@ -6,7 +6,7 @@ use std::any::Any;
 use std::collections::VecDeque;
 use std::ffi::{CStr, CString, c_char};
 use std::ptr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use tokio::runtime::Runtime;
 
 pub type FfiRemoteRuntimeModel = RemoteRuntimeModel;
@@ -31,9 +31,23 @@ pub struct FfiControllerTransport {
     pub(crate) transport: Arc<Mutex<Option<Arc<dyn RemoteTransport>>>>,
     pub(crate) events: Arc<Mutex<VecDeque<TransportEvent>>>,
     pub(crate) runtime: Arc<Runtime>,
+    pub(crate) connect_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 static LAST_ERROR: Mutex<Option<String>> = Mutex::new(None);
+// Iroh controller endpoints are process-shared, so their Tokio executor must
+// have the same lifetime instead of being dropped with each Flutter FFI handle.
+static CONTROLLER_TRANSPORT_RUNTIME: OnceLock<Result<Arc<Runtime>, String>> = OnceLock::new();
+
+pub(crate) fn controller_transport_runtime() -> Result<Arc<Runtime>, String> {
+    CONTROLLER_TRANSPORT_RUNTIME
+        .get_or_init(|| {
+            Runtime::new()
+                .map(Arc::new)
+                .map_err(|error| format!("failed to create controller runtime: {error}"))
+        })
+        .clone()
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn codux_protocol_last_error() -> *mut c_char {
@@ -299,6 +313,14 @@ fn transport_event_priority(kind: TransportEventKind) -> u8 {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn controller_transports_share_one_runtime() {
+        let first = controller_transport_runtime().expect("first runtime");
+        let second = controller_transport_runtime().expect("second runtime");
+
+        assert!(Arc::ptr_eq(&first, &second));
+    }
 
     #[test]
     fn transport_event_queue_is_bounded_and_preserves_lifecycle_state() {

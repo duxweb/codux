@@ -4675,9 +4675,9 @@ dependencies = [
 
 [[package]]
 name = "iroh"
-version = "1.0.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6435544bb3a5c4e6ff7affaa0c0aa0d1bca45bd700226329d5059d3eb54f9dff"
+checksum = "5fca9b4b462c343ff88fc0af4096c186f939b602a0bc08723536ef2c31c93971"
 dependencies = [
  "backon",
  "blake3",
@@ -4726,9 +4726,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-base"
-version = "1.0.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9c95e4459d9bb828a77084277abd308aa2b58a096652b079bddfd6ef2361f53"
+checksum = "830a582cd54410dc1aa71d4786a82c3297d7b0165accd8b6dbbb3b240b48140d"
 dependencies = [
  "curve25519-dalek",
  "data-encoding",
@@ -4786,9 +4786,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-dns"
-version = "1.0.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "754f7e0c1f67938e1d671007264ffef158f14a9f795a7cc219ea68ea09a9d4c9"
+checksum = "516e4eedc38e33ab69a6bd325520332dc3d67b25454e2d590ebb84a25240dd9a"
 dependencies = [
  "arc-swap",
  "cfg_aliases 0.2.1",
@@ -4870,9 +4870,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-relay"
-version = "1.0.0"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c12e48fef252fd04f8e6b6a8802b377baf72548d62ae4838816624cd0e06b79"
+checksum = "8149bb6a57126225a07d6928846d82dcedfd24ea0f863ef7b2eb475e1d726354"
 dependencies = [
  "blake3",
  "bytes",
@@ -5860,9 +5860,9 @@ dependencies = [
 
 [[package]]
 name = "netdev"
-version = "0.44.0"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d31e7286c21ceaf0ddb1d881964011214555ea0b317cc2eb1a1d68d861386fc"
+checksum = "569dfbdd2efd771b24ec9bb57f956e04d4fbfc72f62b2f11961723f9b3f4b020"
 dependencies = [
  "block2",
  "dispatch2",
@@ -5873,7 +5873,7 @@ dependencies = [
  "mac-addr",
  "ndk-context",
  "netlink-packet-core",
- "netlink-packet-route 0.29.0",
+ "netlink-packet-route",
  "netlink-sys",
  "objc2",
  "objc2-core-foundation",
@@ -5892,18 +5892,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3463cbb78394cb0141e2c926b93fc2197e473394b761986eca3b9da2c63ae0f4"
 dependencies = [
  "paste",
-]
-
-[[package]]
-name = "netlink-packet-route"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9854ea6ad14e3f4698a7f03b65bce0833dd2d81d594a0e4a984170537146b6"
-dependencies = [
- "bitflags 2.11.1",
- "libc",
- "log",
- "netlink-packet-core",
 ]
 
 [[package]]
@@ -5947,9 +5935,9 @@ dependencies = [
 
 [[package]]
 name = "netwatch"
-version = "0.19.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8487d26d691cd98d5c17b2adb4b1fd4b31cccc820da1eac827d483295d7bb94a"
+checksum = "4d9cbe01741347ef750d743d6690603f5eed8341e679fb51c8e629337aa11976"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -5963,7 +5951,7 @@ dependencies = [
  "n0-watcher",
  "netdev",
  "netlink-packet-core",
- "netlink-packet-route 0.31.0",
+ "netlink-packet-route",
  "netlink-proto",
  "netlink-sys",
  "noq-udp",
@@ -6060,9 +6048,9 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "noq"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11f0c73794bfde94db01379c46990b9a773993fca2b61a66184ce148b7c7a187"
+checksum = "4bf95190af1bd4a00a10e8255ca0c8ddd9e9a9f5e79151d7a7eb6d56aff5dc89"
 dependencies = [
  "bytes",
  "cfg_aliases 0.2.1",
@@ -6082,9 +6070,9 @@ dependencies = [
 
 [[package]]
 name = "noq-proto"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775be06b8d66c2c64db60140bf54dee8410f67b73c81cc1e1e32f11dfdaae501"
+checksum = "aa6c890013591e709a3e45dd53501351b7e27e7ff3c7e9fc3dce43e300e7e9d3"
 dependencies = [
  "aes-gcm",
  "bytes",
@@ -6111,9 +6099,9 @@ dependencies = [
 
 [[package]]
 name = "noq-udp"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd5a37756f168cf350d68a97c4f0158bdf3c76f10175123941569b09ab51f011"
+checksum = "3137a52df66c20090a889828d1c655f21f52294cba64e5c4fbb04fc83eee7c8e"
 dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
@@ -7090,9 +7078,9 @@ dependencies = [
 
 [[package]]
 name = "portmapper"
-version = "0.19.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccc716c56a0a50f7e4e25f41446419599d47c6197cc5c9858174220e97c272e6"
+checksum = "eb3713e4977408279158444a18c1a01ac9bf2e7eaf1fbfd1a19ac9cd18d90721"
 dependencies = [
  "base64",
  "bytes",

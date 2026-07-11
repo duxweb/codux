@@ -489,8 +489,6 @@ extension _HomePageConnection on HomeController {
     _cancelHostResponseProbe();
     _clearConnectionGrace();
     _lastConnectedAt = null;
-    _healthTimer?.cancel();
-    _healthTimer = null;
     _clearLatencyProbe();
     _transportConnected = false;
     unawaited(_closeActiveTransport());
@@ -560,7 +558,6 @@ extension _HomePageConnection on HomeController {
     }
     if (_connectInFlight &&
         _connectInFlightKey == connectKey &&
-        _transportConnected &&
         !_remoteProtocolReady) {
       CoduxLog.info(
         '[codux-flutter-remote] connect skipped reason=in-flight host=${target.hostId} device=${target.deviceId}',
@@ -597,8 +594,6 @@ extension _HomePageConnection on HomeController {
     );
     _cancelHostResponseProbe();
     _reconnectTimer?.cancel();
-    _transportCloseTimer?.cancel();
-    _healthTimer?.cancel();
     _clearLatencyProbe();
     unawaited(_closeActiveTransport());
     _transportConnected = false;
@@ -672,18 +667,6 @@ extension _HomePageConnection on HomeController {
         _applyState(() => _status = _t('connection.failedRetry'));
       }
       _handleTransportClosed('connect_failed');
-    });
-    _healthTimer = Timer(const Duration(seconds: 16), () {
-      if (generation != _transportGeneration) return;
-      if (!_transportConnected) {
-        CoduxLog.warn('[codux-flutter-remote] connect timeout gen=$generation');
-        _connectInFlight = false;
-        _connectInFlightKey = null;
-        if (!_backgroundConnect && mounted) {
-          _applyState(() => _status = _t('connection.failedRetry'));
-        }
-        _handleTransportClosed('hello_timeout');
-      }
     });
   }
 

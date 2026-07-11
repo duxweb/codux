@@ -171,14 +171,12 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
   final _receiveSequenceGuard = RemoteSequenceGuard();
   Future<void> _receiveChain = Future<void>.value();
   Timer? _reconnectTimer;
-  Timer? _healthTimer;
   Timer? _toastTimer;
   Timer? _filePickerTimeoutTimer;
   Timer? _projectListRetryTimer;
   Timer? _terminalListRetryTimer;
   final Map<String, Timer> _projectSelectAckTimers = {};
   Timer? _hostResponseTimer;
-  Timer? _transportCloseTimer;
   int get _projectListRetryAttempt => _remoteSync.projectListRetryAttempt;
   int get _terminalListRetryAttempt => _remoteSync.terminalListRetryAttempt;
   double? _edgeBackDragStartX;
@@ -449,10 +447,8 @@ class HomeController extends ChangeNotifier with WidgetsBindingObserver {
     _disposing = true;
     _shouldReconnect = false;
     _reconnectTimer?.cancel();
-    _healthTimer?.cancel();
     _clearLatencyProbe();
     _connectionGraceTimer?.cancel();
-    _transportCloseTimer?.cancel();
     _networkRouteRefreshController.dispose();
     _toastTimer?.cancel();
     _filePickerTimeoutTimer?.cancel();

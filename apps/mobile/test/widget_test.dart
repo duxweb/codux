@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'dart:io';
 import 'package:codux_flutter/main.dart';
 import 'package:codux_flutter/i18n.dart';
 import 'package:codux_flutter/models/remote_models.dart';
@@ -2235,6 +2236,32 @@ void main() {
     expect(CoduxLog.snapshotText(), contains('connect start'));
   });
 
+  testWidgets('resume does not restart an in-flight connection', (
+    WidgetTester tester,
+  ) async {
+    final device = await _fakeDevice();
+    var connectCount = 0;
+    final pending = Completer<void>();
+    final fake = _FakeRemoteTransport(
+      device: device,
+      onSent: (_, _) {},
+      onConnect: (_) => connectCount += 1,
+      connectFuture: pending.future,
+    );
+
+    await tester.pumpWidget(
+      CoduxFlutterApp(initialDevices: [device], transportFactory: (_) => fake),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(connectCount, 1);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    expect(connectCount, 1);
+    pending.complete();
+  });
+
   test('mobile languages match Mac language count', () {
     expect(LocaleChoices.all.length, 11);
     expect(LocaleChoices.byId('zh-CN').id, 'simplifiedChinese');
@@ -2336,6 +2363,7 @@ final class _FakeRemoteTransport implements RemoteTransport {
     this.initialPath = 'relay',
     this.onBeforeSend,
     this.onConnect,
+    this.connectFuture,
   });
 
   final StoredDevice device;
@@ -2343,6 +2371,7 @@ final class _FakeRemoteTransport implements RemoteTransport {
   final String initialPath;
   final _FakeSendDecision? onBeforeSend;
   final _FakeConnectHandler? onConnect;
+  final Future<void>? connectFuture;
   RemoteTransportStateHandler? _onState;
   RemoteTransportEnvelopeHandler? _onEnvelope;
 
@@ -2360,6 +2389,8 @@ final class _FakeRemoteTransport implements RemoteTransport {
   Future<void> connect(StoredDevice device) async {
     onConnect?.call(device);
     _onState?.call('connecting');
+    final future = connectFuture;
+    if (future != null) await future;
     _onState?.call('connected:path=$initialPath');
     emit(const RelayEnvelope(type: 'hello'));
   }

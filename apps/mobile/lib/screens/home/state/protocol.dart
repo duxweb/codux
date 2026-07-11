@@ -34,8 +34,6 @@ extension _HomePageProtocol on HomeController {
         );
         return;
       }
-      _healthTimer?.cancel();
-      _healthTimer = null;
       CoduxLog.debug(
         '[codux-flutter-remote] recv type=${message.type} session=${message.sessionId ?? ''}',
       );

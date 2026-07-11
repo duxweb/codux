@@ -1,7 +1,7 @@
 use crate::common::{
     FfiControllerTransport, TransportEvent, c_to_string, clear_last_error,
-    controller_transport_config_from_json, controller_transport_ref, panic_payload_message,
-    push_transport_event, set_last_error, string_to_c,
+    controller_transport_config_from_json, controller_transport_ref, controller_transport_runtime,
+    panic_payload_message, push_transport_event, set_last_error, string_to_c,
 };
 use codux_remote_transport::{
     RemoteControllerTransportConfig, RemoteTransport, RemoteTransportFactory,
@@ -14,7 +14,6 @@ use std::ffi::{c_char, c_uchar};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 use std::sync::{Arc, Mutex};
-use tokio::runtime::Runtime;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn codux_transport_relay_url(base: *const c_char) -> *mut c_char {
@@ -173,16 +172,13 @@ fn controller_transport_connect_json_inner(
             return ptr::null_mut();
         }
     };
-    let runtime = match Runtime::new() {
+    let runtime = match controller_transport_runtime() {
         Ok(runtime) => runtime,
         Err(error) => {
-            set_last_error(format!(
-                "failed to create controller transport runtime: {error}"
-            ));
+            set_last_error(error);
             return ptr::null_mut();
         }
     };
-    let runtime = Arc::new(runtime);
     let events = Arc::new(Mutex::new(VecDeque::new()));
     push_transport_event(
         &events,
@@ -193,22 +189,21 @@ fn controller_transport_connect_json_inner(
     );
 
     let transport = Arc::new(Mutex::new(None));
-    let handle = Box::into_raw(Box::new(FfiControllerTransport {
-        transport: Arc::clone(&transport),
-        events: Arc::clone(&events),
-        runtime: Arc::clone(&runtime),
-    }));
+    let transport_for_connect = Arc::clone(&transport);
+    let events_for_connect = Arc::clone(&events);
     let config_for_connect = config.clone();
-    runtime.spawn(async move {
-        match connect_controller_transport(&config_for_connect, Arc::clone(&events)).await {
+    let connect_task = runtime.spawn(async move {
+        match connect_controller_transport(&config_for_connect, Arc::clone(&events_for_connect))
+            .await
+        {
             Ok(connected) => {
-                if let Ok(mut current) = transport.lock() {
+                if let Ok(mut current) = transport_for_connect.lock() {
                     *current = Some(connected);
                 }
             }
             Err(error) => {
                 push_transport_event(
-                    &events,
+                    &events_for_connect,
                     json!({
                         "kind": "state",
                         "state": format!("failed:failed to connect controller transport: {error}"),
@@ -217,7 +212,12 @@ fn controller_transport_connect_json_inner(
             }
         }
     });
-    handle
+    Box::into_raw(Box::new(FfiControllerTransport {
+        transport,
+        events,
+        runtime,
+        connect_task: Mutex::new(Some(connect_task)),
+    }))
 }
 
 async fn connect_controller_transport(
@@ -380,12 +380,21 @@ pub extern "C" fn codux_controller_transport_close(transport: *mut FfiController
         }
         let transport = unsafe { Box::from_raw(transport) };
         let runtime = Arc::clone(&transport.runtime);
+        let connect_task = transport
+            .connect_task
+            .lock()
+            .ok()
+            .and_then(|mut task| task.take());
         runtime.block_on(async {
+            if let Some(connect_task) = connect_task {
+                connect_task.abort();
+                let _ = connect_task.await;
+            }
             let current = transport
                 .transport
                 .lock()
                 .ok()
-                .and_then(|transport| transport.clone());
+                .and_then(|mut transport| transport.take());
             if let Some(current) = current {
                 current.shutdown().await;
             }

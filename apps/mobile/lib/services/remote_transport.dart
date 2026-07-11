@@ -177,12 +177,11 @@ class RustControllerTransport implements RemoteTransport {
     // Must outlast the Rust side's worst-case cold start, or a slow-but-
     // progressing connect gets killed here and retried from scratch (a fresh
     // endpoint that pays the relay-registration cost all over again). The Rust
-    // controller waits up to 12s for endpoint.online() THEN up to 15s for the
-    // dial — ~27s — so give it 30s. A genuinely dead peer still surfaces a
-    // Rust-side error well before this cap, so we don't actually wait the full
-    // 30s on failure.
+    // controller waits up to 12s for endpoint.online() THEN up to 18s for the
+    // dial, so keep the outer FFI boundary above that 30s budget. A genuinely
+    // dead peer still surfaces a Rust-side error before this cap.
     await connected.future.timeout(
-      const Duration(seconds: 30),
+      const Duration(seconds: 32),
       onTimeout: () {
         throw StateError('Failed to connect remote transport: timed out');
       },

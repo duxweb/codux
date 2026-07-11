@@ -7,7 +7,7 @@ edition = "2024"
 async-trait = "0.1"
 codux-protocol = { path = "../codux-protocol" }
 futures-util = "0.3"
-iroh = "1.0.0"
+iroh = "1.0.2"
 iroh-blobs = "0.103.0"
 iroh-mdns-address-lookup = "0.4.0"
 iroh-tickets = "1.0.0"
