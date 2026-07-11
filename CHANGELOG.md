@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0-rc.9] - 2026-07-11
+
+### Changed
+
+- Upgraded Iroh to 1.0.2 and aligned the mobile controller runtime with the process-wide shared endpoint lifecycle.
+- Simplified remote resource synchronization across desktop, mobile, and headless Agent with consistent subscription ownership and cleanup.
+
+### Fixed
+
+- Significantly reduced mobile startup, foreground resume, and host-switch reconnect time by preserving an in-progress connection instead of restarting it.
+- Fixed premature mobile connection failures caused by a legacy timeout expiring before the native Iroh connection budget.
+- Hardened remote authorization changes, device disconnect cleanup, terminal synchronization, AI statistics, memory, project, worktree, file, and Git resource updates.
+
 ## [2.0.0-rc.8] - 2026-07-10
 
 ### Changed

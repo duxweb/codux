@@ -4,6 +4,19 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.0-rc.9] - 2026-07-11
+
+### Changed
+
+- Upgraded Iroh to 1.0.2 and moved the native controller transport onto a process-wide runtime that matches the shared endpoint lifecycle.
+- Aligned mobile resource subscriptions and cleanup with the hardened desktop and headless Agent synchronization model. No pairing protocol changes are required.
+
+### Fixed
+
+- Significantly reduced connection time when opening the app, returning from the background, or switching hosts.
+- Fixed app resume restarting a connection that was already in progress.
+- Removed a legacy timeout that could report failure before the native Iroh connection attempt completed.
+
 ## [2.0.0-rc.8] - 2026-07-10
 
 ### Changed
