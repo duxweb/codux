@@ -389,10 +389,15 @@ pub(in crate::app) fn window_close_control(
         .hover(move |style| style.bg(danger).text_color(danger_foreground))
         .active(move |style| style.bg(danger.opacity(0.85)).text_color(danger_foreground))
         .window_control_area(WindowControlArea::Close)
-        .when(closes_window, |this| {
-            this.on_click(|_, window, _| window.remove_window())
-        })
+        .when(
+            uses_explicit_close_click(closes_window, cfg!(target_os = "windows")),
+            |this| this.on_click(|_, window, _| window.remove_window()),
+        )
         .child(Icon::new(HeroIconName::XMark).size_3())
+}
+
+fn uses_explicit_close_click(closes_window: bool, is_windows: bool) -> bool {
+    closes_window && !is_windows
 }
 
 pub(in crate::app) fn header_icon_button(
@@ -561,4 +566,20 @@ pub(in crate::app) fn dialog_footer_bar(
         .justify_end()
         .gap(px(8.0))
         .child(children)
+}
+
+#[cfg(test)]
+mod window_close_control_tests {
+    use super::uses_explicit_close_click;
+
+    #[test]
+    fn windows_close_control_uses_native_window_event() {
+        assert!(!uses_explicit_close_click(true, true));
+    }
+
+    #[test]
+    fn non_windows_auxiliary_close_control_uses_click_handler() {
+        assert!(uses_explicit_close_click(true, false));
+        assert!(!uses_explicit_close_click(false, false));
+    }
 }
