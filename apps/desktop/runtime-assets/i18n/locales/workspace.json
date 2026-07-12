@@ -2,7 +2,7 @@
   "strings": {
     "de": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "Mochtest du den aktuellen Split oder Tab wirklich schliessen?",
+      "workspace.close_current_split.message": "Mochtest du den aktuellen Split wirklich schliessen?",
       "workspace.close_current_split.title": "Aktuellen Split schliessen",
       "workspace.restart_current_terminal.message": "Dies ist das letzte Terminal fuer das Projekt. Schliessen und ein neues Terminal starten?",
       "workspace.restart_current_terminal.title": "Aktuelles Terminal neu starten",
@@ -25,7 +25,7 @@
     },
     "en": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "Are you sure you want to close the current split or tab?",
+      "workspace.close_current_split.message": "Are you sure you want to close the current split?",
       "workspace.close_current_split.title": "Close Current Split",
       "workspace.restart_current_terminal.message": "This is the last terminal for the project. Close it and start a fresh terminal?",
       "workspace.restart_current_terminal.title": "Restart Current Terminal",
@@ -48,7 +48,7 @@
     },
     "es": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "¿Seguro que quieres cerrar la division o pestana actual?",
+      "workspace.close_current_split.message": "¿Seguro que quieres cerrar la division actual?",
       "workspace.close_current_split.title": "Cerrar division actual",
       "workspace.restart_current_terminal.message": "Este es el ultimo terminal del proyecto. ¿Quieres cerrarlo e iniciar uno nuevo?",
       "workspace.restart_current_terminal.title": "Reiniciar terminal actual",
@@ -71,7 +71,7 @@
     },
     "fr": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "Voulez-vous vraiment fermer le fractionnement ou l'onglet actuel ?",
+      "workspace.close_current_split.message": "Voulez-vous vraiment fermer le fractionnement actuel ?",
       "workspace.close_current_split.title": "Fermer le fractionnement actuel",
       "workspace.restart_current_terminal.message": "C'est le dernier terminal du projet. Voulez-vous le fermer et lancer un nouveau terminal ?",
       "workspace.restart_current_terminal.title": "Redemarrer le terminal actuel",
@@ -94,7 +94,7 @@
     },
     "ja": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "現在の分割またはタブを閉じてもよろしいですか？",
+      "workspace.close_current_split.message": "現在の分割を閉じてもよろしいですか？",
       "workspace.close_current_split.title": "現在の分割を閉じる",
       "workspace.restart_current_terminal.message": "これはこのプロジェクト最後のターミナルです。閉じて新しいターミナルを開始しますか？",
       "workspace.restart_current_terminal.title": "現在のターミナルを再起動",
@@ -117,7 +117,7 @@
     },
     "ko": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "현재 분할 또는 탭을 닫을까요?",
+      "workspace.close_current_split.message": "현재 분할을 닫을까요?",
       "workspace.close_current_split.title": "현재 분할 닫기",
       "workspace.restart_current_terminal.message": "이 프로젝트의 마지막 터미널입니다. 닫고 새 터미널을 시작할까요?",
       "workspace.restart_current_terminal.title": "현재 터미널 다시 시작",
@@ -140,7 +140,7 @@
     },
     "pt-BR": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "Tem certeza de que deseja fechar a divisao ou aba atual?",
+      "workspace.close_current_split.message": "Tem certeza de que deseja fechar a divisao atual?",
       "workspace.close_current_split.title": "Fechar divisao atual",
       "workspace.restart_current_terminal.message": "Este e o ultimo terminal do projeto. Fechar e iniciar um novo terminal?",
       "workspace.restart_current_terminal.title": "Reiniciar terminal atual",
@@ -163,7 +163,7 @@
     },
     "ru": {
       "workspace.bottom_split.created": "Created the bottom split area.",
-      "workspace.close_current_split.message": "Закрыть текущее разделение или вкладку?",
+      "workspace.close_current_split.message": "Закрыть текущее разделение?",
       "workspace.close_current_split.title": "Закрыть текущее разделение",
       "workspace.restart_current_terminal.message": "Это последний терминал проекта. Закрыть его и запустить новый терминал?",
       "workspace.restart_current_terminal.title": "Перезапустить текущий терминал",
@@ -186,7 +186,7 @@
     },
     "zh-Hans": {
       "workspace.bottom_split.created": "已创建底部分屏区域。",
-      "workspace.close_current_split.message": "确定要关闭当前分屏或标签页吗？",
+      "workspace.close_current_split.message": "确定要关闭当前分屏吗？",
       "workspace.close_current_split.title": "关闭当前分屏",
       "workspace.restart_current_terminal.message": "这是该项目最后一个终端。要关闭它并启动一个新的终端吗？",
       "workspace.restart_current_terminal.title": "重启当前终端",
@@ -209,7 +209,7 @@
     },
     "zh-Hant": {
       "workspace.bottom_split.created": "已建立底部分割區域。",
-      "workspace.close_current_split.message": "確定要關閉目前分割或分頁嗎？",
+      "workspace.close_current_split.message": "確定要關閉目前分割嗎？",
       "workspace.close_current_split.title": "關閉目前分割",
       "workspace.restart_current_terminal.message": "這是該專案最後一個終端機。要關閉它並啟動新的終端機嗎？",
       "workspace.restart_current_terminal.title": "重新啟動目前終端機",

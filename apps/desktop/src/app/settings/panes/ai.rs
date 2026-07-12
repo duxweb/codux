@@ -2,6 +2,7 @@ use super::developer::{RuntimeToolBlockInput, settings_runtime_tool_block};
 use super::options::*;
 use super::widgets::*;
 use super::*;
+use gpui::ClipboardItem;
 
 pub(super) fn settings_ai_pane(
     settings: &SettingsSummary,
@@ -480,23 +481,22 @@ pub(super) fn settings_ai_provider_card(
         .child(
             div()
                 .flex()
-                .items_center()
+                .items_start()
                 .justify_between()
                 .gap(px(8.0))
-                .child(if let Some(result) = result {
-                    settings_status_tag(
-                        result.message.clone(),
-                        if result.ok {
-                            theme::ACCENT
-                        } else {
-                            theme::ORANGE
-                        },
-                    )
-                } else {
-                    div().hidden().into_any_element()
-                })
                 .child(
                     div()
+                        .min_w_0()
+                        .flex_1()
+                        .child(if let Some(result) = result {
+                            ai_provider_test_result_view(result, provider.id.as_str(), language)
+                        } else {
+                            div().hidden().into_any_element()
+                        }),
+                )
+                .child(
+                    div()
+                        .flex_none()
                         .flex()
                         .items_center()
                         .justify_end()
@@ -544,6 +544,60 @@ pub(super) fn settings_ai_provider_card(
                             },
                         )),
                 ),
+        )
+        .into_any_element()
+}
+
+fn ai_provider_test_result_view(
+    result: &AIProviderTestResult,
+    provider_id: &str,
+    language: &str,
+) -> AnyElement {
+    if result.ok {
+        return settings_status_tag(result.message.clone(), theme::ACCENT);
+    }
+
+    let message = result.message.clone();
+    div()
+        .w_full()
+        .min_w_0()
+        .px(px(9.0))
+        .py(px(7.0))
+        .rounded(px(6.0))
+        .bg(color(theme::ORANGE).opacity(0.14))
+        .flex()
+        .items_start()
+        .gap(px(7.0))
+        .text_color(color(theme::ORANGE))
+        .child(
+            Icon::new(HeroIconName::ExclamationTriangle)
+                .size_3p5()
+                .text_color(color(theme::ORANGE)),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .whitespace_normal()
+                .text_size(rems(0.75))
+                .line_height(rems(1.0625))
+                .child(message.clone()),
+        )
+        .child(
+            Button::new(SharedString::from(format!(
+                "settings-provider-copy-error-{provider_id}"
+            )))
+            .compact()
+            .ghost()
+            .tooltip(settings_text(language, "common.copy", "Copy"))
+            .icon(
+                Icon::new(HeroIconName::DocumentDuplicate)
+                    .size_3p5()
+                    .text_color(color(theme::ORANGE)),
+            )
+            .on_click(move |_event, _window, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(message.clone()));
+            }),
         )
         .into_any_element()
 }

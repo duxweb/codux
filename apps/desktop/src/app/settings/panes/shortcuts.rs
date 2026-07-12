@@ -193,7 +193,6 @@ pub(super) fn primary_static(primary: &str, key: &str) -> &'static str {
         ("⌘", "Shift+A") => "⌘⇧A",
         ("⌘", "Shift+S") => "⌘⇧S",
         ("⌘", "Shift+Backslash") => "⌘⇧\\",
-        ("⌘", "Shift+T") => "⌘⇧T",
         (_, "Alt+1") => "Ctrl+Alt+1",
         (_, "Alt+2") => "Ctrl+Alt+2",
         (_, "Alt+3") => "Ctrl+Alt+3",
@@ -212,7 +211,6 @@ pub(super) fn primary_static(primary: &str, key: &str) -> &'static str {
         (_, "Shift+A") => "Ctrl+Shift+A",
         (_, "Shift+S") => "Ctrl+Shift+S",
         (_, "Shift+Backslash") => "Ctrl+Shift+\\",
-        (_, "Shift+T") => "Ctrl+Shift+T",
         _ => "",
     }
 }
@@ -280,4 +278,15 @@ pub(super) fn shortcut_row(
             .into_any_element(),
     )
     .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::primary_static;
+
+    #[test]
+    fn removed_terminal_tab_shortcut_has_no_default() {
+        assert_eq!(primary_static("⌘", "Shift+T"), "");
+        assert_eq!(primary_static("Ctrl+", "Shift+T"), "");
+    }
 }

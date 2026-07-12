@@ -1,4 +1,5 @@
 use super::*;
+use gpui::Focusable;
 
 pub(super) const SETTINGS_FORM_TEXT_SIZE: Rems = Rems(0.875);
 pub(super) const SETTINGS_FORM_LINE_HEIGHT: Rems = Rems(1.125);
@@ -241,7 +242,11 @@ pub(super) fn settings_text_input_sized(
             .masked(masked)
     });
     state.update(cx, |state, cx| {
-        if state.value().as_ref() != value.as_str() {
+        if should_sync_settings_input(
+            state.value().as_ref(),
+            value.as_str(),
+            state.focus_handle(cx).is_focused(window),
+        ) {
             state.set_value(value.clone(), window, cx);
         }
     });
@@ -285,7 +290,11 @@ pub(super) fn settings_textarea(
         },
     );
     state.update(cx, |state, cx| {
-        if state.value().as_ref() != value.as_str() {
+        if should_sync_settings_input(
+            state.value().as_ref(),
+            value.as_str(),
+            state.focus_handle(cx).is_focused(window),
+        ) {
             state.set_value(value.clone(), window, cx);
         }
     });
@@ -305,6 +314,10 @@ pub(super) fn settings_textarea(
                 .h(px((rows as f32 * 28.0).max(84.0))),
         )
         .into_any_element()
+}
+
+fn should_sync_settings_input(current: &str, external: &str, focused: bool) -> bool {
+    !focused && current != external
 }
 
 pub(super) fn settings_toggle(
@@ -531,4 +544,20 @@ pub(super) fn settings_selectable_tile_rows(
                 .into_any_element()
         }))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_sync_settings_input;
+
+    #[test]
+    fn focused_settings_input_keeps_local_edits() {
+        assert!(!should_sync_settings_input("typing", "saved", true));
+    }
+
+    #[test]
+    fn unfocused_settings_input_accepts_external_changes() {
+        assert!(should_sync_settings_input("old", "new", false));
+        assert!(!should_sync_settings_input("same", "same", false));
+    }
 }

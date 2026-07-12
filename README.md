@@ -223,7 +223,6 @@ When you control a paired headless host from Codux Desktop, the globe **Web Tunn
 | Action | Shortcut |
 | :----- | :------- |
 | New Split | `⌘T` |
-| New Tab | `⌘D` |
 | Toggle Git Panel | `⌘G` |
 | Toggle AI Panel | `⌘Y` |
 | Switch Project | `⌘1` – `⌘9` |
