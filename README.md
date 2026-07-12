@@ -165,7 +165,9 @@ Open the macOS `.dmg` and drag Codux to Applications; double-click the Windows i
 
 **Mobile app**
 
-Download from the [latest Codux Mobile release](https://github.com/duxweb/codux-flutter/releases/latest).
+Download the Android APK from the [latest Codux Mobile release](https://github.com/duxweb/codux-flutter/releases/latest), or get the iOS app on the [App Store](https://apps.apple.com/cn/app/codux/id6772156906).
+
+> **Why is the iOS app paid?** Codux is fully open source (GPL-3.0); desktop and Android are free. The iOS price only covers Apple’s $99/year developer fee and revenue cut, and supports ongoing development — no subscriptions, no in-app purchases. Prefer not to pay? Build the identical app yourself from the [codux-flutter](https://github.com/duxweb/codux-flutter) source.
 
 **Headless host (`codux-agent`)** — Beta, ships with 2.0
 
