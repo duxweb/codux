@@ -50,7 +50,7 @@ case "$PLATFORM_NAME" in
   iphoneos)
     TARGET="aarch64-apple-ios"
     OUT_DIR="$PLUGIN_DIR/ios/Frameworks"
-    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
+    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
     ;;
   iphonesimulator)
     if [[ "$APPLE_ARCH" == "x86_64" ]]; then
@@ -59,7 +59,7 @@ case "$PLATFORM_NAME" in
       TARGET="aarch64-apple-ios-sim"
     fi
     OUT_DIR="$PLUGIN_DIR/ios/Frameworks"
-    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
+    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
     ;;
   macosx)
     if [[ "$APPLE_ARCH" == "x86_64" ]]; then
