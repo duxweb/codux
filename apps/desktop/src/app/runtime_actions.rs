@@ -154,33 +154,6 @@ impl CoduxApp {
             }
         })
         .detach();
-        self.start_agent_pulse_loop(cx);
-    }
-
-    // Dedicated ~30fps driver for the working status ping. Only repaints the
-    // small dot views (GPUI replays the unchanged terminal), and ticks fast
-    // only while an agent works — otherwise it idles at the runtime cadence.
-    fn start_agent_pulse_loop(&mut self, cx: &mut Context<Self>) {
-        const PULSE_ACTIVE: Duration = Duration::from_millis(33);
-        const PULSE_IDLE: Duration = Duration::from_millis(200);
-        let timer = cx.background_executor().clone();
-        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
-            loop {
-                let interval = match this.update(cx, |app, cx| {
-                    if app.window_mode == AppWindowMode::Main && app.any_pane_agent_working() {
-                        app.pulse_agent_dots(cx);
-                        PULSE_ACTIVE
-                    } else {
-                        PULSE_IDLE
-                    }
-                }) {
-                    Ok(interval) => interval,
-                    Err(_) => break,
-                };
-                timer.timer(interval).await;
-            }
-        })
-        .detach();
     }
 
     fn start_runtime_ready_initialization(&mut self, cx: &mut Context<Self>) {

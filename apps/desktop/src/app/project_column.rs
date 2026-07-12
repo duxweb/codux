@@ -1,4 +1,4 @@
-use super::agent_display::ping_dot;
+use super::agent_display::animated_ping_dot;
 use super::ai_runtime_status::AgentLifecycleState;
 use super::app_state::CoduxTooltipPlacement;
 use super::ui_helpers::{codux_tooltip_container_with_placement, titlebar_drag_area};
@@ -826,7 +826,7 @@ fn project_row(
                                 .relative()
                                 .child(project_icon(&project, active, true))
                                 .when_some(lifecycle_state, |this, state| {
-                                    this.child(project_lifecycle_badge(state))
+                                    this.child(project_lifecycle_badge(state, cx))
                                 })
                                 .when_some(link_state, |this, link| {
                                     this.child(project_remote_badge(link))
@@ -921,7 +921,7 @@ fn project_row(
                         .relative()
                         .child(project_icon(&project, active, false))
                         .when_some(lifecycle_state, |this, state| {
-                            this.child(project_lifecycle_badge(state))
+                            this.child(project_lifecycle_badge(state, cx))
                         })
                         .when_some(link_state, |this, link| {
                             this.child(project_remote_badge(link))
@@ -1020,13 +1020,16 @@ fn project_row_context_menu(
     )
 }
 
-fn project_lifecycle_badge(state: AgentLifecycleState) -> AnyElement {
+fn project_lifecycle_badge(
+    state: AgentLifecycleState,
+    cx: &mut Context<ProjectColumnView>,
+) -> AnyElement {
     match state {
         AgentLifecycleState::Working => div()
             .absolute()
             .right(px(-2.0))
             .top(px(-2.0))
-            .child(ping_dot(color(theme::ORANGE), 10.0))
+            .child(animated_ping_dot(color(theme::ORANGE), 10.0, cx))
             .into_any_element(),
         AgentLifecycleState::Waiting | AgentLifecycleState::Warning => div()
             .absolute()

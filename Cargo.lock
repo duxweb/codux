@@ -9409,8 +9409,7 @@ dependencies = [
 [[package]]
 name = "swarm-discovery"
 version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "767b9081b45ad2fd1d31b80d08d64f4208a35cef860505f9ec7478081fa06c77"
+source = "git+https://github.com/dux-web/swarm-discovery.git?rev=7bba21d90dbeb664ccd71efac3b16f612722cc59#7bba21d90dbeb664ccd71efac3b16f612722cc59"
 dependencies = [
  "acto",
  "hickory-proto",

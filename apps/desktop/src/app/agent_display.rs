@@ -61,9 +61,8 @@ fn defaults_reduce_motion_enabled() -> bool {
         .unwrap_or(false)
 }
 
-// Phase (0..1 over ~1.1s). The motion is driven by the runtime pulse timer
-// repainting only the small dot views while an agent works — NOT a 60fps
-// with_animation, which would force a full-window redraw every frame.
+// Phase (0..1 over ~1.1s). Working indicators repaint their own lightweight
+// views while the parent project and task lists remain unchanged.
 fn ping_phase() -> f32 {
     const PERIOD_SECS: f32 = 1.1;
     static EPOCH: OnceLock<Instant> = OnceLock::new();
@@ -119,12 +118,85 @@ pub(in crate::app) fn spin_icon(icon_color: gpui::Hsla, size: f32) -> AnyElement
         .into_any_element()
 }
 
-pub(in crate::app) fn agent_lifecycle_status_dot(
+enum AgentPulseIndicator {
+    Ping { color: gpui::Hsla, size: f32 },
+    Spin { color: gpui::Hsla, size: f32 },
+}
+
+impl AgentPulseIndicator {
+    fn start(&self, cx: &mut Context<Self>) {
+        if reduce_motion_enabled() {
+            return;
+        }
+        const PULSE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+        let timer = cx.background_executor().clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            loop {
+                timer.timer(PULSE_INTERVAL).await;
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+}
+
+impl Render for AgentPulseIndicator {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        match *self {
+            Self::Ping { color, size } => ping_dot(color, size),
+            Self::Spin { color, size } => spin_icon(color, size),
+        }
+    }
+}
+
+pub(in crate::app) fn animated_ping_dot<V: 'static>(
+    dot_color: gpui::Hsla,
+    size: f32,
+    cx: &mut Context<V>,
+) -> AnyElement {
+    animated_pulse_indicator(
+        AgentPulseIndicator::Ping {
+            color: dot_color,
+            size,
+        },
+        cx,
+    )
+}
+
+pub(in crate::app) fn animated_spin_icon<V: 'static>(
+    icon_color: gpui::Hsla,
+    size: f32,
+    cx: &mut Context<V>,
+) -> AnyElement {
+    animated_pulse_indicator(
+        AgentPulseIndicator::Spin {
+            color: icon_color,
+            size,
+        },
+        cx,
+    )
+}
+
+fn animated_pulse_indicator<V: 'static>(
+    indicator: AgentPulseIndicator,
+    cx: &mut Context<V>,
+) -> AnyElement {
+    cx.new(|cx| {
+        indicator.start(cx);
+        indicator
+    })
+    .into_any_element()
+}
+
+pub(in crate::app) fn agent_lifecycle_status_dot<V: 'static>(
     lifecycle_state: AgentLifecycleState,
+    cx: &mut Context<V>,
 ) -> AnyElement {
     let inner = match lifecycle_state {
         AgentLifecycleState::Idle => return div().into_any_element(),
-        AgentLifecycleState::Working => spin_icon(color(theme::ACCENT), 12.0),
+        AgentLifecycleState::Working => animated_spin_icon(color(theme::ACCENT), 12.0, cx),
         AgentLifecycleState::Waiting => div()
             .size(px(6.0))
             .rounded_full()

@@ -1,6 +1,6 @@
 use gpui_component::{InteractiveElementExt as _, menu::ContextMenuExt as _};
 
-use super::agent_display::{agent_lifecycle_color, agent_lifecycle_status_dot, spin_icon};
+use super::agent_display::{agent_lifecycle_color, agent_lifecycle_status_dot, animated_spin_icon};
 use super::ai_runtime_status::AgentLifecycleState;
 use super::scroll_compat::codux_uniform_list_with_sizing;
 use super::ui_helpers::{codux_tooltip_container, titlebar_drag_area};
@@ -1066,7 +1066,7 @@ fn terminal_compact_row(
             terminal
                 .lifecycle
                 .filter(|state| *state != AgentLifecycleState::Idle),
-            |this, state| this.child(agent_lifecycle_status_dot(state)),
+            |this, state| this.child(agent_lifecycle_status_dot(state, cx)),
         )
         .when(
             collapsed
@@ -1206,7 +1206,7 @@ fn worktree_compact_row(
                 app.select_worktree(worktree_id.clone(), window, cx)
             });
         })
-        .child(worktree_activity_dot(lifecycle))
+        .child(worktree_activity_dot(lifecycle, cx))
         .child(
             div()
                 .flex()
@@ -1305,12 +1305,15 @@ fn worktree_compact_row(
         })
 }
 
-fn worktree_activity_dot(lifecycle: Option<AgentLifecycleState>) -> AnyElement {
+fn worktree_activity_dot(
+    lifecycle: Option<AgentLifecycleState>,
+    cx: &mut Context<TaskWorktreeListView>,
+) -> AnyElement {
     // Fixed-width slot centring the indicator, so the row text never shifts as
     // it swaps between a 10px static dot and the 12px ring spinner.
     let dot = div().size(px(10.0)).rounded_full();
     let inner = match lifecycle {
-        Some(AgentLifecycleState::Working) => spin_icon(color(theme::ORANGE), 12.0),
+        Some(AgentLifecycleState::Working) => animated_spin_icon(color(theme::ORANGE), 12.0, cx),
         Some(AgentLifecycleState::Waiting) | Some(AgentLifecycleState::Warning) => {
             dot.bg(color(theme::ORANGE)).into_any_element()
         }
