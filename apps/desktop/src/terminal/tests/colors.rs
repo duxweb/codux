@@ -112,6 +112,32 @@ fn terminal_clipboard_image_payload_detection_filters_data_and_html() {
     assert!(!clipboard_text_looks_like_image_payload("/tmp/image.png"));
 }
 #[test]
+fn terminal_clipboard_plain_text_skips_rich_format_reading() {
+    assert_eq!(
+        terminal_clipboard_text_preference(Some("echo ready".to_string()), true),
+        TerminalClipboardTextPreference::Text("echo ready".to_string())
+    );
+    assert_eq!(
+        terminal_clipboard_text_preference(Some("echo ready".to_string()), false),
+        TerminalClipboardTextPreference::Text("echo ready".to_string())
+    );
+}
+#[test]
+fn terminal_clipboard_image_payload_uses_rich_format_reading() {
+    assert_eq!(
+        terminal_clipboard_text_preference(Some("data:image/png;base64,abc".to_string()), true),
+        TerminalClipboardTextPreference::RichClipboard
+    );
+    assert_eq!(
+        terminal_clipboard_text_preference(None, true),
+        TerminalClipboardTextPreference::RichClipboard
+    );
+    assert_eq!(
+        terminal_clipboard_text_preference(None, false),
+        TerminalClipboardTextPreference::None
+    );
+}
+#[test]
 fn terminal_path_input_quotes_spaces() {
     assert_eq!(
         terminal_path_input(Path::new("/tmp/codux image.png")),

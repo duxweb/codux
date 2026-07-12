@@ -56,6 +56,16 @@ fn core_key_input(
 }
 
 fn terminal_clipboard_paste_text(cx: &mut App, paste_images_as_paths: bool) -> Option<String> {
+    #[cfg(target_os = "windows")]
+    match windows_terminal_clipboard_text() {
+        Ok(text) => match terminal_clipboard_text_preference(text, paste_images_as_paths) {
+            TerminalClipboardTextPreference::Text(text) => return Some(text),
+            TerminalClipboardTextPreference::RichClipboard => {}
+            TerminalClipboardTextPreference::None => return None,
+        },
+        Err(()) => return None,
+    }
+
     let item = cx.read_from_clipboard()?;
     let text = item
         .text()
@@ -74,6 +84,31 @@ fn terminal_clipboard_paste_text(cx: &mut App, paste_images_as_paths: bool) -> O
         }
         _ => None,
     })
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, PartialEq, Eq)]
+enum TerminalClipboardTextPreference {
+    Text(String),
+    RichClipboard,
+    None,
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn terminal_clipboard_text_preference(
+    text: Option<String>,
+    paste_images_as_paths: bool,
+) -> TerminalClipboardTextPreference {
+    match text {
+        Some(text)
+            if !paste_images_as_paths || !clipboard_text_looks_like_image_payload(&text) =>
+        {
+            TerminalClipboardTextPreference::Text(text)
+        }
+        Some(_) if paste_images_as_paths => TerminalClipboardTextPreference::RichClipboard,
+        None if paste_images_as_paths => TerminalClipboardTextPreference::RichClipboard,
+        _ => TerminalClipboardTextPreference::None,
+    }
 }
 
 fn clipboard_text_looks_like_image_payload(text: &str) -> bool {

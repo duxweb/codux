@@ -56,6 +56,8 @@ include!("terminal/element.rs");
 include!("terminal/input.rs");
 include!("terminal/events.rs");
 include!("terminal/keys.rs");
+#[cfg(target_os = "windows")]
+include!("terminal/clipboard_windows.rs");
 include!("terminal/mouse.rs");
 include!("terminal/renderer.rs");
 include!("terminal/palette.rs");
