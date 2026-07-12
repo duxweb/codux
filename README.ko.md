@@ -167,7 +167,7 @@ macOS에서는 `.dmg`를 열고 Codux를 Applications로 드래그합니다. Win
 
 [최신 Codux Mobile 릴리스](https://github.com/duxweb/codux-flutter/releases/latest) 에서 Android APK를 다운로드하고, iOS는 [App Store](https://apps.apple.com/cn/app/codux/id6772156906) 에서 받으세요.
 
-> **iOS 앱은 왜 유료인가요?** Codux는 완전한 오픈소스(GPL-3.0)이며 데스크톱과 Android 버전은 무료입니다. iOS 가격은 Apple의 연간 99달러 개발자 비용과 수수료를 충당하고 지속적인 개발을 지원하기 위한 것으로, 구독이나 인앱 결제는 없습니다. 원치 않으시면 [codux-flutter](https://github.com/duxweb/codux-flutter) 소스로 직접 빌드하세요. 기능은 동일합니다.
+> **iOS 앱은 왜 유료인가요?** Codux는 완전한 오픈소스(GPL-3.0)이며 데스크톱과 Android 버전은 무료입니다. iOS 가격은 Apple의 연간 99달러 개발자 비용과 수수료를 충당하고 지속적인 개발을 지원하기 위한 것으로, 구독이나 인앱 결제는 없습니다. 원치 않으시면 이 저장소의 [`apps/mobile`](apps/mobile) 소스로 직접 빌드하세요. 기능은 동일합니다.
 
 **Headless host (`codux-agent`)**: Beta, 2.0에 포함
 

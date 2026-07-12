@@ -167,7 +167,7 @@ macOS では `.dmg` を開いて Codux を Applications にドラッグします
 
 [最新の Codux Mobile リリース](https://github.com/duxweb/codux-flutter/releases/latest) から Android APK をダウンロード、iOS 版は [App Store](https://apps.apple.com/cn/app/codux/id6772156906) へ。
 
-> **iOS 版が有料なのはなぜ？** Codux は完全なオープンソース（GPL-3.0）で、デスクトップ版と Android 版は無料です。iOS の価格は Apple の年間 99 ドルの開発者費用と手数料を賄い、継続的な開発を支えるためのもので、サブスクリプションやアプリ内課金はありません。[codux-flutter](https://github.com/duxweb/codux-flutter) のソースから自分でビルドすれば無料で同じアプリを使えます。
+> **iOS 版が有料なのはなぜ？** Codux は完全なオープンソース（GPL-3.0）で、デスクトップ版と Android 版は無料です。iOS の価格は Apple の年間 99 ドルの開発者費用と手数料を賄い、継続的な開発を支えるためのもので、サブスクリプションやアプリ内課金はありません。本リポジトリの [`apps/mobile`](apps/mobile) のソースから自分でビルドすれば無料で同じアプリを使えます。
 
 **Headless host (`codux-agent`)**：Beta、2.0 で提供
 
