@@ -32,7 +32,7 @@ impl CoduxApp {
             .state
             .selected_project
             .as_ref()
-            .and_then(|project| project.host_device_id.clone());
+            .and_then(|project| project.remote_device_id().map(str::to_string));
         let connected_remote_project_device_id =
             remote_project_device_id.as_ref().and_then(|device_id| {
                 (self.remote_link_states.get(device_id)

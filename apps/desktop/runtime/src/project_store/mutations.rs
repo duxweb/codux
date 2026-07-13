@@ -1,7 +1,8 @@
 use super::{
     ProjectCreateRequest, ProjectDefaultPushRemoteRequest, ProjectListSnapshot,
-    ProjectMoveDirection, ProjectReorderRequest, ProjectSelectWorktreeRequest, ProjectStore,
-    ProjectUpdateRequest,
+    ProjectMoveDirection, ProjectRecord, ProjectReorderRequest, ProjectRuntimeTarget,
+    ProjectSelectWorktreeRequest, ProjectStore, ProjectUpdateRequest, ProjectWorktreeRecord,
+    WorktreeTaskRecord,
 };
 use crate::project_store::helpers::{
     normalize_path, normalized_existing_path, normalized_project_name, normalized_project_path,
@@ -16,14 +17,122 @@ use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
 impl ProjectStore {
+    pub fn replace_project_worktree_state(
+        &self,
+        project_id: &str,
+        worktrees: Vec<ProjectWorktreeRecord>,
+        tasks: Vec<WorktreeTaskRecord>,
+        preferred_worktree_id: Option<&str>,
+    ) -> Result<(), String> {
+        if worktrees
+            .iter()
+            .any(|worktree| worktree.project_id != project_id)
+        {
+            return Err("Worktree belongs to a different project.".to_string());
+        }
+        let snapshot = self.snapshot();
+        if !snapshot
+            .projects
+            .iter()
+            .any(|project| project.id == project_id)
+        {
+            return Err("Project not found.".to_string());
+        }
+        let current_worktrees = snapshot
+            .worktrees
+            .iter()
+            .filter(|worktree| worktree.project_id == project_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        let current_worktree_ids = current_worktrees
+            .iter()
+            .map(|worktree| worktree.id.clone())
+            .collect::<HashSet<_>>();
+        let next_worktree_ids = worktrees
+            .iter()
+            .map(|worktree| worktree.id.clone())
+            .collect::<HashSet<_>>();
+        let tasks = tasks
+            .into_iter()
+            .filter(|task| {
+                task.worktree_id == project_id || next_worktree_ids.contains(&task.worktree_id)
+            })
+            .collect::<Vec<_>>();
+        let current_tasks = snapshot
+            .worktree_tasks
+            .iter()
+            .filter(|task| current_worktree_ids.contains(&task.worktree_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        let is_valid_selection = |worktree_id: &str| {
+            worktree_id == project_id || next_worktree_ids.contains(worktree_id)
+        };
+        let selected_worktree_id = preferred_worktree_id
+            .filter(|worktree_id| is_valid_selection(worktree_id))
+            .map(str::to_string)
+            .or_else(|| {
+                snapshot
+                    .selected_worktree_id_by_project
+                    .get(project_id)
+                    .filter(|worktree_id| is_valid_selection(worktree_id))
+                    .cloned()
+            })
+            .unwrap_or_else(|| project_id.to_string());
+        if current_worktrees == worktrees
+            && current_tasks == tasks
+            && snapshot
+                .selected_worktree_id_by_project
+                .get(project_id)
+                .is_some_and(|current| current == &selected_worktree_id)
+        {
+            return Ok(());
+        }
+        let mut raw = self.raw_snapshot();
+        let records = ensure_array(&mut raw, "worktrees")?;
+        records
+            .retain(|record| record.get("projectId").and_then(Value::as_str) != Some(project_id));
+        records.extend(
+            worktrees
+                .into_iter()
+                .map(serde_json::to_value)
+                .collect::<Result<Vec<_>, serde_json::Error>>()
+                .map_err(|error| error.to_string())?,
+        );
+        let replaced_task_ids = current_worktree_ids
+            .into_iter()
+            .chain(next_worktree_ids)
+            .collect::<HashSet<_>>();
+        let task_records = ensure_array(&mut raw, "worktreeTasks")?;
+        task_records.retain(|task| {
+            task.get("worktreeId")
+                .and_then(Value::as_str)
+                .is_none_or(|worktree_id| !replaced_task_ids.contains(worktree_id))
+        });
+        task_records.extend(
+            tasks
+                .into_iter()
+                .map(serde_json::to_value)
+                .collect::<Result<Vec<_>, serde_json::Error>>()
+                .map_err(|error| error.to_string())?,
+        );
+        let selected = raw
+            .entry("selectedWorktreeIdByProject".to_string())
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+            .ok_or_else(|| "selectedWorktreeIdByProject is not an object.".to_string())?;
+        selected.insert(project_id.to_string(), Value::String(selected_worktree_id));
+        self.save_raw_snapshot(&raw)
+    }
+
     pub fn create_project(
         &self,
         request: ProjectCreateRequest,
     ) -> Result<ProjectListSnapshot, String> {
-        let project_id = self.create_or_select_project_with_host(
+        let runtime_target = normalized_runtime_target(request.runtime_target)?;
+        let project_id = self.create_or_select_project_with_target(
             &request.name,
             &request.path,
-            request.host_device_id.as_deref(),
+            &runtime_target,
         )?;
         let mut raw = self.raw_snapshot();
         if let Some(projects) = raw.get_mut("projects").and_then(Value::as_array_mut)
@@ -46,9 +155,10 @@ impl ProjectStore {
                 optional_string_value(request.badge_color_hex.as_deref()),
             );
             project.insert(
-                "hostDeviceId".to_string(),
-                optional_string_value(request.host_device_id.as_deref()),
+                "runtimeTarget".to_string(),
+                runtime_target_value(&runtime_target)?,
             );
+            project.remove("hostDeviceId");
             self.save_raw_snapshot(&raw)?;
         }
         Ok(self.list_snapshot())
@@ -58,8 +168,8 @@ impl ProjectStore {
         &self,
         request: ProjectUpdateRequest,
     ) -> Result<ProjectListSnapshot, String> {
-        let project_path =
-            normalized_project_path(&request.path, request.host_device_id.is_some())?;
+        let runtime_target = normalized_runtime_target(request.runtime_target)?;
+        let project_path = normalized_project_path(&request.path, runtime_target.is_hosted())?;
         let project_name = normalized_project_name(&request.name, &project_path);
         let mut raw = self.raw_snapshot();
         {
@@ -84,9 +194,10 @@ impl ProjectStore {
                 optional_string_value(request.badge_color_hex.as_deref()),
             );
             project.insert(
-                "hostDeviceId".to_string(),
-                optional_string_value(request.host_device_id.as_deref()),
+                "runtimeTarget".to_string(),
+                runtime_target_value(&runtime_target)?,
             );
+            project.remove("hostDeviceId");
         }
         update_default_worktree_record(&mut raw, &request.project_id, &project_name, &project_path);
         raw.insert(
@@ -229,32 +340,29 @@ impl ProjectStore {
     pub fn create_or_select_project(&self, name: &str, path: &str) -> Result<String, String> {
         // A bare create/select is always a local project (the add-project flow
         // routes remote projects through `create_project` with a host id).
-        self.create_or_select_project_with_host(name, path, None)
+        self.create_or_select_project_with_target(name, path, &ProjectRuntimeTarget::Local)
     }
 
-    /// Create-or-select a project, host-aware: a remote project (`host_device_id`
-    /// `Some`) keeps its host-side path verbatim instead of validating local
+    /// Hosted projects keep their runtime-side paths verbatim instead of
+    /// validating them against the desktop filesystem. A path such as
     /// existence, so a Windows `F:\test` browsed on a paired host can be saved
-    /// from macOS.
-    pub(super) fn create_or_select_project_with_host(
+    /// can therefore be saved from another operating system.
+    pub(super) fn create_or_select_project_with_target(
         &self,
         name: &str,
         path: &str,
-        host_device_id: Option<&str>,
+        runtime_target: &ProjectRuntimeTarget,
     ) -> Result<String, String> {
-        let project_path = normalized_project_path(path, host_device_id.is_some())?;
+        let project_path = normalized_project_path(path, runtime_target.is_hosted())?;
         let project_name = normalized_project_name(name, &project_path);
         let mut raw = self.raw_snapshot();
         let projects = ensure_array(&mut raw, "projects")?;
 
         if let Some(existing_id) = projects.iter().find_map(|project| {
-            let project = project.as_object()?;
-            let existing_path = project.get("path")?.as_str()?;
-            if normalize_path(existing_path) == project_path {
-                project.get("id")?.as_str().map(str::to_string)
-            } else {
-                None
-            }
+            let project = serde_json::from_value::<ProjectRecord>(project.clone()).ok()?;
+            (normalize_path(&project.path) == project_path
+                && project.runtime_target == *runtime_target)
+                .then_some(project.id)
         }) {
             raw.insert(
                 "selectedProjectId".to_string(),
@@ -264,12 +372,14 @@ impl ProjectStore {
             return Ok(existing_id);
         }
 
-        let project_id = project_uuid(&project_name, &project_path);
-        projects.push(Value::Object(project_record(
-            &project_id,
-            &project_name,
-            &project_path,
-        )));
+        let target_identity = runtime_target.identity();
+        let project_id = project_uuid(&project_name, &project_path, target_identity.as_deref());
+        let mut record = project_record(&project_id, &project_name, &project_path);
+        record.insert(
+            "runtimeTarget".to_string(),
+            runtime_target_value(runtime_target)?,
+        );
+        projects.push(Value::Object(record));
         raw.insert(
             "selectedProjectId".to_string(),
             Value::String(project_id.clone()),
@@ -361,4 +471,35 @@ impl ProjectStore {
         );
         self.save_raw_snapshot(&raw)
     }
+}
+
+fn normalized_runtime_target(
+    runtime_target: ProjectRuntimeTarget,
+) -> Result<ProjectRuntimeTarget, String> {
+    match runtime_target {
+        ProjectRuntimeTarget::Local => Ok(ProjectRuntimeTarget::Local),
+        ProjectRuntimeTarget::Wsl { distribution } => {
+            let distribution = distribution.trim();
+            if distribution.is_empty() {
+                return Err("WSL distribution cannot be empty.".to_string());
+            }
+            Ok(ProjectRuntimeTarget::Wsl {
+                distribution: distribution.to_string(),
+            })
+        }
+        ProjectRuntimeTarget::Remote { device_id } => {
+            let device_id = device_id.trim();
+            if device_id.is_empty() {
+                return Err("Remote device id cannot be empty.".to_string());
+            }
+            Ok(ProjectRuntimeTarget::Remote {
+                device_id: device_id.to_string(),
+            })
+        }
+    }
+}
+
+fn runtime_target_value(runtime_target: &ProjectRuntimeTarget) -> Result<Value, String> {
+    serde_json::to_value(runtime_target)
+        .map_err(|error| format!("Failed to serialize project runtime target: {error}"))
 }

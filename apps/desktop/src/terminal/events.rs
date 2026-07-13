@@ -9,6 +9,7 @@ struct TerminalWindowSize {
 #[derive(Clone)]
 enum TerminalUiEvent {
     Error(String),
+    Reconnected,
     Viewport {
         remote_owner: bool,
         generation: u64,

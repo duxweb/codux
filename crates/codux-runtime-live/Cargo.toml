@@ -13,6 +13,7 @@ anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 codux-ai-history = { path = "../codux-ai-history" }
 codux-protocol = { path = "../codux-protocol" }
+codux-runtime-core = { path = "../codux-runtime-core" }
 codux-terminal-core = { path = "../codux-terminal-core" }
 codux-terminal-pty = { path = "../codux-terminal-pty" }
 dunce = "1"

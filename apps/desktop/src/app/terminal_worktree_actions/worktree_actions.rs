@@ -5,12 +5,12 @@ const WORKTREE_TERMINAL_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 struct WorktreeTerminalCleanup {
     terminal_manager: Arc<TerminalManager>,
     local_terminal_ids: Vec<String>,
-    remote_targets: Vec<crate::terminal::RemoteTerminalCloseTarget>,
+    hosted_targets: Vec<crate::terminal::HostedTerminalCloseTarget>,
 }
 
 impl WorktreeTerminalCleanup {
     fn close(self) -> Result<bool, String> {
-        for target in self.remote_targets {
+        for target in self.hosted_targets {
             target.close()?;
         }
         let mut closed_local = false;
@@ -31,7 +31,7 @@ struct DetachedWorktreeTerminals {
 impl CoduxApp {
     pub(in crate::app) fn open_worktree_creator_window(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(project) = self.state.selected_project.clone() else {
@@ -40,9 +40,9 @@ impl CoduxApp {
             return;
         };
         let locale = locale_from_language_setting(&self.state.settings.language);
-        let default_base_branch = self.default_worktree_base_branch();
         let default_name = default_worktree_name();
         let parent_main_window = cx.entity().downgrade();
+        let parent_window_handle = window.window_handle();
 
         self.open_auxiliary_window(
             AuxiliaryWindowSpec {
@@ -67,31 +67,64 @@ impl CoduxApp {
                 app.worktree_creator_project_id = Some(project.id.clone());
                 app.worktree_creator_project_name = project.name.clone();
                 app.worktree_creator_project_path = project.path.clone();
-                app.worktree_creator_base_branch = default_base_branch;
+                app.worktree_creator_base_branch.clear();
                 app.worktree_creator_name = default_name;
+                app.worktree_creator_loading = true;
                 app.parent_main_window = Some(parent_main_window);
+                app.parent_main_window_handle = Some(parent_window_handle);
                 app
             },
-            |_view, _window, _cx| {},
+            |view, _window, cx| {
+                view.update(cx, |app, cx| {
+                    app.load_worktree_creator_branches_async(cx);
+                });
+            },
         );
         self.invalidate_status_bar(cx);
     }
 
-    fn default_worktree_base_branch(&self) -> String {
-        self.state
-            .git
-            .branches
-            .iter()
-            .find(|branch| branch.is_current)
-            .or_else(|| self.state.git.branches.first())
-            .map(|branch| branch.name.clone())
-            .filter(|branch| !branch.trim().is_empty())
-            .or_else(|| {
-                super::ai_runtime_status::selected_worktree_info(&self.state)
-                    .map(|worktree| worktree.branch)
+    fn load_worktree_creator_branches_async(&mut self, cx: &mut Context<Self>) {
+        let Some(project_id) = self.worktree_creator_project_id.clone() else {
+            self.worktree_creator_loading = false;
+            self.worktree_creator_error =
+                Some(self.text("project.none_selected", "No project selected."));
+            cx.notify();
+            return;
+        };
+        let project_path = self.worktree_creator_project_path.clone();
+        let runtime_service = self.runtime_service.clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let summary = codux_runtime::async_runtime::run_limited_blocking(move || {
+                runtime_service.reload_worktrees(Some(&project_id), Some(&project_path))
             })
-            .filter(|branch| !branch.trim().is_empty())
-            .unwrap_or_else(|| self.state.git.branch.clone())
+            .await
+            .ok();
+            let _ = this.update(cx, |app, cx| {
+                app.worktree_creator_loading = false;
+                match summary {
+                    Some(summary) => app.apply_worktree_creator_branches(summary),
+                    None => {
+                        app.worktree_creator_error = Some(app.text(
+                            "worktree.create.branches_failed",
+                            "Could not load Git branches.",
+                        ));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn apply_worktree_creator_branches(&mut self, summary: WorktreeSummary) {
+        let error = summary.error.clone().or_else(|| {
+            crate::app::worktree_creator::worktree_creator_branch_error(&summary)
+                .map(|(key, fallback)| self.text(key, fallback))
+        });
+        self.worktree_creator_base_branch =
+            crate::app::worktree_creator::resolved_worktree_creator_base_branch(&summary);
+        self.state.worktrees = summary;
+        self.worktree_creator_error = error;
     }
 
     pub(in crate::app) fn submit_worktree_creator(
@@ -103,7 +136,8 @@ impl CoduxApp {
             return;
         }
         let Some(project_id) = self.worktree_creator_project_id.clone() else {
-            self.worktree_creator_error = Some("No selected project.".to_string());
+            self.worktree_creator_error =
+                Some(self.text("project.none_selected", "No project selected."));
             cx.notify();
             return;
         };
@@ -138,6 +172,7 @@ impl CoduxApp {
         let service = self.runtime_service.clone();
         let parent_service = self.runtime_service.clone();
         let parent_main_window = self.parent_main_window.clone();
+        let parent_window_handle = self.parent_main_window_handle;
         let title = self.text("worktree.create.title", "New Worktree");
         let button_label = self.text("common.ok", "OK");
         cx.spawn(async move |_: gpui::WeakEntity<Self>, _cx| {
@@ -161,10 +196,13 @@ impl CoduxApp {
 
             match result {
                 Ok(snapshot) => {
-                    publish_child_window_update(ChildWindowUpdateKind::Worktree);
-                    if let Some(parent) = parent_main_window.clone() {
-                        let _ = parent.update(_cx, |app, cx| {
-                            app.apply_worktree_creator_snapshot(snapshot, cx);
+                    if let (Some(parent), Some(parent_window_handle)) =
+                        (parent_main_window.clone(), parent_window_handle)
+                    {
+                        let _ = parent_window_handle.update(_cx, |_root, window, cx| {
+                            let _ = parent.update(cx, |app, cx| {
+                                app.apply_worktree_creator_snapshot(snapshot, window, cx);
+                            });
                         });
                     }
                 }
@@ -197,6 +235,7 @@ impl CoduxApp {
     fn apply_worktree_creator_snapshot(
         &mut self,
         snapshot: WorktreeSnapshot,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.task_column_refreshing = false;
@@ -206,11 +245,11 @@ impl CoduxApp {
             .as_ref()
             .is_some_and(|project| project.id == snapshot.project_id)
         {
-            self.sync_terminal_state_for_project_switch();
-
+            let previous_selected_worktree_id = self.state.worktrees.selected_worktree_id.clone();
+            let selected_worktree_id = snapshot.selected_worktree_id.clone();
             self.state.worktrees = WorktreeSummary {
                 available: true,
-                selected_worktree_id: Some(snapshot.selected_worktree_id.clone()),
+                selected_worktree_id: previous_selected_worktree_id,
                 worktrees: snapshot
                     .worktrees
                     .into_iter()
@@ -222,7 +261,7 @@ impl CoduxApp {
                         path: worktree.path.clone(),
                         status: worktree.status,
                         is_default: worktree.is_default,
-                        exists: Path::new(&worktree.path).exists(),
+                        exists: true,
                         git_summary: worktree.git_summary,
                     })
                     .collect(),
@@ -237,33 +276,12 @@ impl CoduxApp {
                     })
                     .collect(),
                 active_git: self.state.worktrees.active_git.clone(),
+                base_branches: self.state.worktrees.base_branches.clone(),
+                default_base_branch: self.state.worktrees.default_base_branch.clone(),
                 error: snapshot.error,
             };
-            if self
-                .state
-                .worktrees
-                .worktrees
-                .iter()
-                .any(|worktree| worktree.id == snapshot.selected_worktree_id)
-            {
-                self.state.worktrees.selected_worktree_id = Some(snapshot.selected_worktree_id);
-            }
-            self.reset_current_worktree_ui_state(cx);
-            self.file_editor_states.clear();
-            self.file_editor_state_lru.clear();
-            self.file_editor_loading_states.clear();
-            self.project_switch_generation = self.project_switch_generation.wrapping_add(1);
-            let generation = self.project_switch_generation;
-            self.apply_terminal_layout_from_summary(
-                TerminalLayoutSummary::default(),
-                TerminalRuntimeSummary::default(),
-                cx,
-            );
-            self.persist_current_terminal_layout();
-            self.spawn_worktree_sidebar_load(generation, cx);
             self.invalidate_task_column(cx);
-            self.invalidate_worktree_context(cx);
-            self.refresh_git_panel_state_async(cx);
+            self.select_worktree(selected_worktree_id, window, cx);
         } else {
             self.invalidate_task_column(cx);
         }
@@ -473,19 +491,19 @@ impl CoduxApp {
             .map(|session| session.id)
             .collect::<HashSet<_>>();
         let mut local_terminal_ids = Vec::new();
-        let mut remote_targets = Vec::new();
+        let mut hosted_targets = Vec::new();
         for terminal_id in terminal_ids {
             if local_session_ids.contains(&terminal_id) {
                 local_terminal_ids.push(terminal_id.clone());
             }
-            if let Some(target) = self.remote_close_target_for_terminal(&terminal_id) {
-                remote_targets.push(target);
+            if let Some(target) = self.hosted_close_target_for_terminal(&terminal_id) {
+                hosted_targets.push(target);
             }
         }
         WorktreeTerminalCleanup {
             terminal_manager: self.terminal_manager.clone(),
             local_terminal_ids,
-            remote_targets,
+            hosted_targets,
         }
     }
 
@@ -550,20 +568,20 @@ impl CoduxApp {
         terminal_ids.into_iter().collect()
     }
 
-    fn remote_close_target_for_terminal(
+    fn hosted_close_target_for_terminal(
         &self,
         terminal_id: &str,
-    ) -> Option<crate::terminal::RemoteTerminalCloseTarget> {
+    ) -> Option<crate::terminal::HostedTerminalCloseTarget> {
         self.terminal_pane_registry
             .get(terminal_id)
-            .and_then(TerminalPane::remote_close_target)
+            .and_then(TerminalPane::hosted_close_target)
             .or_else(|| {
                 self.terminals.iter().find_map(|tab| {
                     let tab_terminal_id = tab.terminal_id.as_deref();
                     tab.panes.iter().find_map(|slot| {
                         let slot_terminal_id = slot.terminal_id.as_deref().or(tab_terminal_id)?;
                         if slot_terminal_id == terminal_id {
-                            slot.pane.as_ref()?.remote_close_target()
+                            slot.pane.as_ref()?.hosted_close_target()
                         } else {
                             None
                         }
@@ -573,7 +591,7 @@ impl CoduxApp {
             .or_else(|| {
                 self.collapsed_terminal_panes.iter().find_map(|slot| {
                     if slot.terminal_id.as_deref() == Some(terminal_id) {
-                        slot.pane.as_ref()?.remote_close_target()
+                        slot.pane.as_ref()?.hosted_close_target()
                     } else {
                         None
                     }

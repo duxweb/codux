@@ -93,7 +93,7 @@ impl CoduxApp {
             .state
             .selected_project
             .as_ref()
-            .is_some_and(|project| project.host_device_id.is_none());
+            .is_some_and(|project| project.runtime_target.is_local());
         let Some(path) = self.selected_worktree_path().filter(|_| is_local) else {
             // Nothing local selected: keep the baseline "available" so a later
             // local selection doesn't spuriously fire recovery on its first tick.
@@ -108,17 +108,17 @@ impl CoduxApp {
     }
 
     fn recover_project_drive(&mut self, worktree_path: String, cx: &mut Context<Self>) {
-        let git_path = self
+        let (git_path, runtime_target) = self
             .state
             .selected_project
             .as_ref()
-            .map(|project| project.path.clone())
-            .unwrap_or_else(|| worktree_path.clone());
+            .map(|project| (project.path.clone(), project.runtime_target.clone()))
+            .unwrap_or_else(|| (worktree_path.clone(), ProjectRuntimeTarget::Local));
         self.status_message = "project drive reconnected — reloading files and git".to_string();
         // Re-arm the file + git watchers: the originals attached to the now-dead
         // inode and won't recover on their own.
         self.runtime_service
-            .watch_project_background(worktree_path, git_path);
+            .watch_project_background(worktree_path, git_path, runtime_target);
         self.reload_project_files_async(cx);
         self.refresh_git_panel_state_async(cx);
         self.invalidate_status_bar(cx);
@@ -279,24 +279,22 @@ impl CoduxApp {
             self.invalidate_file_panel(cx);
             return;
         };
-        let project_path = project.path.trim_end_matches('/').to_string();
+        let project_path = project.path.clone();
         let source_abs = if entry.relative_path.is_empty() {
             project_path.clone()
         } else {
-            format!("{project_path}/{}", entry.relative_path)
+            codux_runtime::path::join_path(&project_path, &entry.relative_path)
         };
-        let start_dir = std::path::Path::new(&source_abs)
-            .parent()
-            .map(|parent| parent.to_string_lossy().to_string());
-        let device_id = project.host_device_id.clone();
+        let start_dir = codux_runtime::path::parent_path(&source_abs);
+        let runtime_target = project.runtime_target.clone();
         self.open_file_picker_window(
             FilePickerOpenRequest {
                 mode: super::types::FilePickerMode::Save,
                 target: super::types::FilePickerTarget::SaveFileAs {
                     source_path: source_abs,
-                    device_id: device_id.clone(),
+                    runtime_target: runtime_target.clone(),
                 },
-                device_id,
+                runtime_target,
                 start_path: start_dir,
                 default_filename: Some(entry.name.clone()),
             },

@@ -3,7 +3,7 @@ use super::*;
 pub(in crate::app) struct FilePickerOpenRequest {
     pub(in crate::app) mode: FilePickerMode,
     pub(in crate::app) target: FilePickerTarget,
-    pub(in crate::app) device_id: Option<String>,
+    pub(in crate::app) runtime_target: ProjectRuntimeTarget,
     pub(in crate::app) start_path: Option<String>,
     pub(in crate::app) default_filename: Option<String>,
 }
@@ -18,7 +18,7 @@ impl CoduxApp {
         let FilePickerOpenRequest {
             mode,
             target,
-            device_id,
+            runtime_target,
             start_path,
             default_filename,
         } = request;
@@ -37,7 +37,7 @@ impl CoduxApp {
             },
         );
         let parent = cx.entity().downgrade();
-        let device_for_build = device_id.clone();
+        let target_for_build = runtime_target.clone();
         self.open_auxiliary_window(
             AuxiliaryWindowSpec {
                 slot: AuxiliaryWindowSlot::FilePicker,
@@ -58,7 +58,7 @@ impl CoduxApp {
                 app.file_picker_filename = default_filename.unwrap_or_default();
                 app.file_picker_selected = None;
                 app.file_picker_active_path = None;
-                app.project_editor_host_device_id = device_for_build;
+                app.project_editor_runtime_target = target_for_build;
                 app.project_editor_browse_path = String::new();
                 app.project_editor_browse_parent = None;
                 app.project_editor_browse_entries = Vec::new();
@@ -70,10 +70,10 @@ impl CoduxApp {
             },
             move |view, window, cx| {
                 let handle = window.window_handle();
-                let device = device_id.clone();
+                let target = runtime_target.clone();
                 let start = start_path.clone();
                 view.update(cx, |app, cx| {
-                    app.load_project_editor_browse(device, start, handle, cx);
+                    app.load_project_editor_browse(target, start, handle, cx);
                 });
             },
         );
@@ -87,8 +87,8 @@ impl CoduxApp {
     ) {
         self.file_picker_rename_draft = None;
         self.file_picker_active_path = None;
-        let device_id = self.project_editor_host_device_id.clone();
-        self.load_project_editor_browse(device_id, path, window.window_handle(), cx);
+        let runtime_target = self.project_editor_runtime_target.clone();
+        self.load_project_editor_browse(runtime_target, path, window.window_handle(), cx);
     }
 
     /// Click an entry: directories navigate, files are selected (file/save mode).
@@ -106,11 +106,9 @@ impl CoduxApp {
         }
         // Selecting a file (Save mode prefills the filename from it).
         if self.file_picker_mode == FilePickerMode::Save
-            && let Some(name) = std::path::Path::new(&path)
-                .file_name()
-                .and_then(|name| name.to_str())
+            && let Some(name) = codux_runtime::path::file_name(&path)
         {
-            self.file_picker_filename = name.to_string();
+            self.file_picker_filename = name;
         }
         self.file_picker_selected = Some(path);
         self.invalidate_project_management(cx);
@@ -171,9 +169,9 @@ impl CoduxApp {
             .clone()
             .and_then(|parent| parent.upgrade())
         {
-            let device = self.project_editor_host_device_id.clone();
+            let runtime_target = self.project_editor_runtime_target.clone();
             parent.update(cx, |opener, cx| {
-                opener.apply_file_picker_result(target, device.clone(), path.clone(), cx);
+                opener.apply_file_picker_result(target, runtime_target.clone(), path.clone(), cx);
             });
         }
         window.remove_window();
@@ -184,20 +182,20 @@ impl CoduxApp {
     pub(in crate::app) fn apply_file_picker_result(
         &mut self,
         target: FilePickerTarget,
-        dest_device: Option<String>,
+        destination_target: ProjectRuntimeTarget,
         path: String,
         cx: &mut Context<Self>,
     ) {
         match target {
             FilePickerTarget::ProjectEditorPath => {
                 // The picker chose both the device and the directory.
-                self.project_editor_host_device_id = dest_device;
+                self.project_editor_runtime_target = destination_target;
                 self.project_editor_path = path;
                 self.invalidate_project_management(cx);
             }
             FilePickerTarget::SaveFileAs {
                 source_path,
-                device_id: source_device,
+                runtime_target: source_target,
             } => {
                 let runtime_service = self.runtime_service.clone();
                 let dest = path;
@@ -205,10 +203,10 @@ impl CoduxApp {
                 self.invalidate_status_bar(cx);
                 cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
                     let result = codux_runtime::async_runtime::run_limited_blocking(move || {
-                        runtime_service.save_file_as(
-                            source_device.as_deref(),
+                        runtime_service.save_file_as_runtime(
+                            &source_target,
                             &source_path,
-                            dest_device.as_deref(),
+                            &destination_target,
                             &dest,
                         )
                     })
@@ -237,20 +235,20 @@ impl CoduxApp {
 
     /// Switch the device being browsed in the file picker (left device sidebar):
     /// re-list from that device's root.
-    pub(in crate::app) fn file_picker_switch_device(
+    pub(in crate::app) fn file_picker_switch_runtime(
         &mut self,
-        device_id: Option<String>,
+        runtime_target: ProjectRuntimeTarget,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.project_editor_browse_busy {
             return;
         }
-        self.project_editor_host_device_id = device_id.clone();
+        self.project_editor_runtime_target = runtime_target.clone();
         self.file_picker_selected = None;
         self.file_picker_active_path = None;
         self.file_picker_rename_draft = None;
-        self.load_project_editor_browse(device_id, None, window.window_handle(), cx);
+        self.load_project_editor_browse(runtime_target, None, window.window_handle(), cx);
     }
 
     pub(in crate::app) fn set_project_editor_browse_new_folder(
@@ -327,7 +325,7 @@ impl CoduxApp {
         let old_path = draft.path.clone();
         let selected_old_path = old_path.clone();
         let renamed_path = new_path.clone();
-        let device_id = self.project_editor_host_device_id.clone();
+        let runtime_target = self.project_editor_runtime_target.clone();
         let reload_path = self.project_editor_browse_path.clone();
         let runtime_service = self.runtime_service.clone();
         let window_handle = window.window_handle();
@@ -337,13 +335,9 @@ impl CoduxApp {
 
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let result = codux_runtime::async_runtime::spawn_blocking(move || {
-                match device_id.as_deref() {
-                    Some(device_id) => {
-                        runtime_service.remote_rename_path(device_id, &old_path, &new_path)
-                    }
-                    None => runtime_service.rename_local_path(&old_path, &new_path),
-                }
-                .map(|_| (device_id, reload_path))
+                runtime_service
+                    .rename_runtime_path(&runtime_target, &old_path, &new_path)
+                    .map(|_| (runtime_target, reload_path))
             })
             .await
             .unwrap_or_else(|error| Err(format!("failed to join rename: {error}")));
@@ -351,12 +345,12 @@ impl CoduxApp {
             let _ = this.update(cx, |app, cx| {
                 app.project_editor_browse_busy = false;
                 match result {
-                    Ok((device_id, reload_path)) => {
+                    Ok((runtime_target, reload_path)) => {
                         if app.file_picker_selected.as_deref() == Some(selected_old_path.as_str()) {
                             app.file_picker_selected = Some(renamed_path);
                         }
                         app.load_project_editor_browse(
-                            device_id,
+                            runtime_target,
                             Some(reload_path),
                             window_handle,
                             cx,
@@ -524,7 +518,7 @@ impl CoduxApp {
         let confirm_label = self.text("common.delete", "Delete");
         let cancel_label = self.text("common.cancel", "Cancel");
         let runtime_service = self.runtime_service.clone();
-        let device_id = self.project_editor_host_device_id.clone();
+        let runtime_target = self.project_editor_runtime_target.clone();
         let reload_path = self.project_editor_browse_path.clone();
         let entry_path = entry.path.clone();
         let window_handle = self.file_picker_window;
@@ -549,13 +543,9 @@ impl CoduxApp {
 
             let result = match confirmed {
                 Ok(true) => codux_runtime::async_runtime::spawn_blocking(move || {
-                    match device_id.as_deref() {
-                        Some(device_id) => {
-                            runtime_service.remote_delete_path(device_id, &entry_path)
-                        }
-                        None => runtime_service.delete_local_path(&entry_path),
-                    }
-                    .map(|_| (device_id, reload_path, entry_path))
+                    runtime_service
+                        .delete_runtime_path(&runtime_target, &entry_path)
+                        .map(|_| (runtime_target, reload_path, entry_path))
                 })
                 .await
                 .unwrap_or_else(|error| Err(format!("failed to join delete: {error}"))),
@@ -570,14 +560,19 @@ impl CoduxApp {
             };
 
             let _ = this.update(cx, |app, cx| match result {
-                Ok((device_id, reload_path, deleted_path)) => {
+                Ok((runtime_target, reload_path, deleted_path)) => {
                     app.project_editor_browse_busy = false;
                     app.file_picker_rename_draft = None;
                     if app.file_picker_selected.as_deref() == Some(deleted_path.as_str()) {
                         app.file_picker_selected = None;
                     }
                     if let Some(handle) = window_handle {
-                        app.load_project_editor_browse(device_id, Some(reload_path), handle, cx);
+                        app.load_project_editor_browse(
+                            runtime_target,
+                            Some(reload_path),
+                            handle,
+                            cx,
+                        );
                     } else {
                         app.invalidate_project_management(cx);
                     }
@@ -604,7 +599,7 @@ impl CoduxApp {
             return;
         }
         let name = self.project_editor_browse_new_folder.trim().to_string();
-        let device_id = self.project_editor_host_device_id.clone();
+        let runtime_target = self.project_editor_runtime_target.clone();
         self.clear_file_picker_new_folder_draft();
         if name.is_empty() || self.project_editor_browse_path.trim().is_empty() {
             self.invalidate_project_management(cx);
@@ -628,13 +623,9 @@ impl CoduxApp {
             // not occupy the single-worker priority queue (which would freeze
             // every other blocking load — file tree, git — meanwhile).
             let result = codux_runtime::async_runtime::spawn_blocking(move || {
-                match device_id.as_deref() {
-                    Some(device_id) => runtime_service
-                        .remote_create_directory(device_id, &target)
-                        .map(|_| ()),
-                    None => runtime_service.create_local_directory(&target),
-                }
-                .map(|_| (device_id, browse_path))
+                runtime_service
+                    .create_runtime_directory(&runtime_target, &target)
+                    .map(|_| (runtime_target, browse_path))
             })
             .await
             .unwrap_or_else(|error| Err(format!("failed to join create directory: {error}")));
@@ -644,9 +635,9 @@ impl CoduxApp {
             let _ = this.update(cx, |app, cx| {
                 app.project_editor_browse_busy = false;
                 match result {
-                    Ok((device_id, reload_path)) => {
+                    Ok((runtime_target, reload_path)) => {
                         app.load_project_editor_browse(
-                            device_id,
+                            runtime_target,
                             Some(reload_path),
                             window_handle,
                             cx,
@@ -664,7 +655,7 @@ impl CoduxApp {
 
     fn load_project_editor_browse(
         &mut self,
-        device_id: Option<String>,
+        runtime_target: ProjectRuntimeTarget,
         path: Option<String>,
         // Retained for call-site symmetry; the completion updates the picker
         // entity directly (see below) rather than through a window handle.
@@ -673,7 +664,7 @@ impl CoduxApp {
     ) {
         let runtime_service = self.runtime_service.clone();
         let path_for_call = path.clone();
-        let expected_device_id = device_id.clone();
+        let expected_runtime_target = runtime_target.clone();
         self.project_editor_browse_generation =
             self.project_editor_browse_generation.wrapping_add(1);
         let browse_generation = self.project_editor_browse_generation;
@@ -698,19 +689,15 @@ impl CoduxApp {
             // first browse of a remote host waits (bounded) for it to connect,
             // and that wait must not occupy the single-worker priority queue —
             // doing so would freeze every other blocking load until it returns.
-            let result =
-                codux_runtime::async_runtime::spawn_blocking(move || match device_id.as_deref() {
-                    Some(device_id) => runtime_service.remote_browse_directory(
-                        device_id,
-                        path_for_call.as_deref(),
-                        purpose,
-                    ),
-                    None => {
-                        runtime_service.browse_local_directory(path_for_call.as_deref(), purpose)
-                    }
-                })
-                .await
-                .unwrap_or_else(|error| Err(format!("failed to join browse: {error}")));
+            let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                runtime_service.browse_runtime_directory(
+                    &runtime_target,
+                    path_for_call.as_deref(),
+                    purpose,
+                )
+            })
+            .await
+            .unwrap_or_else(|error| Err(format!("failed to join browse: {error}")));
 
             // Update the entity directly. The previous code nested this inside a
             // `window_handle.update(...)` whose `Err` was discarded; when that
@@ -719,7 +706,7 @@ impl CoduxApp {
             // forever even though the listing had loaded.
             let _ = this.update(cx, |app, cx| {
                 if app.project_editor_browse_generation != browse_generation
-                    || app.project_editor_host_device_id != expected_device_id
+                    || app.project_editor_runtime_target != expected_runtime_target
                 {
                     if app.project_editor_browse_generation == browse_generation {
                         app.project_editor_browse_busy = false;
@@ -782,7 +769,7 @@ impl CoduxApp {
         let project_id = self.project_editor_project_id.clone();
         let badge_symbol = self.project_editor_badge_symbol.clone();
         let badge_color_hex = self.project_editor_badge_color_hex.clone();
-        let host_device_id = self.project_editor_host_device_id.clone();
+        let runtime_target = self.project_editor_runtime_target.clone();
         let runtime_service = self.runtime_service.clone();
         let window_handle = window.window_handle();
         self.project_editor_saving = true;
@@ -803,7 +790,7 @@ impl CoduxApp {
                         badge_text: project_badge_text_from_name(&name),
                         badge_symbol,
                         badge_color_hex: Some(badge_color_hex),
-                        host_device_id,
+                        runtime_target,
                     })
                 } else {
                     runtime_service.project_create(ProjectCreateRequest {
@@ -812,7 +799,7 @@ impl CoduxApp {
                         badge_text: project_badge_text_from_name(&name),
                         badge_symbol,
                         badge_color_hex: Some(badge_color_hex),
-                        host_device_id,
+                        runtime_target,
                     })
                 };
                 save_result.map(|_| (runtime_service.reload_state(), name))

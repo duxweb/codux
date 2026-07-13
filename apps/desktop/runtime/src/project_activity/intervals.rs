@@ -8,6 +8,7 @@ pub(super) fn upsert_project(
     id: String,
     name: String,
     path: String,
+    runtime_target: crate::project_store::ProjectRuntimeTarget,
 ) -> bool {
     if id.trim().is_empty() || path.trim().is_empty() {
         return false;
@@ -18,6 +19,7 @@ pub(super) fn upsert_project(
         .and_modify(|project| {
             project.name = name.clone();
             project.path = path.clone();
+            project.runtime_target = runtime_target.clone();
         })
         .or_insert_with(|| {
             inserted = true;
@@ -25,6 +27,7 @@ pub(super) fn upsert_project(
                 id,
                 name,
                 path,
+                runtime_target,
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
@@ -50,6 +53,9 @@ pub(super) fn projects_due_for_git_interval(
     let mut background_due = Vec::new();
 
     for project in guard.values_mut() {
+        if project.runtime_target.is_hosted() {
+            continue;
+        }
         let is_active_foreground = is_foreground && active_project_id == Some(project.id.as_str());
         let interval = if is_active_foreground {
             foreground_interval

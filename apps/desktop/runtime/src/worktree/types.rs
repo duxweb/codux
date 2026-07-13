@@ -8,6 +8,8 @@ pub struct WorktreeSummary {
     pub worktrees: Vec<WorktreeInfo>,
     pub tasks: Vec<WorktreeTaskInfo>,
     pub active_git: crate::git::GitSummary,
+    pub base_branches: Vec<String>,
+    pub default_base_branch: String,
     pub error: Option<String>,
 }
 
@@ -34,7 +36,7 @@ pub struct WorktreeTaskInfo {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeSnapshot {
     pub project_id: String,
@@ -44,7 +46,7 @@ pub struct WorktreeSnapshot {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectWorktreeSnapshot {
     pub id: String,
@@ -54,8 +56,11 @@ pub struct ProjectWorktreeSnapshot {
     pub path: String,
     pub status: String,
     pub is_default: bool,
+    #[serde(default)]
     pub created_at: i64,
+    #[serde(default)]
     pub updated_at: i64,
+    #[serde(default)]
     pub git_summary: ProjectWorktreeGitSummary,
 }
 
@@ -69,17 +74,22 @@ pub struct ProjectWorktreeGitSummary {
     pub deletions: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeTaskSnapshot {
     pub worktree_id: String,
     pub title: String,
     pub base_branch: String,
+    #[serde(default)]
     pub base_commit: Option<String>,
     pub status: String,
+    #[serde(default)]
     pub created_at: i64,
+    #[serde(default)]
     pub updated_at: i64,
+    #[serde(default)]
     pub started_at: Option<i64>,
+    #[serde(default)]
     pub completed_at: Option<i64>,
 }
 

@@ -189,7 +189,7 @@ pub(super) fn release_channel_for_version(version: &str) -> &'static str {
     }
 }
 
-pub(super) fn update_endpoint_for_channel(channel: &str) -> String {
+pub(crate) fn update_endpoint_for_channel(channel: &str) -> String {
     match channel {
         "beta" => "https://raw.githubusercontent.com/duxweb/codux/main/updates/beta/latest.json",
         _ => "https://raw.githubusercontent.com/duxweb/codux/main/updates/stable/latest.json",

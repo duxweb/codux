@@ -71,6 +71,7 @@ pub fn project_reveal_in_file_manager(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_store::ProjectRuntimeTarget;
     use serde_json::json;
     use uuid::Uuid;
 
@@ -145,7 +146,7 @@ mod tests {
                 badge_text: None,
                 badge_symbol: Some("folder".to_string()),
                 badge_color_hex: Some("#2F80ED".to_string()),
-                host_device_id: None,
+                runtime_target: ProjectRuntimeTarget::Local,
             },
         )
         .expect("create project");
@@ -160,7 +161,7 @@ mod tests {
                 badge_text: None,
                 badge_symbol: None,
                 badge_color_hex: None,
-                host_device_id: None,
+                runtime_target: ProjectRuntimeTarget::Local,
             },
         )
         .expect("create second project");
@@ -179,7 +180,7 @@ mod tests {
                 badge_text: None,
                 badge_symbol: Some("book".to_string()),
                 badge_color_hex: Some("#78D891".to_string()),
-                host_device_id: None,
+                runtime_target: ProjectRuntimeTarget::Local,
             },
         )
         .expect("update project");

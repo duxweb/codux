@@ -284,7 +284,7 @@ impl CoduxApp {
             FilePickerOpenRequest {
                 mode: FilePickerMode::OpenFile,
                 target: FilePickerTarget::SshPrivateKeyPath,
-                device_id: None,
+                runtime_target: ProjectRuntimeTarget::Local,
                 start_path,
                 default_filename: None,
             },
@@ -1361,7 +1361,7 @@ impl CoduxApp {
             .state
             .selected_project
             .as_ref()
-            .filter(|project| project.host_device_id.is_some())
+            .filter(|project| project.is_remote())
             .cloned()
         else {
             return false;

@@ -104,19 +104,25 @@ fn entry_id(project_id: &str, entry: &ScannedEntry) -> String {
     if entry.is_default {
         project_id.to_string()
     } else {
-        worktree_uuid(project_id, &entry.path)
+        let path = codux_git::normalize_repository_path(&entry.path);
+        worktree_uuid(project_id, &path)
     }
 }
 
 /// Create a worktree via the shared `codux-git` engine — the same git2 backend
 /// and managed `.codux/worktrees/<slug>` path the desktop host uses, so the two
 /// hosts never diverge on path layout or branch setup.
-pub fn worktree_create(
+pub fn worktree_create_payload(
+    project_id: &str,
     project_path: &str,
     branch_name: &str,
     base_branch: Option<&str>,
-) -> Result<(), String> {
-    codux_git::worktree::create_worktree(project_path, branch_name, base_branch).map(|_| ())
+) -> Result<Value, String> {
+    let path = codux_git::worktree::create_worktree(project_path, branch_name, base_branch)?;
+    let mut payload = worktree_list_payload(project_id, project_path);
+    let created_path = codux_git::normalize_repository_path(&path.to_string_lossy());
+    payload["selectedWorktreeId"] = Value::String(worktree_uuid(project_id, &created_path));
+    Ok(payload)
 }
 
 /// Remove a worktree (and optionally its branch) via the shared `codux-git`
@@ -177,4 +183,70 @@ fn changed_file_count(path: &str) -> usize {
                 .count()
         })
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn create_payload_selects_the_created_worktree() {
+        let repo = temp_dir("create-payload-selection");
+        init_repo(&repo);
+
+        let payload = worktree_create_payload(
+            "project-1",
+            repo.to_string_lossy().as_ref(),
+            "feature/selected",
+            None,
+        )
+        .expect("create worktree");
+        let created = payload["worktrees"]
+            .as_array()
+            .and_then(|worktrees| {
+                worktrees
+                    .iter()
+                    .find(|worktree| !worktree["isDefault"].as_bool().unwrap_or(false))
+            })
+            .expect("created worktree");
+
+        assert_eq!(payload["selectedWorktreeId"], created["id"]);
+        assert_eq!(created["branch"], "feature/selected");
+
+        fs::remove_dir_all(repo).ok();
+    }
+
+    fn init_repo(path: &Path) {
+        fs::create_dir_all(path).expect("create repository directory");
+        run_git(path, &["init"]);
+        run_git(path, &["config", "user.email", "codux@example.test"]);
+        run_git(path, &["config", "user.name", "Codux"]);
+        fs::write(path.join("README.md"), "test\n").expect("write repository file");
+        run_git(path, &["add", "README.md"]);
+        run_git(path, &["commit", "-m", "initial"]);
+    }
+
+    fn run_git(path: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("codux-agent-worktree-{label}-{nanos}"))
+    }
 }

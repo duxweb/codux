@@ -84,7 +84,9 @@ where
 
 pub fn worktree_base_branches(branch: &str, branches: &[GitBranchSummary]) -> Vec<String> {
     let mut values = Vec::new();
-    push_unique_branch(&mut values, branch);
+    if branches.iter().any(|candidate| candidate.name == branch) {
+        push_unique_branch(&mut values, branch);
+    }
     for branch in branches {
         push_unique_branch(&mut values, branch.name.as_str());
     }
@@ -98,7 +100,13 @@ pub fn default_worktree_base_branch(branch: &str, branches: &[GitBranchSummary])
         .or_else(|| branches.first())
         .map(|branch| branch.name.clone())
         .filter(|branch| !branch.trim().is_empty())
-        .unwrap_or_else(|| branch.to_string())
+        .or_else(|| {
+            branches
+                .iter()
+                .any(|candidate| candidate.name == branch)
+                .then(|| branch.to_string())
+        })
+        .unwrap_or_default()
 }
 
 pub struct WorktreeSummaryPayload {
@@ -175,6 +183,69 @@ mod tests {
             vec!["main".to_string(), "feature".to_string()]
         );
         assert_eq!(default_worktree_base_branch("fallback", &branches), "main");
+    }
+
+    #[test]
+    fn unborn_branch_is_not_exposed_as_a_worktree_base() {
+        assert!(worktree_base_branches("main", &[]).is_empty());
+        assert!(default_worktree_base_branch("main", &[]).is_empty());
+    }
+
+    #[test]
+    fn summary_payload_keeps_the_shared_wire_contract() {
+        let payload = worktree_summary_payload(WorktreeSummaryPayload {
+            project_id: "project-1".to_string(),
+            selected_worktree_id: Some("worktree-1".to_string()),
+            worktrees: json!([{ "id": "worktree-1" }]),
+            tasks: json!([{ "worktreeId": "worktree-1" }]),
+            available: true,
+            base_branches: vec!["main".to_string()],
+            default_base_branch: "main".to_string(),
+            error: None,
+        });
+
+        assert_eq!(payload["projectId"], "project-1");
+        assert_eq!(payload["selectedWorktreeId"], "worktree-1");
+        assert_eq!(payload["worktrees"][0]["id"], "worktree-1");
+        assert_eq!(payload["tasks"][0]["worktreeId"], "worktree-1");
+        assert_eq!(payload["available"], true);
+        assert_eq!(payload["baseBranches"], json!(["main"]));
+        assert_eq!(payload["defaultBaseBranch"], "main");
+        assert!(payload["error"].is_null());
+    }
+
+    #[test]
+    fn update_payload_keeps_the_shared_wire_contract() {
+        let payload = worktree_update_payload(
+            "project-1",
+            "worktree-1",
+            json!([{ "id": "worktree-1" }]),
+            json!([]),
+            vec!["main".to_string()],
+            "main".to_string(),
+            None,
+        );
+
+        assert_eq!(
+            payload
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            [
+                "baseBranches",
+                "defaultBaseBranch",
+                "error",
+                "projectId",
+                "selectedWorktreeId",
+                "tasks",
+                "worktrees",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+        );
     }
 
     #[test]

@@ -19,10 +19,14 @@ pub(super) fn project_summary(project: &ProjectRecord) -> ProjectSummary {
         badge_symbol: project.badge_symbol.clone(),
         badge_color_hex: project.badge_color_hex.clone(),
         git_default_push_remote_name: project.git_default_push_remote_name.clone(),
+        runtime_target: project.runtime_target.clone(),
     }
 }
 
-pub(super) fn worktree_summary(worktree: &ProjectWorktreeRecord) -> ProjectSummary {
+pub(super) fn worktree_summary(
+    worktree: &ProjectWorktreeRecord,
+    runtime_target: &super::ProjectRuntimeTarget,
+) -> ProjectSummary {
     ProjectSummary {
         id: worktree.id.clone(),
         name: worktree.name.clone(),
@@ -34,6 +38,7 @@ pub(super) fn worktree_summary(worktree: &ProjectWorktreeRecord) -> ProjectSumma
         badge_symbol: None,
         badge_color_hex: None,
         git_default_push_remote_name: None,
+        runtime_target: runtime_target.clone(),
     }
 }
 
@@ -143,8 +148,8 @@ pub(super) fn normalized_existing_path(path: &str) -> Result<String, String> {
 /// (just trimmed + non-empty). Without this, creating a remote project fails
 /// the `Path::exists()` check and the editor silently refuses to save (the
 /// error only lands in the main window's status bar).
-pub(super) fn normalized_project_path(path: &str, is_remote: bool) -> Result<String, String> {
-    if !is_remote {
+pub(super) fn normalized_project_path(path: &str, is_hosted: bool) -> Result<String, String> {
+    if !is_hosted {
         return normalized_existing_path(path);
     }
     let trimmed = path.trim();
@@ -175,10 +180,13 @@ pub(super) fn normalized_project_name(name: &str, path: &str) -> String {
         .to_string()
 }
 
-pub(super) fn project_uuid(name: &str, path: &str) -> String {
+pub(super) fn project_uuid(name: &str, path: &str, target_identity: Option<&str>) -> String {
+    let identity = target_identity
+        .map(|identity| format!(":{identity}"))
+        .unwrap_or_default();
     Uuid::new_v5(
         &Uuid::NAMESPACE_URL,
-        format!("codux:project:{name}:{path}").as_bytes(),
+        format!("codux:project:{name}:{path}{identity}").as_bytes(),
     )
     .to_string()
 }

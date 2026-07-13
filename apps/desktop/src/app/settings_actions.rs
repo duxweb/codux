@@ -615,6 +615,31 @@ impl CoduxApp {
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 
+    pub(in crate::app) fn toggle_wsl_enabled(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.save_settings_async(
+            "toggle_wsl_enabled",
+            "saving WSL integration setting",
+            |service| service.toggle_wsl_enabled(),
+            |app, settings, cx| {
+                app.apply_async_settings_summary(settings);
+                app.wsl_runtime_error = None;
+                if app.state.settings.wsl_enabled {
+                    app.wsl_distribution_catalog = None;
+                    app.load_wsl_distribution_catalog(cx);
+                } else {
+                    app.wsl_distribution_catalog_loading = false;
+                }
+                app.invalidate_ui_region(cx, UiRegion::Root);
+            },
+            cx,
+        );
+        self.invalidate_ui_region(cx, UiRegion::Root);
+    }
+
     pub(super) fn set_developer_refresh(
         &mut self,
         seconds: String,

@@ -986,7 +986,7 @@ where
         // pending pane and defer — opening it inline would block the UI thread
         // on a network round-trip. Local terminals (and the boot path, which has
         // no pending sink yet) spawn the PTY synchronously as before.
-        if pty_config.host_device_id.is_some()
+        if pty_config.runtime_target.is_hosted()
             && let Some(out) = pending_out.as_deref_mut()
         {
             let (pane, attach) = TerminalPane::pending_with_restored_output(
@@ -1147,7 +1147,7 @@ pub(in crate::app) fn terminal_launch_context(
         memory_workspace_root: Some(launch_artifacts.workspace_root),
         memory_prompt_file: Some(launch_artifacts.prompt_file),
         memory_index_file: Some(launch_artifacts.index_file),
-        host_device_id: project.host_device_id.clone(),
+        runtime_target: project.runtime_target.clone(),
     })
 }
 

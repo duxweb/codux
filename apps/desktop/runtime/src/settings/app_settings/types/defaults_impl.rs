@@ -138,6 +138,7 @@ impl Default for AppSettings {
             shortcuts: HashMap::new(),
             update: UpdateSettings::default(),
             remote: RemoteSettings::default(),
+            wsl_enabled: true,
             developer_hud: false,
             developer_refresh: default_developer_refresh(),
         }

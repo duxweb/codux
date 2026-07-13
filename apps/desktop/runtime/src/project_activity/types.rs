@@ -155,6 +155,7 @@ pub(super) struct TrackedProject {
     pub(super) id: String,
     pub(super) name: String,
     pub(super) path: String,
+    pub(super) runtime_target: crate::project_store::ProjectRuntimeTarget,
     pub(super) last_git_refresh: Option<Instant>,
     pub(super) last_remote_git_refresh: Option<Instant>,
     pub(super) last_git_changed_refresh: Option<Instant>,
@@ -167,6 +168,7 @@ impl From<ProjectSummary> for TrackedProject {
             id: project.id,
             name: project.name,
             path: project.path,
+            runtime_target: project.runtime_target,
             last_git_refresh: None,
             last_remote_git_refresh: None,
             last_git_changed_refresh: None,
@@ -188,6 +190,7 @@ impl From<TrackedProject> for ProjectSummary {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
+            runtime_target: project.runtime_target,
         }
     }
 }

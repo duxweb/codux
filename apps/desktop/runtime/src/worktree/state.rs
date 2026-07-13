@@ -93,6 +93,18 @@ pub(super) fn enrich_scanned_snapshot_from_state(
             .and_then(Value::as_str)
             .unwrap_or(&task.title)
             .to_string();
+        task.base_branch = existing
+            .get("baseBranch")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(&task.base_branch)
+            .to_string();
+        task.base_commit = existing
+            .get("baseCommit")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or(task.base_commit.take());
         task.status = existing
             .get("status")
             .and_then(Value::as_str)
@@ -198,6 +210,18 @@ pub(super) fn merge_worktree_snapshot(
                 .and_then(Value::as_str)
                 .unwrap_or(&task.title)
                 .to_string();
+            task.base_branch = existing
+                .get("baseBranch")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(&task.base_branch)
+                .to_string();
+            task.base_commit = existing
+                .get("baseCommit")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or(task.base_commit.take());
             task.status = existing
                 .get("status")
                 .and_then(Value::as_str)

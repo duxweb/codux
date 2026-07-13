@@ -10,12 +10,17 @@ impl WorktreeService {
         let state = load_worktree_state(&self.state_file);
 
         let mut worktrees =
-            state_worktree_rows(&state.worktrees, project_id, true, &self.support_dir);
+            state_worktree_rows(&state.worktrees, project_id, true, false, &self.support_dir);
 
         if worktrees.is_empty()
             && let Some(project_path) = project_path
         {
-            worktrees.push(default_project_worktree(project_id, project_path, true));
+            worktrees.push(default_project_worktree(
+                project_id,
+                project_path,
+                true,
+                false,
+            ));
         }
         persist_worktree_git_summaries(&self.support_dir, &worktrees);
 
@@ -34,12 +39,23 @@ impl WorktreeService {
             .or_else(|| project_path.map(str::to_string))
             .unwrap_or_default();
 
+        let active_git = GitService::status(&active_path);
+        let base_branches = codux_runtime_core::worktree::worktree_base_branches(
+            &active_git.branch,
+            &crate::git::wire::wire_branches(&active_git.branches),
+        );
+        let default_base_branch = codux_runtime_core::worktree::default_worktree_base_branch(
+            &active_git.branch,
+            &crate::git::wire::wire_branches(&active_git.branches),
+        );
         WorktreeSummary {
             available: true,
             selected_worktree_id,
             worktrees,
             tasks,
-            active_git: GitService::status(&active_path),
+            active_git,
+            base_branches,
+            default_base_branch,
             error: None,
         }
     }
@@ -49,6 +65,23 @@ impl WorktreeService {
         project_id: Option<&str>,
         project_path: Option<&str>,
     ) -> WorktreeSummary {
+        self.state_summary_with_path_availability(project_id, project_path, false)
+    }
+
+    pub fn hosted_state_summary(
+        &self,
+        project_id: Option<&str>,
+        project_path: Option<&str>,
+    ) -> WorktreeSummary {
+        self.state_summary_with_path_availability(project_id, project_path, true)
+    }
+
+    fn state_summary_with_path_availability(
+        &self,
+        project_id: Option<&str>,
+        project_path: Option<&str>,
+        hosted_paths: bool,
+    ) -> WorktreeSummary {
         let Some(project_id) = project_id else {
             return WorktreeSummary {
                 error: Some("no selected project".to_string()),
@@ -57,7 +90,7 @@ impl WorktreeService {
         };
 
         let state = load_worktree_state(&self.state_file);
-        self.state_summary_from_state(&state, Some(project_id), project_path)
+        self.state_summary_from_state(&state, Some(project_id), project_path, hosted_paths)
     }
 
     pub fn state_summaries<'a, I>(
@@ -73,7 +106,12 @@ impl WorktreeService {
             .map(|(project_id, project_path)| {
                 (
                     project_id.to_string(),
-                    self.state_summary_from_state(&state, Some(project_id), Some(project_path)),
+                    self.state_summary_from_state(
+                        &state,
+                        Some(project_id),
+                        Some(project_path),
+                        false,
+                    ),
                 )
             })
             .collect()
@@ -84,6 +122,7 @@ impl WorktreeService {
         state: &StateFile,
         project_id: Option<&str>,
         project_path: Option<&str>,
+        hosted_paths: bool,
     ) -> WorktreeSummary {
         let Some(project_id) = project_id else {
             return WorktreeSummary {
@@ -92,13 +131,23 @@ impl WorktreeService {
             };
         };
 
-        let mut worktrees =
-            state_worktree_rows(&state.worktrees, project_id, false, &self.support_dir);
+        let mut worktrees = state_worktree_rows(
+            &state.worktrees,
+            project_id,
+            false,
+            hosted_paths,
+            &self.support_dir,
+        );
 
         if worktrees.is_empty()
             && let Some(project_path) = project_path
         {
-            worktrees.push(default_project_worktree(project_id, project_path, false));
+            worktrees.push(default_project_worktree(
+                project_id,
+                project_path,
+                false,
+                hosted_paths,
+            ));
         }
 
         let selected_worktree_id = selected_worktree_id_for_project(
@@ -116,12 +165,22 @@ impl WorktreeService {
             })
             .unwrap_or_default();
 
+        let base_branches = codux_runtime_core::worktree::worktree_base_branches(
+            &active_git.branch,
+            &crate::git::wire::wire_branches(&active_git.branches),
+        );
+        let default_base_branch = codux_runtime_core::worktree::default_worktree_base_branch(
+            &active_git.branch,
+            &crate::git::wire::wire_branches(&active_git.branches),
+        );
         WorktreeSummary {
             available: true,
             selected_worktree_id,
             worktrees,
             tasks,
             active_git,
+            base_branches,
+            default_base_branch,
             error: None,
         }
     }
@@ -131,6 +190,7 @@ fn state_worktree_rows(
     records: &[WorktreeRecord],
     project_id: &str,
     refresh_git: bool,
+    hosted_paths: bool,
     support_dir: &Path,
 ) -> Vec<WorktreeInfo> {
     records
@@ -143,7 +203,7 @@ fn state_worktree_rows(
                 worktree_git_summary_from_cache(support_dir, &worktree.id).unwrap_or_default()
             };
             WorktreeInfo {
-                exists: Path::new(&worktree.path).exists(),
+                exists: hosted_paths || Path::new(&worktree.path).exists(),
                 git_summary,
                 id: worktree.id.clone(),
                 project_id: worktree.project_id.clone(),
@@ -237,6 +297,7 @@ fn default_project_worktree(
     project_id: &str,
     project_path: &str,
     include_git_stats: bool,
+    hosted_path: bool,
 ) -> WorktreeInfo {
     WorktreeInfo {
         git_summary: if include_git_stats {
@@ -255,6 +316,6 @@ fn default_project_worktree(
         path: project_path.to_string(),
         status: "todo".to_string(),
         is_default: true,
-        exists: Path::new(project_path).exists(),
+        exists: hosted_path || Path::new(project_path).exists(),
     }
 }

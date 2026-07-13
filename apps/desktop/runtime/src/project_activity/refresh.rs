@@ -1,6 +1,9 @@
 impl ProjectActivityCoordinator {
     pub fn refresh_git_once(&self, project: &ProjectSummary) {
         self.mark_project_summary(project);
+        if project.runtime_target.is_hosted() {
+            return;
+        }
         let mut tracked_project = TrackedProject::from(project.clone());
         let now = Instant::now();
         if let Ok(mut guard) = self.projects.lock()
@@ -32,6 +35,9 @@ impl ProjectActivityCoordinator {
 
     pub fn refresh_git_sidecars_by_path(&self, project: ProjectSummary) {
         self.mark_project_summary(&project);
+        if project.runtime_target.is_hosted() {
+            return;
+        }
         self.git_jobs.submit(GitJob::Worktree {
             support_dir: self.support_dir.clone(),
             project: project.clone(),

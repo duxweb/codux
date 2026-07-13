@@ -511,7 +511,7 @@ fn make_handler(
                 payload.get("newPath").and_then(Value::as_str),
             ) {
                 (Some(path), Some(new_path)) => match file_rename(path, new_path) {
-                    Ok(()) => Some((
+                    Ok(_) => Some((
                         REMOTE_FILE_RENAMED,
                         json!({ "path": path, "newPath": new_path }),
                     )),
@@ -703,7 +703,8 @@ fn make_handler(
                     .and_then(Value::as_str)
                     .unwrap_or("");
                 let result = match kind {
-                    REMOTE_WORKTREE_CREATE => crate::worktree::worktree_create(
+                    REMOTE_WORKTREE_CREATE => crate::worktree::worktree_create_payload(
+                        project_id,
                         project_path,
                         payload
                             .get("branchName")
@@ -722,7 +723,8 @@ fn make_handler(
                             .get("removeBranch")
                             .and_then(Value::as_bool)
                             .unwrap_or(false),
-                    ),
+                    )
+                    .map(|_| crate::worktree::worktree_list_payload(project_id, project_path)),
                     _ => crate::worktree::worktree_remove(
                         project_path,
                         payload
@@ -733,13 +735,11 @@ fn make_handler(
                             .get("removeBranch")
                             .and_then(Value::as_bool)
                             .unwrap_or(false),
-                    ),
+                    )
+                    .map(|_| crate::worktree::worktree_list_payload(project_id, project_path)),
                 };
                 match result {
-                    Ok(()) => Some((
-                        REMOTE_WORKTREE_UPDATED,
-                        crate::worktree::worktree_list_payload(project_id, project_path),
-                    )),
+                    Ok(payload) => Some((REMOTE_WORKTREE_UPDATED, payload)),
                     Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
                 }
             }

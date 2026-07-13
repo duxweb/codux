@@ -904,6 +904,7 @@ impl RemoteController {
         project_path: &str,
         branch_name: &str,
         base_branch: Option<&str>,
+        task_title: Option<&str>,
     ) -> Result<Value, String> {
         self.request(
             REMOTE_WORKTREE_UPDATED,
@@ -913,6 +914,7 @@ impl RemoteController {
                 "projectPath": project_path,
                 "branchName": branch_name,
                 "baseBranch": base_branch,
+                "taskTitle": task_title,
             }),
         )
     }

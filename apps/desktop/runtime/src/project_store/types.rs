@@ -1,3 +1,4 @@
+pub use codux_runtime_core::runtime_target::RuntimeTarget as ProjectRuntimeTarget;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -15,7 +16,7 @@ pub struct AppSnapshot {
     pub selected_worktree_id_by_project: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectRecord {
     pub id: String,
@@ -31,11 +32,53 @@ pub struct ProjectRecord {
     pub badge_color_hex: Option<String>,
     #[serde(default)]
     pub git_default_push_remote_name: Option<String>,
-    /// When set, this project's data lives on a remote device (another desktop
-    /// or a headless agent) and its domains route over the controller transport
-    /// instead of executing locally. `None` = local project (today's behavior).
+    pub runtime_target: ProjectRuntimeTarget,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectRecordWire {
+    id: String,
     #[serde(default)]
-    pub host_device_id: Option<String>,
+    name: String,
+    #[serde(default)]
+    path: String,
+    #[serde(default)]
+    badge_text: Option<String>,
+    #[serde(default)]
+    badge_symbol: Option<String>,
+    #[serde(default)]
+    badge_color_hex: Option<String>,
+    #[serde(default)]
+    git_default_push_remote_name: Option<String>,
+    #[serde(default)]
+    runtime_target: Option<ProjectRuntimeTarget>,
+    #[serde(default)]
+    host_device_id: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for ProjectRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ProjectRecordWire::deserialize(deserializer)?;
+        let runtime_target = wire.runtime_target.unwrap_or_else(|| {
+            wire.host_device_id
+                .map(|device_id| ProjectRuntimeTarget::Remote { device_id })
+                .unwrap_or_default()
+        });
+        Ok(Self {
+            id: wire.id,
+            name: wire.name,
+            path: wire.path,
+            badge_text: wire.badge_text,
+            badge_symbol: wire.badge_symbol,
+            badge_color_hex: wire.badge_color_hex,
+            git_default_push_remote_name: wire.git_default_push_remote_name,
+            runtime_target,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -93,7 +136,7 @@ pub struct ProjectCreateRequest {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     #[serde(default)]
-    pub host_device_id: Option<String>,
+    pub runtime_target: ProjectRuntimeTarget,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -106,7 +149,7 @@ pub struct ProjectUpdateRequest {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     #[serde(default)]
-    pub host_device_id: Option<String>,
+    pub runtime_target: ProjectRuntimeTarget,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -147,4 +190,6 @@ pub struct ProjectSummary {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     pub git_default_push_remote_name: Option<String>,
+    #[serde(default)]
+    pub runtime_target: ProjectRuntimeTarget,
 }

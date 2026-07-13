@@ -372,6 +372,10 @@ fn summary_from_raw(raw: &Map<String, Value>) -> SettingsSummary {
             .and_then(Value::as_i64)
             .map(|until| until > current_unix_seconds())
             .unwrap_or(defaults.pet_speech_temporary_muted),
+        wsl_enabled: raw
+            .get("wslEnabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(defaults.wsl_enabled),
         developer_hud: raw
             .get("developerHud")
             .and_then(Value::as_bool)

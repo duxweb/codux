@@ -68,6 +68,7 @@ pub struct CoduxApp {
     /// registry could open a second PTY for one terminal and orphan it; this
     /// guards against that. All access is on the main thread.
     pub(in crate::app) terminal_attach_in_flight: std::collections::HashSet<String>,
+    pub(in crate::app) hosted_terminal_rebind_in_flight: HashSet<ProjectRuntimeTarget>,
     pub(in crate::app) terminal_manager: Arc<TerminalManager>,
     /// Remote-hosted terminals restored at boot. Boot runs during construction,
     /// before a `Context<Self>` exists to drive the async attach chokepoint, so
@@ -121,6 +122,7 @@ pub struct CoduxApp {
     pub(in crate::app) worktree_creator_window: Option<AnyWindowHandle>,
     pub(in crate::app) child_windows: Vec<AnyWindowHandle>,
     pub(in crate::app) parent_main_window: Option<gpui::WeakEntity<CoduxApp>>,
+    pub(in crate::app) parent_main_window_handle: Option<AnyWindowHandle>,
     pub(in crate::app) desktop_pet_line: String,
     pub(in crate::app) desktop_pet_tone: DesktopPetActivityTone,
     pub(in crate::app) desktop_pet_plan_items: Vec<DesktopPetPlanItem>,
@@ -388,9 +390,12 @@ pub struct CoduxApp {
     pub(in crate::app) project_editor_badge_symbol: Option<String>,
     pub(in crate::app) project_editor_badge_color_hex: String,
     pub(in crate::app) project_editor_saving: bool,
-    /// `Some(device_id)` when the project being edited is hosted on a remote
-    /// device; `None` = local. Drives the editor's device picker + remote browse.
-    pub(in crate::app) project_editor_host_device_id: Option<String>,
+    pub(in crate::app) project_editor_runtime_target: ProjectRuntimeTarget,
+    pub(in crate::app) wsl_distribution_catalog: Option<codux_runtime::wsl::WslDistributionCatalog>,
+    pub(in crate::app) wsl_distribution_catalog_loading: bool,
+    pub(in crate::app) wsl_selected_distribution: String,
+    pub(in crate::app) wsl_install_progress: Option<codux_runtime::wsl::WslInstallProgress>,
+    pub(in crate::app) wsl_runtime_error: Option<String>,
     /// Inline "pair a new device" form state within the project editor.
     /// Inline remote directory browser state (shown when choosing a directory on
     /// a remote device instead of opening the native OS dialog).
@@ -411,6 +416,7 @@ pub struct CoduxApp {
     pub(in crate::app) worktree_creator_base_branch: String,
     pub(in crate::app) worktree_creator_name: String,
     pub(in crate::app) worktree_creator_error: Option<String>,
+    pub(in crate::app) worktree_creator_loading: bool,
     pub(in crate::app) worktree_creator_submitting: bool,
     pub(in crate::app) update_dialog_phase: UpdateDialogPhase,
     pub(in crate::app) update_dialog_status: Option<codux_runtime::update::UpdateStatus>,

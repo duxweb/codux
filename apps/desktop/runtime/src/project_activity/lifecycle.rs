@@ -2,7 +2,13 @@ impl ProjectActivityCoordinator {
     pub fn seed_projects(&self, projects: Vec<ProjectRecord>) {
         if let Ok(mut guard) = self.projects.lock() {
             for project in projects {
-                upsert_project(&mut guard, project.id, project.name, project.path);
+                upsert_project(
+                    &mut guard,
+                    project.id,
+                    project.name,
+                    project.path,
+                    project.runtime_target,
+                );
             }
             for project in guard.values_mut() {
                 project.last_git_refresh = Some(Instant::now());
@@ -24,6 +30,7 @@ impl ProjectActivityCoordinator {
                     project.id.clone(),
                     project.name.clone(),
                     project.path.clone(),
+                    project.runtime_target.clone(),
                 )
             })
             .unwrap_or(false)
@@ -45,6 +52,9 @@ impl ProjectActivityCoordinator {
                 return;
             }
             should_refresh_sidecars = is_same_active;
+        }
+        if project.runtime_target.is_hosted() {
+            return;
         }
         let is_first_git_activation = self.mark_git_activation(&project.id);
         if should_refresh_sidecars || is_first_git_activation {

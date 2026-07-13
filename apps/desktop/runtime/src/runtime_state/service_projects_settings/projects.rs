@@ -70,7 +70,7 @@ impl RuntimeService {
         if let Some(next_project_id) = snapshot.selected_project_id.as_deref() {
             let _ = self.mark_project_active_with_watch(next_project_id);
         } else {
-            self.stop_active_project_files();
+            self.stop_active_project_watches();
         }
         Ok(snapshot)
     }
@@ -151,7 +151,7 @@ impl RuntimeService {
         if let Some(next_project_id) = next_project_id.as_deref() {
             let _ = self.mark_project_active_with_watch(next_project_id);
         } else {
-            self.stop_active_project_files();
+            self.stop_active_project_watches();
         }
         Ok(next_project_id)
     }
@@ -161,18 +161,13 @@ impl RuntimeService {
         project_path: &str,
         relative_path: &str,
     ) -> Result<(String, bool), String> {
-        // Remote-hosted projects read the file on the host over the controller.
-        if let Some(device_id) = self.host_device_for_project_path(project_path) {
+        if let Some(runtime) = self.hosted_runtime_for_project_path(project_path) {
             let absolute = format!(
                 "{}/{}",
                 project_path.trim_end_matches('/'),
                 relative_path.trim_start_matches('/')
             );
-            return match self
-                .remote_controllers
-                .controller_for(&device_id)
-                .and_then(|controller| controller.read_file(&absolute))
-            {
+            return match runtime.and_then(|runtime| runtime.read_file(&absolute)) {
                 Ok(payload) => Ok((
                     payload
                         .get("content")

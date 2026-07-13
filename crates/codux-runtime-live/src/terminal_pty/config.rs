@@ -1,6 +1,8 @@
 use super::*;
+use codux_runtime_core::runtime_target::RuntimeTarget;
+use serde::Serialize;
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalPtyConfig {
     pub cwd: Option<String>,
@@ -19,8 +21,7 @@ pub struct TerminalPtyConfig {
     pub worktree_id: Option<String>,
     pub title: Option<String>,
     pub tool: Option<String>,
-    /// When set, the terminal runs on this remote device over the controller.
-    pub host_device_id: Option<String>,
+    pub runtime_target: RuntimeTarget,
     pub support_dir: Option<PathBuf>,
     pub runtime_root: Option<PathBuf>,
     pub session_instance_id: Option<String>,
@@ -72,7 +73,7 @@ pub struct TerminalLaunchContext {
     pub memory_workspace_root: Option<PathBuf>,
     pub memory_prompt_file: Option<PathBuf>,
     pub memory_index_file: Option<PathBuf>,
-    pub host_device_id: Option<String>,
+    pub runtime_target: RuntimeTarget,
 }
 
 impl TerminalLaunchContext {
@@ -100,7 +101,7 @@ impl TerminalLaunchContext {
             memory_workspace_root: self.memory_workspace_root.clone(),
             memory_prompt_file: self.memory_prompt_file.clone(),
             memory_index_file: self.memory_index_file.clone(),
-            host_device_id: self.host_device_id.clone(),
+            runtime_target: self.runtime_target.clone(),
             scrollback_lines: None,
             ..Default::default()
         }

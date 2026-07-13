@@ -11,8 +11,10 @@ fn load_projects(support_dir: &Path) -> (Vec<ProjectInfo>, Option<ProjectInfo>) 
     let projects = state
         .projects
         .into_iter()
-        .map(|project| ProjectInfo {
-            exists: project.host_device_id.is_some() || Path::new(&project.path).exists(),
+        .map(|project| {
+            let runtime_target = project.resolved_runtime_target();
+            ProjectInfo {
+            exists: runtime_target.is_hosted() || Path::new(&project.path).exists(),
             id: project.id,
             badge: project
                 .badge_text
@@ -24,7 +26,8 @@ fn load_projects(support_dir: &Path) -> (Vec<ProjectInfo>, Option<ProjectInfo>) 
             name: project.name,
             path: project.path,
             git_default_push_remote_name: project.git_default_push_remote_name,
-            host_device_id: project.host_device_id,
+            runtime_target,
+        }
         })
         .collect::<Vec<_>>();
 
@@ -198,8 +201,14 @@ fn load_worktrees_from_state(
     support_dir: &Path,
     project_id: Option<&str>,
     project_path: Option<&str>,
+    hosted_paths: bool,
 ) -> WorktreeSummary {
-    WorktreeService::new(support_dir.to_path_buf()).state_summary(project_id, project_path)
+    let service = WorktreeService::new(support_dir.to_path_buf());
+    if hosted_paths {
+        service.hosted_state_summary(project_id, project_path)
+    } else {
+        service.state_summary(project_id, project_path)
+    }
 }
 
 fn load_update(support_dir: &Path, repo_root: PathBuf) -> UpdateSummary {

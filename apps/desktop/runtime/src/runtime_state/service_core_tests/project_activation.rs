@@ -171,6 +171,62 @@ fn project_select_worktree_marks_root_project_active_and_watches_worktree_files(
 }
 
 #[test]
+fn failed_file_watch_does_not_mark_path_active() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-failed-file-watch-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&support_dir).expect("create support dir");
+    let service = RuntimeService::new(support_dir.clone());
+    let generation = service.begin_project_watch_switch().unwrap();
+
+    assert!(
+        service
+            .watch_active_project_files(
+                support_dir.join("missing").to_string_lossy().to_string(),
+                generation,
+            )
+            .is_err()
+    );
+    assert!(
+        service
+            .active_project_watches
+            .lock()
+            .expect("active watches")
+            .file_path
+            .is_none()
+    );
+
+    let _ = fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn stale_project_watch_generation_cannot_replace_current_paths() {
+    let mut active = ActiveProjectWatches::default();
+    let stale = active.begin_switch();
+    let current = active.begin_switch();
+
+    assert_eq!(
+        active.then_install_file(current, "/current/files".to_string()),
+        Some(None)
+    );
+    assert_eq!(
+        active.then_install_git(current, "/current/git".to_string()),
+        Some(None)
+    );
+    assert_eq!(
+        active.then_install_file(stale, "/stale/files".to_string()),
+        None
+    );
+    assert_eq!(
+        active.then_install_git(stale, "/stale/git".to_string()),
+        None
+    );
+    assert_eq!(active.file_path.as_deref(), Some("/current/files"));
+    assert_eq!(active.git_path.as_deref(), Some("/current/git"));
+}
+
+#[test]
 fn project_and_worktree_switch_loads_terminal_layout_for_selected_worktree() {
     let support_dir = std::env::temp_dir().join(format!(
         "codux-project-worktree-terminal-layout-{}",
@@ -317,6 +373,70 @@ fn project_and_worktree_switch_loads_terminal_layout_for_selected_worktree() {
     assert_eq!(state.terminal_layout.bottom_ratio, 0.18);
 
     let _ = fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn wsl_startup_restores_selected_worktree_terminal_layout_without_local_paths() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-wsl-startup-worktree-layout-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&support_dir).expect("create support dir");
+    fs::write(
+        support_dir.join("state.json"),
+        json!({
+            "projects": [{
+                "id": "project-1",
+                "name": "WSL Project",
+                "path": "/home/user/project",
+                "runtimeTarget": { "kind": "wsl", "distribution": "Ubuntu" }
+            }],
+            "worktrees": [{
+                "id": "worktree-1",
+                "projectId": "project-1",
+                "name": "Feature",
+                "branch": "feature",
+                "path": "/home/user/.codux/worktrees/feature",
+                "status": "active",
+                "isDefault": false,
+                "createdAt": 1,
+                "updatedAt": 1
+            }],
+            "selectedProjectId": "project-1",
+            "selectedWorktreeIdByProject": { "project-1": "worktree-1" }
+        })
+        .to_string(),
+    )
+    .expect("write state");
+    let service = RuntimeService::new(support_dir.clone());
+    service
+        .save_terminal_layout(
+            &crate::terminal_layout::terminal_layout_storage_key("project-1", "worktree-1"),
+            Vec::new(),
+            "terminal-feature".to_string(),
+            vec![TerminalPaneSummary {
+                title: "Feature".to_string(),
+                terminal_id: "terminal-feature".to_string(),
+            }],
+            vec![1.0],
+            0.42,
+        )
+        .expect("save selected worktree layout");
+
+    let state = RuntimeState::load_from_support_dir(support_dir.clone());
+
+    assert_eq!(
+        state.worktrees.selected_worktree_id.as_deref(),
+        Some("worktree-1")
+    );
+    assert!(state.worktrees.worktrees[0].exists);
+    assert_eq!(
+        state.terminal_layout.top_panes[0].terminal_id,
+        "terminal-feature"
+    );
+    assert_eq!(state.terminal_layout.bottom_ratio, 0.42);
+
+    fs::remove_dir_all(support_dir).ok();
 }
 
 #[cfg(unix)]
@@ -495,7 +615,7 @@ fn project_and_worktree_switch_runs_runtime_activation_layout_pty_ai_and_git_flo
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,
-        host_device_id: None,
+        runtime_target: Default::default(),
     };
     let mut config = launch_context.to_config();
     config.shell = Some("/bin/cat".to_string());

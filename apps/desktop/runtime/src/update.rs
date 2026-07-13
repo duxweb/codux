@@ -41,6 +41,22 @@ impl UpdateService {
         self.summary_for_update_settings(&settings, false)
     }
 
+    pub fn latest_release_version(&self) -> Result<String, String> {
+        let settings = self.settings();
+        let endpoint = if settings.endpoint.trim().is_empty() {
+            crate::settings::app_settings::update_endpoint_for_channel(&settings.channel)
+        } else {
+            settings.endpoint
+        };
+        let manifest = self.load_latest_manifest(&UpdateSummary {
+            enabled: settings.enabled,
+            channel: settings.channel,
+            endpoint,
+            ..Default::default()
+        })?;
+        manifest_release_version(&manifest)
+    }
+
     fn summary_for_update_settings(
         &self,
         settings: &AppUpdateSettings,
@@ -205,6 +221,20 @@ fn fetch_json(endpoint: &str) -> Result<Value, String> {
             .await
             .map_err(|error| error.to_string())
     })
+}
+
+fn manifest_release_version(manifest: &Value) -> Result<String, String> {
+    let version = manifest
+        .get("version")
+        .or_else(|| manifest.get("latestVersion"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .map(|version| version.trim_start_matches('v'))
+        .filter(|version| !version.is_empty())
+        .ok_or_else(|| "Update manifest does not contain a release version".to_string())?;
+    Version::parse(version)
+        .map_err(|error| format!("Update manifest release version is invalid: {error}"))?;
+    Ok(version.to_string())
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -491,6 +521,40 @@ mod tests {
         assert_eq!(summary.channel, "beta");
         assert_eq!(summary.error, None);
         assert_eq!(summary.latest_version, None);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn latest_release_version_reads_and_normalizes_manifest_version() {
+        let dir = std::env::temp_dir().join(format!(
+            "codux-runtime-release-version-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let support_dir = dir.join("support");
+        fs::create_dir_all(&support_dir).unwrap();
+        let manifest_path = dir.join("latest.json");
+        fs::write(&manifest_path, r#"{"version":"v2.0.0-rc.10"}"#).unwrap();
+        fs::write(
+            support_dir.join("settings.json"),
+            serde_json::json!({
+                "update": {
+                    "enabled": false,
+                    "channel": "stable",
+                    "endpoint": manifest_path.display().to_string(),
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            UpdateService::new(support_dir, PathBuf::new())
+                .latest_release_version()
+                .unwrap(),
+            "2.0.0-rc.10"
+        );
 
         let _ = fs::remove_dir_all(dir);
     }

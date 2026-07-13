@@ -51,6 +51,9 @@ impl RuntimeState {
             selected_project
                 .as_ref()
                 .map(|project| project.path.as_str()),
+            selected_project
+                .as_ref()
+                .is_some_and(|project| project.runtime_target.is_hosted()),
         );
         let terminal_layout_owner = runtime_model_scope_key(selected_project.as_ref(), &worktrees);
         let terminal_layout = load_terminal_layout(&support_dir, terminal_layout_owner.as_deref());
@@ -143,8 +146,12 @@ impl RuntimeState {
             RuntimeInventory::load().root,
             Some(&project.id),
         );
-        self.worktrees =
-            load_worktrees_from_state(&self.support_dir, Some(&project.id), Some(&project.path));
+        self.worktrees = load_worktrees_from_state(
+            &self.support_dir,
+            Some(&project.id),
+            Some(&project.path),
+            project.runtime_target.is_hosted(),
+        );
         let terminal_layout_owner =
             runtime_model_scope_key(self.selected_project.as_ref(), &self.worktrees);
         self.terminal_layout =
@@ -190,7 +197,7 @@ impl RuntimeState {
         if self
             .selected_project
             .as_ref()
-            .and_then(|project| project.host_device_id.as_ref())
+            .and_then(ProjectInfo::remote_device_id)
             .is_some()
         {
             self.ai_history_stats.current_sessions = self.remote_ai_current_sessions.clone();
@@ -322,7 +329,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
-            host_device_id: None,
+            runtime_target: ProjectRuntimeTarget::Local,
         };
         let worktrees = crate::worktree::WorktreeSummary {
             selected_worktree_id: Some("worktree-b".to_string()),
@@ -346,7 +353,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
-            host_device_id: None,
+            runtime_target: ProjectRuntimeTarget::Local,
         };
         let worktrees = crate::worktree::WorktreeSummary::default();
 
@@ -367,7 +374,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
-            host_device_id: None,
+            runtime_target: ProjectRuntimeTarget::Local,
         };
         let worktrees = crate::worktree::WorktreeSummary {
             selected_worktree_id: Some("worktree-b".to_string()),

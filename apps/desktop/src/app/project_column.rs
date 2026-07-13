@@ -186,8 +186,7 @@ impl Render for ProjectColumnView {
                                 .copied()
                                 .filter(|state| *state != AgentLifecycleState::Idle);
                             let link_state = project
-                                .host_device_id
-                                .as_deref()
+                                .remote_device_id()
                                 .map(|device_id| links.get(device_id).copied());
                             div()
                                 .w_full()
@@ -1294,7 +1293,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
-            host_device_id: None,
+            runtime_target: ProjectRuntimeTarget::Local,
         }
     }
 

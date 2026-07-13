@@ -10,7 +10,7 @@ impl CoduxApp {
             .state
             .selected_project
             .as_ref()
-            .and_then(|project| project.host_device_id.as_deref())?;
+            .and_then(|project| project.remote_device_id())?;
         match self.remote_link_states.get(host).copied() {
             Some(codux_runtime::remote::ControllerLinkState::Disconnected) => Some((
                 HeroIconName::LinkSlash,
