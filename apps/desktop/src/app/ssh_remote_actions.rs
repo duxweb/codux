@@ -11,6 +11,27 @@ enum RemoteRelayChange {
     Authentication(String),
 }
 
+const AGENT_GIT_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+
+fn next_agent_git_refresh(
+    completed_now: bool,
+    working_now: bool,
+    refresh_after: Option<Instant>,
+    now: Instant,
+) -> (bool, Option<Instant>) {
+    if completed_now {
+        return (true, Some(now + AGENT_GIT_REFRESH_INTERVAL));
+    }
+    if !working_now {
+        return (false, None);
+    }
+    match refresh_after {
+        None => (false, Some(now + AGENT_GIT_REFRESH_INTERVAL)),
+        Some(deadline) if now >= deadline => (true, Some(now + AGENT_GIT_REFRESH_INTERVAL)),
+        Some(deadline) => (false, Some(deadline)),
+    }
+}
+
 impl CoduxApp {
     pub(super) fn apply_child_window_update_event(
         &mut self,
@@ -1395,20 +1416,16 @@ impl CoduxApp {
             .pane_agent_lifecycle
             .values()
             .any(|lifecycle| lifecycle.state == AgentLifecycleState::Working);
-        if completed_now {
+        let now = Instant::now();
+        let (refresh_now, refresh_after) = next_agent_git_refresh(
+            completed_now,
+            working_now,
+            self.agent_git_refresh_after,
+            now,
+        );
+        self.agent_git_refresh_after = refresh_after;
+        if refresh_now {
             self.refresh_git_panel_state_async_quiet(cx);
-            self.agent_git_refresh_after = Some(Instant::now() + Duration::from_secs(5));
-            return;
-        }
-        if working_now
-            && self
-                .agent_git_refresh_after
-                .is_none_or(|deadline| Instant::now() >= deadline)
-        {
-            self.refresh_git_panel_state_async_quiet(cx);
-            self.agent_git_refresh_after = Some(Instant::now() + Duration::from_secs(5));
-        } else if !working_now {
-            self.agent_git_refresh_after = None;
         }
     }
 
@@ -1424,6 +1441,7 @@ impl CoduxApp {
         if terminal_status_changed {
             self.ensure_agent_pulse(cx);
         }
+        self.maybe_refresh_git_for_agent_activity(terminal_status_changed, cx);
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
         if memory_update_event {
@@ -1880,5 +1898,43 @@ impl CoduxApp {
             .runtime_service
             .set_dock_badge_count(self.runtime_service.ai_runtime_dock_badge_count());
         self.invalidate_status_bar(cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_git_refresh_waits_one_interval_after_work_starts() {
+        let now = Instant::now();
+        let (refresh_now, refresh_after) = next_agent_git_refresh(false, true, None, now);
+
+        assert!(!refresh_now);
+        assert_eq!(refresh_after, Some(now + AGENT_GIT_REFRESH_INTERVAL));
+    }
+
+    #[test]
+    fn agent_git_refresh_runs_periodically_and_on_completion() {
+        let now = Instant::now();
+        let deadline = now - Duration::from_millis(1);
+
+        let (refresh_now, refresh_after) = next_agent_git_refresh(false, true, Some(deadline), now);
+        assert!(refresh_now);
+        assert_eq!(refresh_after, Some(now + AGENT_GIT_REFRESH_INTERVAL));
+
+        let (refresh_now, refresh_after) = next_agent_git_refresh(true, false, refresh_after, now);
+        assert!(refresh_now);
+        assert_eq!(refresh_after, Some(now + AGENT_GIT_REFRESH_INTERVAL));
+    }
+
+    #[test]
+    fn agent_git_refresh_clears_schedule_when_idle() {
+        let now = Instant::now();
+        let (refresh_now, refresh_after) =
+            next_agent_git_refresh(false, false, Some(now + AGENT_GIT_REFRESH_INTERVAL), now);
+
+        assert!(!refresh_now);
+        assert_eq!(refresh_after, None);
     }
 }

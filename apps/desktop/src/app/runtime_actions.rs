@@ -1,5 +1,20 @@
 use super::*;
 
+const RUNTIME_QUEUE_BUSY_DISPLAY_DELAY: Duration = Duration::from_millis(600);
+
+fn displayed_runtime_queue_busy(
+    raw_busy: bool,
+    busy_since: &mut Option<Instant>,
+    now: Instant,
+) -> bool {
+    if !raw_busy {
+        *busy_since = None;
+        return false;
+    }
+    let started_at = busy_since.get_or_insert(now);
+    now.duration_since(*started_at) >= RUNTIME_QUEUE_BUSY_DISPLAY_DELAY
+}
+
 impl CoduxApp {
     pub(crate) fn start_settings_remote_snapshot_loop(&mut self, cx: &mut Context<Self>) {
         if self.window_mode != AppWindowMode::Settings {
@@ -74,6 +89,7 @@ impl CoduxApp {
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let mut ticks = 0_u64;
             let mut performance_ticks_until_refresh = 0_u64;
+            let mut runtime_queue_busy_since = None;
             let mut last_runtime_queue_busy = false;
             loop {
                 timer.timer(Duration::from_millis(200)).await;
@@ -83,8 +99,11 @@ impl CoduxApp {
                 let include_project_activity_tick = ticks.is_multiple_of(75);
                 let include_runtime_refresh_tick = ticks.is_multiple_of(150);
                 let runtime_queue_status = codux_runtime::async_runtime::blocking_queue_status();
-                let runtime_queue_busy =
-                    runtime_queue_status.queued > 0 || runtime_queue_status.running > 0;
+                let runtime_queue_busy = displayed_runtime_queue_busy(
+                    runtime_queue_status.queued > 0 || runtime_queue_status.running > 0,
+                    &mut runtime_queue_busy_since,
+                    Instant::now(),
+                );
                 let runtime_queue_busy_changed = runtime_queue_busy != last_runtime_queue_busy;
                 last_runtime_queue_busy = runtime_queue_busy;
 
@@ -129,6 +148,7 @@ impl CoduxApp {
                             app.sync_desktop_pet_window(false, cx);
                         }
                         if performance_changed || runtime_queue_busy_changed {
+                            app.runtime_queue_busy = runtime_queue_busy;
                             app.invalidate_status_bar(cx);
                         }
                         if today_level_changed {
@@ -331,5 +351,55 @@ impl CoduxApp {
         if result.dock_badge_count.is_some() {
             self.invalidate_status_bar(cx);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_queue_busy_ignores_short_background_work() {
+        let started_at = Instant::now();
+        let mut busy_since = None;
+
+        assert!(!displayed_runtime_queue_busy(
+            true,
+            &mut busy_since,
+            started_at
+        ));
+        assert!(!displayed_runtime_queue_busy(
+            true,
+            &mut busy_since,
+            started_at + RUNTIME_QUEUE_BUSY_DISPLAY_DELAY - Duration::from_millis(1),
+        ));
+        assert!(!displayed_runtime_queue_busy(
+            false,
+            &mut busy_since,
+            started_at + RUNTIME_QUEUE_BUSY_DISPLAY_DELAY,
+        ));
+        assert!(busy_since.is_none());
+    }
+
+    #[test]
+    fn runtime_queue_busy_reports_sustained_background_work() {
+        let started_at = Instant::now();
+        let mut busy_since = None;
+
+        assert!(!displayed_runtime_queue_busy(
+            true,
+            &mut busy_since,
+            started_at
+        ));
+        assert!(displayed_runtime_queue_busy(
+            true,
+            &mut busy_since,
+            started_at + RUNTIME_QUEUE_BUSY_DISPLAY_DELAY,
+        ));
+        assert!(!displayed_runtime_queue_busy(
+            false,
+            &mut busy_since,
+            started_at + RUNTIME_QUEUE_BUSY_DISPLAY_DELAY + Duration::from_millis(1),
+        ));
     }
 }

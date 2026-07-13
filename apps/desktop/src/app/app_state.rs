@@ -257,6 +257,7 @@ pub struct CoduxApp {
     pub(in crate::app) notification_testing_channel_id: Option<String>,
     pub(in crate::app) runtime_refresh_in_flight: bool,
     pub(in crate::app) runtime_ready: bool,
+    pub(in crate::app) runtime_queue_busy: bool,
     pub(in crate::app) pending_runtime_refresh: Option<RuntimeScheduledRefresh>,
     pub(in crate::app) ai_runtime_state_save_tick: u64,
     pub(in crate::app) pane_agent_lifecycle:

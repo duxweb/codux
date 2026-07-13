@@ -263,6 +263,7 @@ impl CoduxApp {
             notification_testing_channel_id: None,
             runtime_refresh_in_flight: false,
             runtime_ready: true,
+            runtime_queue_busy: false,
             pending_runtime_refresh: None,
             ai_runtime_state_save_tick: 0,
             pane_agent_lifecycle: HashMap::new(),

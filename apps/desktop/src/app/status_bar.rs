@@ -91,10 +91,7 @@ impl CoduxApp {
             .is_light,
             developer_hud: self.state.settings.developer_hud,
             runtime_ready: self.runtime_ready,
-            runtime_queue_busy: {
-                let status = codux_runtime::async_runtime::blocking_queue_status();
-                status.queued > 0 || status.running > 0
-            },
+            runtime_queue_busy: self.runtime_queue_busy,
             cpu_label: self.state.performance.cpu_label.clone(),
             memory_label: self.state.performance.memory_label.clone(),
             ai_index_count: self.ai_history_active_index_count,
