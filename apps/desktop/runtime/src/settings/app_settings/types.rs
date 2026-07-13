@@ -63,6 +63,8 @@ pub struct AppSettings {
     pub update: UpdateSettings,
     #[serde(default)]
     pub remote: RemoteSettings,
+    #[serde(default = "default_true")]
+    pub wsl_enabled: bool,
     #[serde(default)]
     pub developer_hud: bool,
     #[serde(default = "default_developer_refresh")]

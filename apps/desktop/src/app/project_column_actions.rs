@@ -124,7 +124,7 @@ impl CoduxApp {
             .state
             .selected_project
             .as_ref()
-            .and_then(|project| project.host_device_id.as_ref())
+            .and_then(|project| project.remote_device_id())
             .is_some_and(|host| reconnected.iter().any(|device| device == host));
         if !on_reconnected_host {
             return;

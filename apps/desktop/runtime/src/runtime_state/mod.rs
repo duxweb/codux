@@ -66,7 +66,7 @@ use crate::{
     project_activity::{ProjectActivityCoordinator, ProjectActivityEvent, ProjectActivitySnapshot},
     project_store::{
         ProjectCloseRequest, ProjectCreateRequest, ProjectDefaultPushRemoteRequest,
-        ProjectListSnapshot, ProjectMoveDirection, ProjectReorderRequest,
+        ProjectListSnapshot, ProjectMoveDirection, ProjectReorderRequest, ProjectRuntimeTarget,
         ProjectSelectWorktreeRequest, ProjectStore, ProjectUpdateRequest, TerminalLayoutRecord,
         TerminalLayoutsSnapshot,
     },
@@ -121,6 +121,7 @@ include!("service_ai_memory.rs");
 include!("service_ssh_worktree.rs");
 include!("service_system.rs");
 include!("service_remote_controller.rs");
+include!("service_hosted_runtime.rs");
 include!("service_projects_settings.rs");
 include!("state.rs");
 include!("loaders.rs");

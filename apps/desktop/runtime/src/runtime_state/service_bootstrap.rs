@@ -80,12 +80,14 @@ impl RuntimeService {
             file_watch_manager: Arc::new(FileWatchManager::default()),
             git_watch_manager: Arc::new(git::GitWatchManager::default()),
             file_watch_events: Arc::new(Mutex::new(VecDeque::new())),
-            active_file_watch_path: Arc::new(Mutex::new(None)),
+            active_project_watches: Arc::new(Mutex::new(ActiveProjectWatches::default())),
+            project_watch_registration: Arc::new(Mutex::new(())),
             ai_history_activation_keys: Arc::new(Mutex::new(HashSet::new())),
             git_cancels: Arc::new(Mutex::new(HashMap::new())),
             power_manager: shared_power_manager(),
             remote_host,
             remote_controllers: Arc::new(crate::remote::RemoteControllerManager::new(support_dir)),
+            wsl_runtimes: Arc::new(crate::wsl::WslRuntimeManager::new()),
             host_browser_proxy: Arc::new(crate::host_browser::HostBrowserProxy::new()),
         }
     }

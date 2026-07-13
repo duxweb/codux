@@ -46,9 +46,14 @@ impl CoduxApp {
                         |app, value, window, cx| app.set_project_editor_name(value, window, cx),
                     ))
                     .child({
-                        let (device_label, is_remote) = match &self.project_editor_host_device_id {
-                            None => (tr("project.editor.device.local", "Local"), false),
-                            Some(device_id) => (
+                        let (device_label, is_hosted) = match &self.project_editor_runtime_target {
+                            ProjectRuntimeTarget::Local => {
+                                (tr("project.editor.device.local", "Local"), false)
+                            }
+                            ProjectRuntimeTarget::Wsl { distribution } => {
+                                (format!("WSL · {distribution}"), true)
+                            }
+                            ProjectRuntimeTarget::Remote { device_id } => (
                                 self.runtime_service
                                     .saved_remote_hosts()
                                     .into_iter()
@@ -71,7 +76,7 @@ impl CoduxApp {
                             tr("project.editor.choose_directory.prompt", "Choose"),
                             &self.project_editor_path,
                             device_label,
-                            is_remote,
+                            is_hosted,
                             window,
                             cx,
                         )
@@ -148,27 +153,42 @@ impl CoduxApp {
 
         // Left: the device sidebar (Local + each paired host). Clicking a
         // device re-lists from its root.
-        let active_device = self.project_editor_host_device_id.clone();
+        let active_target = self.project_editor_runtime_target.clone();
         let mut devices = div()
-            .w(px(160.0))
-            .flex_none()
+            .size_full()
             .flex()
             .flex_col()
             .gap(px(2.0))
             .p(px(8.0))
-            .border_r_1()
-            .border_color(cx.theme().border)
             .overflow_y_scrollbar()
             .child(file_picker_device_row(
                 "file-picker-device-local".to_string(),
                 tr("project.editor.device.local", "Local"),
-                active_device.is_none(),
+                active_target == ProjectRuntimeTarget::Local,
                 cx,
-                |app, window, cx| app.file_picker_switch_device(None, window, cx),
+                |app, window, cx| {
+                    app.file_picker_switch_runtime(ProjectRuntimeTarget::Local, window, cx)
+                },
             ));
+        for distribution in self.runtime_service.wsl_distributions().unwrap_or_default() {
+            let runtime_target = ProjectRuntimeTarget::Wsl {
+                distribution: distribution.name.clone(),
+            };
+            let selected = active_target == runtime_target;
+            let target = runtime_target.clone();
+            devices = devices.child(file_picker_wsl_device_row(
+                distribution.name,
+                selected,
+                cx,
+                move |app, window, cx| app.file_picker_switch_runtime(target.clone(), window, cx),
+            ));
+        }
         for host in self.runtime_service.saved_remote_hosts() {
             let device_id = host.device_id.clone();
-            let selected = active_device.as_deref() == Some(host.device_id.as_str());
+            let selected = active_target
+                == ProjectRuntimeTarget::Remote {
+                    device_id: host.device_id.clone(),
+                };
             let label = if host.host_name.trim().is_empty() {
                 host.host_id.clone()
             } else {
@@ -180,7 +200,13 @@ impl CoduxApp {
                 selected,
                 cx,
                 move |app, window, cx| {
-                    app.file_picker_switch_device(Some(device_id.clone()), window, cx)
+                    app.file_picker_switch_runtime(
+                        ProjectRuntimeTarget::Remote {
+                            device_id: device_id.clone(),
+                        },
+                        window,
+                        cx,
+                    )
                 },
             ));
         }
@@ -279,9 +305,10 @@ impl CoduxApp {
             }
         }
 
-        let root_label = match &active_device {
-            None => tr("project.editor.device.local", "Local"),
-            Some(device_id) => self
+        let root_label = match &active_target {
+            ProjectRuntimeTarget::Local => tr("project.editor.device.local", "Local"),
+            ProjectRuntimeTarget::Wsl { distribution } => format!("WSL · {distribution}"),
+            ProjectRuntimeTarget::Remote { device_id } => self
                 .runtime_service
                 .saved_remote_hosts()
                 .into_iter()
@@ -314,7 +341,7 @@ impl CoduxApp {
                         .child(file_picker_breadcrumb(
                             &current,
                             &root_label,
-                            active_device.is_some(),
+                            active_target.is_hosted(),
                             cx,
                         )),
                     )
@@ -360,13 +387,20 @@ impl CoduxApp {
             );
         }
 
-        let body = div()
-            .min_h_0()
-            .flex_1()
-            .overflow_hidden()
-            .flex()
-            .child(devices)
-            .child(right);
+        let body = div().min_h_0().flex_1().overflow_hidden().flex().child(
+            h_resizable("file-picker-device-split")
+                .child(
+                    resizable_panel()
+                        .size(px(180.0))
+                        .size_range(px(140.0)..px(280.0))
+                        .child(devices),
+                )
+                .child(
+                    resizable_panel()
+                        .size_range(px(320.0)..Pixels::MAX)
+                        .child(right),
+                ),
+        );
 
         let new_folder_disabled =
             self.project_editor_browse_busy || self.project_editor_browse_path.trim().is_empty();
@@ -756,6 +790,55 @@ fn file_picker_device_row(
         .child(Icon::new(HeroIconName::GlobeAlt).size_3())
         .child(div().text_size(rems(0.8125)).truncate().child(label))
         .on_click(cx.listener(move |app, _event, window, cx| on_click(app, window, cx)));
+    if selected {
+        row = row.bg(cx.theme().secondary);
+    }
+    row.into_any_element()
+}
+
+fn file_picker_wsl_device_row(
+    distribution: String,
+    selected: bool,
+    cx: &mut Context<CoduxApp>,
+    on_select: impl Fn(&mut CoduxApp, &mut Window, &mut Context<CoduxApp>) + 'static,
+) -> AnyElement {
+    let id = format!("file-picker-wsl-{distribution}");
+    let mut row = div()
+        .id(SharedString::from(id))
+        .flex()
+        .items_center()
+        .gap_2()
+        .px(px(8.0))
+        .py(px(6.0))
+        .rounded(px(6.0))
+        .cursor_pointer()
+        .text_color(color(theme::TEXT))
+        .hover(|style| style.text_color(cx.theme().primary))
+        .child(Icon::new(HeroIconName::CommandLine).size_3())
+        .child(
+            div()
+                .h(px(18.0))
+                .px(px(5.0))
+                .rounded(px(4.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .text_size(rems(0.625))
+                .line_height(rems(0.875))
+                .font_weight(FontWeight::MEDIUM)
+                .bg(color(theme::ACCENT).opacity(0.12))
+                .text_color(color(theme::ACCENT))
+                .child("WSL"),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .text_size(rems(0.8125))
+                .truncate()
+                .child(distribution),
+        )
+        .on_click(cx.listener(move |app, _event, window, cx| on_select(app, window, cx)));
     if selected {
         row = row.bg(cx.theme().secondary);
     }

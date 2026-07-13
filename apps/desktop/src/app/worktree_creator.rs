@@ -12,9 +12,15 @@ impl CoduxApp {
         let locale = locale_from_language_setting(language);
         let tr = |key: &str, fallback: &str| translate(&locale, key, fallback);
         let title = tr("worktree.create.title", "New Worktree");
-        let can_submit = !self.worktree_creator_submitting
+        let can_submit = !self.worktree_creator_loading
+            && !self.worktree_creator_submitting
             && !self.worktree_creator_name.trim().is_empty()
             && !self.worktree_creator_base_branch.trim().is_empty();
+        let branch_placeholder = if self.worktree_creator_loading {
+            tr("worktree.create.branches_loading", "Loading branches...")
+        } else {
+            tr("common.choose", "Choose")
+        };
 
         child_window_shell(title.clone(), cx)
             .child(
@@ -29,6 +35,8 @@ impl CoduxApp {
                         tr("worktree.task.base_branch", "Base Branch"),
                         &self.worktree_creator_base_branch,
                         self.worktree_creator_branch_options(),
+                        branch_placeholder,
+                        self.worktree_creator_loading,
                         window,
                         cx,
                     ))
@@ -89,31 +97,42 @@ impl CoduxApp {
     }
 
     fn worktree_creator_branch_options(&self) -> Vec<String> {
-        let mut values = Vec::new();
-        push_unique_branch(&mut values, self.worktree_creator_base_branch.as_str());
-        for branch in &self.state.git.branches {
-            push_unique_branch(&mut values, branch.name.as_str());
-        }
-        push_unique_branch(&mut values, self.state.git.branch.as_str());
-        if let Some(worktree) = super::ai_runtime_status::selected_worktree_info(&self.state) {
-            push_unique_branch(&mut values, worktree.branch.as_str());
-        }
-        values
+        self.state.worktrees.base_branches.clone()
     }
 }
 
-fn push_unique_branch(values: &mut Vec<String>, value: &str) {
-    let branch = value.trim();
-    if branch.is_empty() || values.iter().any(|item| item == branch) {
-        return;
+pub(super) fn resolved_worktree_creator_base_branch(summary: &WorktreeSummary) -> String {
+    summary
+        .base_branches
+        .iter()
+        .find(|branch| *branch == &summary.default_base_branch)
+        .or_else(|| summary.base_branches.first())
+        .cloned()
+        .unwrap_or_default()
+}
+
+pub(super) fn worktree_creator_branch_error(
+    summary: &WorktreeSummary,
+) -> Option<(&'static str, &'static str)> {
+    if !summary.base_branches.is_empty() {
+        return None;
     }
-    values.push(branch.to_string());
+    if summary.active_git.is_repository {
+        Some((
+            "worktree.create.initial_commit_required",
+            "Create an initial commit before adding a worktree.",
+        ))
+    } else {
+        Some(("worktree.repository.non_git", "Non-Git repository"))
+    }
 }
 
 fn worktree_branch_select(
     label: String,
     value: &str,
     options: Vec<String>,
+    placeholder: String,
+    disabled: bool,
     _window: &mut Window,
     cx: &mut Context<CoduxApp>,
 ) -> impl IntoElement {
@@ -133,10 +152,10 @@ fn worktree_branch_select(
                 id: select_id.to_string(),
                 value: value.to_string(),
                 options,
-                placeholder: SharedString::from("Choose"),
+                placeholder: SharedString::from(placeholder),
                 width: relative(1.0).into(),
                 menu_width: px(260.0),
-                disabled: false,
+                disabled,
             },
             cx,
             |app, value, _window, cx| {
@@ -191,4 +210,68 @@ fn worktree_creator_label(label: String) -> impl IntoElement {
         .line_height(rems(1.125))
         .text_color(color(theme::TEXT))
         .child(label)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn creator_uses_authoritative_default_branch() {
+        let summary = WorktreeSummary {
+            base_branches: vec!["master".to_string(), "feature".to_string()],
+            default_base_branch: "master".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(resolved_worktree_creator_base_branch(&summary), "master");
+    }
+
+    #[test]
+    fn creator_falls_back_to_first_authoritative_branch() {
+        let summary = WorktreeSummary {
+            base_branches: vec!["trunk".to_string()],
+            default_base_branch: "stale".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(resolved_worktree_creator_base_branch(&summary), "trunk");
+    }
+
+    #[test]
+    fn creator_accepts_authoritative_branches_when_git_status_is_temporarily_unavailable() {
+        let summary = WorktreeSummary {
+            base_branches: vec!["master".to_string()],
+            ..Default::default()
+        };
+
+        assert_eq!(worktree_creator_branch_error(&summary), None);
+    }
+
+    #[test]
+    fn creator_requires_an_initial_commit_for_an_empty_repository() {
+        let summary = WorktreeSummary {
+            active_git: codux_runtime::git::GitSummary {
+                is_repository: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            worktree_creator_branch_error(&summary),
+            Some((
+                "worktree.create.initial_commit_required",
+                "Create an initial commit before adding a worktree."
+            ))
+        );
+    }
+
+    #[test]
+    fn creator_rejects_a_non_git_directory_without_branches() {
+        assert_eq!(
+            worktree_creator_branch_error(&WorktreeSummary::default()),
+            Some(("worktree.repository.non_git", "Non-Git repository"))
+        );
+    }
 }

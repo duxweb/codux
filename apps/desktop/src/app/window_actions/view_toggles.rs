@@ -138,6 +138,9 @@ impl CoduxApp {
 
     pub(in crate::app) fn set_settings_pane(&mut self, pane: SettingsPane, cx: &mut Context<Self>) {
         self.active_settings_pane = pane;
+        if pane == SettingsPane::Wsl {
+            self.load_wsl_distribution_catalog(cx);
+        }
         self.invalidate_ui_region(cx, UiRegion::Root);
     }
 

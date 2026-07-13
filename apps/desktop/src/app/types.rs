@@ -1,4 +1,5 @@
 use crate::terminal::TerminalPane;
+use codux_runtime::project_store::ProjectRuntimeTarget;
 
 /// What the file-picker sub-window selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,7 +26,7 @@ pub(in crate::app) enum FilePickerTarget {
     /// destination on `device_id` (the project's host, or local).
     SaveFileAs {
         source_path: String,
-        device_id: Option<String>,
+        runtime_target: ProjectRuntimeTarget,
     },
     /// SSH profile editor: choose the private key file path.
     SshPrivateKeyPath,

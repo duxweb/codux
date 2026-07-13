@@ -1,4 +1,5 @@
 use super::*;
+use crate::project_store::ProjectRuntimeTarget;
 
 #[test]
 fn ai_refresh_uses_foreground_and_background_intervals() {
@@ -13,6 +14,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
                 id: "active".to_string(),
                 name: "Active".to_string(),
                 path: "/tmp/active".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
@@ -25,6 +27,7 @@ fn ai_refresh_uses_foreground_and_background_intervals() {
                 id: "background".to_string(),
                 name: "Background".to_string(),
                 path: "/tmp/background".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
@@ -54,6 +57,7 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
                 id: "active".to_string(),
                 name: "Active".to_string(),
                 path: "/tmp/active".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
@@ -66,6 +70,7 @@ fn ai_background_refresh_is_skipped_during_idle_tick() {
                 id: "background".to_string(),
                 name: "Background".to_string(),
                 path: "/tmp/background".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
                 last_git_refresh: None,
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
@@ -94,6 +99,7 @@ fn git_background_refresh_is_limited_per_tick() {
                     id: format!("background-{index}"),
                     name: format!("Background {index}"),
                     path: format!("/tmp/background-{index}"),
+                    runtime_target: ProjectRuntimeTarget::Local,
                     last_git_refresh: Some(now - Duration::from_secs(700)),
                     last_remote_git_refresh: None,
                     last_git_changed_refresh: None,
@@ -107,6 +113,7 @@ fn git_background_refresh_is_limited_per_tick() {
                 id: "active".to_string(),
                 name: "Active".to_string(),
                 path: "/tmp/active".to_string(),
+                runtime_target: ProjectRuntimeTarget::Local,
                 last_git_refresh: Some(now - Duration::from_secs(30)),
                 last_remote_git_refresh: None,
                 last_git_changed_refresh: None,
@@ -194,6 +201,7 @@ fn remote_git_refresh_is_throttled_per_project() {
         badge_symbol: None,
         badge_color_hex: None,
         git_default_push_remote_name: None,
+        runtime_target: ProjectRuntimeTarget::Local,
     };
 
     coordinator.mark_project_summary(&project);
@@ -215,4 +223,34 @@ fn remote_git_refresh_is_throttled_per_project() {
         .expect("second remote refresh");
 
     assert_eq!(first, second);
+}
+
+#[test]
+fn hosted_projects_are_excluded_from_local_git_refresh() {
+    let projects = Mutex::new(HashMap::from([(
+        "wsl".to_string(),
+        TrackedProject {
+            id: "wsl".to_string(),
+            name: "WSL".to_string(),
+            path: "/root/project".to_string(),
+            runtime_target: ProjectRuntimeTarget::Wsl {
+                distribution: "Ubuntu".to_string(),
+            },
+            last_git_refresh: None,
+            last_remote_git_refresh: None,
+            last_git_changed_refresh: None,
+            last_ai_refresh: None,
+        },
+    )]));
+
+    let due = projects_due_for_git_interval(
+        &projects,
+        Some("wsl"),
+        true,
+        Duration::from_secs(15),
+        Duration::from_secs(60),
+        1,
+    );
+
+    assert!(due.is_empty());
 }

@@ -196,33 +196,36 @@ impl CoduxApp {
                                 // runs once — without waiting it failed "not ready
                                 // yet" and the pane stayed blank. This is its own
                                 // thread, so the bounded wait is free.
-                                let result =
-                                    if let Some(device_id) = pty_config.host_device_id.clone() {
-                                        match runtime_service
-                                            .remote_controller_for_device_blocking(&device_id)
-                                        {
-                                            Ok(controller) => {
-                                                TerminalPane::attach_pending_session_remote(
-                                                    controller,
-                                                    pty_config,
-                                                    terminal_config,
-                                                    pending,
-                                                )
-                                                .map(|_| ())
-                                                .map_err(|error| error.to_string())
-                                            }
-                                            Err(error) => Err(error),
+                                let result = if pty_config.runtime_target.is_hosted() {
+                                    match runtime_service.terminal_controller_for_target_blocking(
+                                        &pty_config.runtime_target,
+                                    ) {
+                                        Ok(Some(controller)) => {
+                                            TerminalPane::attach_pending_session_hosted(
+                                                controller,
+                                                pty_config,
+                                                terminal_config,
+                                                pending,
+                                            )
+                                            .map(|_| ())
+                                            .map_err(|error| error.to_string())
                                         }
-                                    } else {
-                                        TerminalPane::attach_pending_session(
-                                            terminal_manager,
-                                            pty_config,
-                                            terminal_config,
-                                            pending,
-                                        )
-                                        .map(|_| ())
-                                        .map_err(|error| error.to_string())
-                                    };
+                                        Ok(None) => {
+                                            Err("Hosted terminal controller is unavailable."
+                                                .to_string())
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                } else {
+                                    TerminalPane::attach_pending_session(
+                                        terminal_manager,
+                                        pty_config,
+                                        terminal_config,
+                                        pending,
+                                    )
+                                    .map(|_| ())
+                                    .map_err(|error| error.to_string())
+                                };
                                 (terminal_id, result)
                             })
                         })
@@ -246,12 +249,15 @@ impl CoduxApp {
                     app.terminal_attach_in_flight.remove(id);
                 }
                 let ok_count = results.iter().filter(|(_, result)| result.is_ok()).count();
-                let error = results.iter().find_map(|(terminal_id, result)| {
+                let trace_error = results.iter().find_map(|(terminal_id, result)| {
                     result
                         .as_ref()
                         .err()
                         .map(|error| format!("{terminal_id}: {error}"))
                 });
+                let error = results
+                    .iter()
+                    .find_map(|(_, result)| result.as_ref().err().cloned());
                 app.runtime_trace(
                     "terminal-restore",
                     &format!(
@@ -259,7 +265,7 @@ impl CoduxApp {
                         attach_started_at.elapsed().as_millis(),
                         ok_count,
                         results.len(),
-                        error.as_deref().unwrap_or("none")
+                        trace_error.as_deref().unwrap_or("none")
                     ),
                 );
                 if let Some((expected_generation, expected_restore_epoch)) = restore_token
@@ -288,7 +294,15 @@ impl CoduxApp {
                     }
                 }
                 if let Some(error) = error {
-                    app.status_message = format!("failed to prepare terminal: {error}");
+                    let message = if error == codux_runtime::wsl::WSL_RUNTIME_NOT_INSTALLED_ERROR {
+                        app.text(
+                            "terminal.wsl.runtime_missing",
+                            "Codux Runtime is not installed for this WSL distribution. Install it from WSL Settings first.",
+                        )
+                    } else {
+                        error
+                    };
+                    app.show_system_error_alert(app.text("terminal.title", "Terminal"), message, cx);
                 } else if restore_token.is_some() {
                     app.status_message = format!(
                         "terminal layout reloaded · {} tab{}",
@@ -703,125 +717,6 @@ impl CoduxApp {
         }
         self.set_terminal_split_tree(Some(next_tree));
         self.persist_current_terminal_layout();
-        self.invalidate_terminal_workspace(cx);
-    }
-
-    pub(in crate::app) fn apply_terminal_layout_from_summary(
-        &mut self,
-        terminal_layout: TerminalLayoutSummary,
-        terminal_runtime: TerminalRuntimeSummary,
-        cx: &mut Context<Self>,
-    ) {
-        let restore_started_at = Instant::now();
-        self.terminal_layout_loading = false;
-        let owner_id = super::ai_runtime_status::terminal_layout_owner_id(&self.state);
-        let (terminal_layout, terminal_runtime) = normalize_terminal_restore_state(
-            owner_id.as_deref(),
-            terminal_layout,
-            terminal_runtime,
-            &self.state.settings.language,
-        );
-        self.state.terminal_layout = terminal_layout;
-        self.state.terminal_runtime = terminal_runtime;
-        let plan_started_at = Instant::now();
-        let restore_plan = terminal_restore_plan_for_language(
-            &self.state.terminal_layout,
-            &self.state.terminal_runtime,
-            &self.state.settings.language,
-            self.remembered_active_terminal_runtime_id(),
-        );
-        self.state.terminal_layout.active_terminal_id =
-            restore_plan.active_terminal_id.clone().unwrap_or_default();
-        self.runtime_trace(
-            "terminal-restore",
-            &format!(
-                "plan elapsed_ms={} owner={} tabs={} active_index={} active_runtime={}",
-                plan_started_at.elapsed().as_millis(),
-                owner_id.as_deref().unwrap_or("none"),
-                restore_plan.tabs.len(),
-                restore_plan.active_index,
-                restore_plan.active_terminal_id.as_deref().unwrap_or("none")
-            ),
-        );
-        let artifacts_started_at = Instant::now();
-        prepare_memory_launch_artifacts(&self.runtime_service, &self.state);
-        self.runtime_trace(
-            "terminal-restore",
-            &format!(
-                "artifacts elapsed_ms={} owner={}",
-                artifacts_started_at.elapsed().as_millis(),
-                owner_id.as_deref().unwrap_or("none")
-            ),
-        );
-        let launch_context = self.current_terminal_launch_context();
-        let base_pty_config = launch_context
-            .as_ref()
-            .map(TerminalLaunchContext::to_config)
-            .unwrap_or_default();
-        let terminal_config = self.terminal_config_from_settings();
-        let spawn_started_at = Instant::now();
-        // Project-switch / layout-reload restore. A remote-hosted project's
-        // terminals are deferred into `pending` and attached on the host through
-        // the async chokepoint (local terminals still spawn synchronously inside
-        // `spawn_terminal_tabs`).
-        let mut pending: Vec<(TerminalPtyConfig, crate::terminal::PendingTerminalAttach)> =
-            Vec::new();
-        match spawn_terminal_tabs(
-            SpawnTerminalTabsInput {
-                plan: &restore_plan,
-                terminal_manager: self.terminal_manager.clone(),
-                launch_context: launch_context.as_ref(),
-                base_pty_config: &base_pty_config,
-                terminal_config,
-                terminal_pane_registry: &self.terminal_pane_registry,
-                pending_out: Some(&mut pending),
-            },
-            cx,
-        ) {
-            Ok((terminals, active_terminal_id, next_terminal_index)) => {
-                let tab_count = terminals.len();
-                self.terminals = terminals;
-                self.active_terminal_id = active_terminal_id;
-                self.next_terminal_index = next_terminal_index;
-                self.register_terminal_panes(cx);
-                self.restore_collapsed_panes_for_layout(true, cx);
-                self.spawn_attach_pending_terminals(None, pending, cx);
-                self.status_message = format!(
-                    "terminal layout reloaded · {} tab{}",
-                    self.terminals.len(),
-                    if self.terminals.len() == 1 { "" } else { "s" }
-                );
-                self.runtime_trace(
-                    "terminal-restore",
-                    &format!(
-                        "spawn_tabs elapsed_ms={} owner={} tabs={}",
-                        spawn_started_at.elapsed().as_millis(),
-                        owner_id.as_deref().unwrap_or("none"),
-                        tab_count
-                    ),
-                );
-                self.sync_terminal_state_for_project_switch();
-            }
-            Err(error) => {
-                self.status_message = format!("failed to rebuild terminal layout: {error}");
-                self.runtime_trace(
-                    "terminal-restore",
-                    &format!(
-                        "spawn_tabs failed elapsed_ms={} owner={} error={error}",
-                        spawn_started_at.elapsed().as_millis(),
-                        owner_id.as_deref().unwrap_or("none")
-                    ),
-                );
-            }
-        }
-        self.runtime_trace(
-            "terminal-restore",
-            &format!(
-                "total elapsed_ms={} owner={}",
-                restore_started_at.elapsed().as_millis(),
-                owner_id.as_deref().unwrap_or("none")
-            ),
-        );
         self.invalidate_terminal_workspace(cx);
     }
 }

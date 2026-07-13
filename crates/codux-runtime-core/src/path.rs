@@ -24,17 +24,41 @@ pub fn is_windows_path(path: &str) -> bool {
     matches!(Utf8TypedPath::derive(path), Utf8TypedPath::Windows(_))
 }
 
-/// The native separator for `path` — `\` for Windows-style paths, `/` otherwise.
-pub fn path_separator(path: &str) -> char {
-    if is_windows_path(path) { '\\' } else { '/' }
-}
-
 /// Join `name` onto directory `parent` using the directory's own separator, so a
 /// Windows `C:\…` directory stays back-slashed and a POSIX directory stays
 /// forward-slashed instead of gaining a stray separator of the wrong kind.
 pub fn join_path(parent: &str, name: &str) -> String {
-    let parent = parent.trim_end_matches(['/', '\\']);
-    format!("{parent}{}{name}", path_separator(parent))
+    Utf8TypedPath::derive(parent)
+        .join(name)
+        .normalize()
+        .into_string()
+}
+
+/// Return the parent using the path's own platform rules, independent of the
+/// platform running this code.
+pub fn parent_path(path: &str) -> Option<String> {
+    Utf8TypedPath::derive(path)
+        .parent()
+        .map(|parent| parent.normalize().into_string())
+}
+
+/// Return the final component using the path's own platform rules.
+pub fn file_name(path: &str) -> Option<String> {
+    Utf8TypedPath::derive(path).file_name().map(str::to_string)
+}
+
+/// Return `path` relative to `root` while preserving the path's separator
+/// style. Both paths are parsed using the target path's conventions.
+pub fn relative_path(root: &str, path: &str) -> Option<String> {
+    Utf8TypedPath::derive(path)
+        .strip_prefix(root)
+        .ok()
+        .map(|relative| {
+            relative
+                .as_str()
+                .trim_start_matches(['/', '\\'])
+                .to_string()
+        })
 }
 
 /// Strip Windows extended-length prefixes (`\\?\` and `\\?\UNC\`) so paths render
@@ -135,6 +159,39 @@ mod tests {
         assert_eq!(join_path(r"C:\", "Users"), r"C:\Users");
         assert_eq!(join_path("/Users/dux", "proj"), "/Users/dux/proj");
         assert_eq!(join_path("/", "Users"), "/Users");
+    }
+
+    #[test]
+    fn parses_parent_and_file_name_for_both_platforms() {
+        assert_eq!(
+            parent_path(r"C:\Users\dux\notes.txt").as_deref(),
+            Some(r"C:\Users\dux")
+        );
+        assert_eq!(
+            parent_path("/Users/dux/notes.txt").as_deref(),
+            Some("/Users/dux")
+        );
+        assert_eq!(
+            file_name(r"C:\Users\dux\notes.txt").as_deref(),
+            Some("notes.txt")
+        );
+        assert_eq!(
+            file_name("/Users/dux/notes.txt").as_deref(),
+            Some("notes.txt")
+        );
+    }
+
+    #[test]
+    fn strips_roots_for_both_platforms() {
+        assert_eq!(
+            relative_path(r"C:\Users\dux", r"C:\Users\dux\src\main.rs").as_deref(),
+            Some(r"src\main.rs")
+        );
+        assert_eq!(
+            relative_path("/Users/dux", "/Users/dux/src/main.rs").as_deref(),
+            Some("src/main.rs")
+        );
+        assert_eq!(relative_path(r"C:\Users\dux", r"D:\src\main.rs"), None);
     }
 
     #[test]

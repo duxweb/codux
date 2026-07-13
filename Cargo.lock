@@ -1537,6 +1537,7 @@ dependencies = [
  "chrono",
  "codux-ai-history",
  "codux-protocol",
+ "codux-runtime-core",
  "codux-terminal-core",
  "codux-terminal-pty",
  "dunce",

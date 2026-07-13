@@ -122,7 +122,7 @@ impl CoduxApp {
                         if include_slow_tick {
                             app.enqueue_automatic_memory_extraction_async(cx);
                             app.refresh_remote_link_states(cx);
-                            app.reconcile_remote_terminal_bindings(cx);
+                            app.reconcile_hosted_terminal_bindings(cx);
                             app.detect_project_drive_recovery(cx);
                         }
                         if result.pet_update_events > 0 {

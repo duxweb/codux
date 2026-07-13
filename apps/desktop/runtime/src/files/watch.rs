@@ -24,13 +24,6 @@ impl Default for FileWatchManager {
 }
 
 impl FileWatchManager {
-    pub fn registration(&self, project_path: &str) -> Result<FileWatchRegistration, String> {
-        let root = canonical_root(project_path)?;
-        Ok(FileWatchRegistration {
-            project_path: normalized_path_display(&root),
-        })
-    }
-
     pub fn watch(
         &self,
         project_path: String,

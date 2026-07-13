@@ -1344,7 +1344,7 @@ impl CoduxApp {
                 );
                 let remote_ai_current_sessions = selected_project
                     .as_ref()
-                    .filter(|project| project.host_device_id.is_some())
+                    .filter(|project| project.is_remote())
                     .and_then(|project| {
                         let scope_id = scope_id.as_deref().unwrap_or(project.id.as_str());
                         service

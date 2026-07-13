@@ -28,9 +28,42 @@ impl RuntimeService {
     pub fn git_unwatch(&self, project_path: String) -> Result<(), String> {
         self.unwatch_project_git(project_path)
     }
+
+    fn watch_active_project_git(
+        &self,
+        project_path: String,
+        generation: u64,
+    ) -> Result<Option<git::GitWatchRegistration>, String> {
+        let registration = self.git_watch(project_path)?;
+        let previous = self
+            .active_project_watches
+            .lock()
+            .map_err(|_| "Active project watcher lock is poisoned.".to_string())?
+            .then_install_git(generation, registration.project_path.clone());
+        let Some(previous) = previous else {
+            let _ = self.git_unwatch(registration.project_path.clone());
+            return Ok(None);
+        };
+        if let Some(previous) = previous.filter(|path| path != &registration.project_path) {
+            let _ = self.git_unwatch(previous);
+        }
+        Ok(Some(registration))
+    }
     pub fn reload_project_git(&self, project_path: &str) -> git::GitSummary {
-        if let Some((device_id, project_id)) = self.remote_project_for_path(project_path) {
-            return self.remote_git_summary(&device_id, &project_id, project_path);
+        if let Some(runtime) = self.hosted_runtime_for_project_path(project_path) {
+            let project_id = self
+                .project_id_for_workspace_path(project_path)
+                .unwrap_or_default();
+            return match runtime
+                .and_then(|runtime| runtime.git_status(&project_id, project_path))
+                .and_then(|value| git_summary_from_payload(&value))
+            {
+                Ok(summary) => summary,
+                Err(error) => git::GitSummary {
+                    error: Some(error),
+                    ..Default::default()
+                },
+            };
         }
         refresh_git_summary(&self.support_dir, project_path)
     }
@@ -42,7 +75,10 @@ impl RuntimeService {
     ) -> (git::GitSummary, git::GitReviewSummary) {
         // Remote projects have no local cache; fetch live status from the host
         // (review diff isn't cached remotely — the panel refreshes it on demand).
-        if self.host_device_for_project_path(project_path).is_some() {
+        if self
+            .hosted_runtime_for_project_path(project_path)
+            .is_some()
+        {
             return (
                 self.reload_project_git(project_path),
                 git::GitReviewSummary::default(),
@@ -61,7 +97,7 @@ impl RuntimeService {
         project_path: &str,
         base_branch: Option<&str>,
     ) -> git::GitReviewSummary {
-        if let Some(result) = self.remote_git_read(
+        if let Some(result) = self.hosted_git_read(
             project_path,
             "review",
             serde_json::json!({ "baseBranch": base_branch }),

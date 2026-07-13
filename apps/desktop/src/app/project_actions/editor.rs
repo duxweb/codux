@@ -196,7 +196,7 @@ impl CoduxApp {
     ) {
         // Open the unified file-picker sub-window (a standard child window with
         // the shared title bar / footer), browsing local or the selected host.
-        let device_id = self.project_editor_host_device_id.clone();
+        let runtime_target = self.project_editor_runtime_target.clone();
         let start = {
             let path = self.project_editor_path.trim();
             (!path.is_empty()).then(|| path.to_string())
@@ -205,7 +205,7 @@ impl CoduxApp {
             FilePickerOpenRequest {
                 mode: FilePickerMode::OpenFolder,
                 target: FilePickerTarget::ProjectEditorPath,
-                device_id,
+                runtime_target,
                 start_path: start,
                 default_filename: None,
             },

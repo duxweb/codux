@@ -26,9 +26,11 @@ impl RuntimeService {
             .active_workspace_path_for_project(project_id)
             .unwrap_or_else(|| project.path.clone());
         self.project_activity.mark_project_active(project.clone());
-        let _ = self.mark_active_project_file_path(&active_workspace_path);
-
-        self.watch_project_background(active_workspace_path, project.path);
+        self.watch_project_background(
+            active_workspace_path,
+            project.path,
+            project.runtime_target,
+        );
         self.refresh_active_ai_history_background();
 
         Ok(self.project_activity.snapshot())
@@ -87,14 +89,42 @@ impl RuntimeService {
         })
     }
 
-    pub fn watch_project_background(&self, file_watch_path: String, git_watch_path: String) {
+    pub fn watch_project_background(
+        &self,
+        file_watch_path: String,
+        git_watch_path: String,
+        runtime_target: ProjectRuntimeTarget,
+    ) {
+        let Ok(generation) = self.begin_project_watch_switch() else {
+            return;
+        };
+        let hosted = runtime_target.is_hosted();
         let service = self.clone();
-        let _ = std::thread::Builder::new()
-            .name("codux-project-watch-switch".to_string())
-            .spawn(move || {
-                let _ = service.watch_active_project_files(file_watch_path);
-                let _ = service.git_watch(git_watch_path);
-            });
+        drop(crate::async_runtime::spawn_blocking(move || {
+            let Ok(_registration) = service.project_watch_registration.lock() else {
+                return;
+            };
+            service.drain_pending_project_watch_cleanup();
+            if hosted || !service.project_watch_generation_is_current(generation) {
+                return;
+            }
+            if let Err(error) = service.watch_active_project_files(file_watch_path, generation) {
+                crate::runtime_trace::runtime_trace(
+                    "files",
+                    &format!("failed to watch active project: {error}"),
+                );
+                return;
+            }
+            if !service.project_watch_generation_is_current(generation) {
+                return;
+            }
+            if let Err(error) = service.watch_active_project_git(git_watch_path, generation) {
+                crate::runtime_trace::runtime_trace(
+                    "git",
+                    &format!("failed to watch active project: {error}"),
+                );
+            }
+        }));
     }
 
     pub fn tick_project_activity(&self) -> ProjectActivitySnapshot {

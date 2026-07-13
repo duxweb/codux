@@ -131,15 +131,7 @@ impl RemoteHostRuntime {
         let exists = ProjectStore::new(self.support_dir.clone())
             .projects_snapshot()
             .into_iter()
-            .any(|project| {
-                project.id == project_id
-                    && project
-                        .host_device_id
-                        .as_deref()
-                        .map(str::trim)
-                        .unwrap_or_default()
-                        .is_empty()
-            });
+            .any(|project| project.id == project_id && project.runtime_target.is_local());
         if exists {
             Ok(())
         } else {

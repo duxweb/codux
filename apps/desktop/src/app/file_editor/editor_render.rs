@@ -363,13 +363,19 @@ pub(super) fn file_editor_toolbar(
         .border_b_1()
         .border_color(cx.theme().border)
         .bg(cx.theme().title_bar)
-        .when(window_header, |this| {
+        .when(window_header && !cfg!(target_os = "windows"), |this| {
             this.window_control_area(WindowControlArea::Drag)
         })
         .child(
             div()
                 .min_w_0()
                 .flex_1()
+                .h_full()
+                .flex()
+                .items_center()
+                .when(window_header && cfg!(target_os = "windows"), |this| {
+                    this.window_control_area(WindowControlArea::Drag)
+                })
                 .text_size(rems(0.875))
                 .line_height(rems(1.125))
                 .text_color(color(theme::TEXT))

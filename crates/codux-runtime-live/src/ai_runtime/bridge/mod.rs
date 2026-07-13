@@ -79,6 +79,10 @@ impl AIRuntimeBridge {
         Self::with_paths(runtime_root_dir(), runtime_temp_dir(), home_dir())
     }
 
+    pub fn with_runtime_paths(root_dir: PathBuf, temp_dir: PathBuf, home_dir: PathBuf) -> Self {
+        Self::with_paths(root_dir, temp_dir, home_dir)
+    }
+
     pub(crate) fn with_paths(root_dir: PathBuf, temp_dir: PathBuf, home_dir: PathBuf) -> Self {
         let wrapper_bin_dir = root_dir.join("scripts").join("wrappers").join("bin");
         let managed_hook_script = root_dir

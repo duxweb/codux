@@ -137,7 +137,7 @@ impl CoduxApp {
                 .state
                 .selected_project
                 .as_ref()
-                .and_then(|project| project.host_device_id.clone())
+                .and_then(|project| project.remote_device_id().map(str::to_string))
                 .map(server_info::ServerInfoTarget::Remote)
                 .unwrap_or(server_info::ServerInfoTarget::Local),
         }

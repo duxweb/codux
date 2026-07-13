@@ -76,6 +76,7 @@ impl Default for SettingsSummary {
             pet_speech_mute_on_fullscreen: true,
             pet_speech_quiet_hours_enabled: false,
             pet_speech_temporary_muted: false,
+            wsl_enabled: true,
             developer_hud: false,
             developer_refresh: "3".to_string(),
             shortcuts: HashMap::new(),

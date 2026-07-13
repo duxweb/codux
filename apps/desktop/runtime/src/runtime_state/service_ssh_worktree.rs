@@ -93,13 +93,18 @@ impl RuntimeService {
         project_path: Option<&str>,
     ) -> WorktreeSummary {
         if let Some(path) = project_path
-            && let Some(device_id) = self.host_device_for_project_path(path) {
-                return self.remote_worktree_summary(
-                    &device_id,
-                    project_id.unwrap_or_default(),
-                    path,
-                );
-            }
+            && let Some(runtime) = self.hosted_runtime_for_project_path(path)
+        {
+            return match runtime {
+                Ok(runtime) => {
+                    self.hosted_worktree_summary(&runtime, project_id.unwrap_or_default(), path)
+                }
+                Err(error) => WorktreeSummary {
+                    error: Some(error),
+                    ..Default::default()
+                },
+            };
+        }
         load_worktrees(&self.support_dir, project_id, project_path)
     }
 
@@ -109,13 +114,18 @@ impl RuntimeService {
         project_path: Option<&str>,
     ) -> WorktreeSummary {
         if let Some(path) = project_path
-            && let Some(device_id) = self.host_device_for_project_path(path) {
-                return self.remote_worktree_summary(
-                    &device_id,
-                    project_id.unwrap_or_default(),
-                    path,
-                );
-            }
+            && let Some(runtime) = self.hosted_runtime_for_project_path(path)
+        {
+            return match runtime {
+                Ok(runtime) => {
+                    self.hosted_worktree_summary(&runtime, project_id.unwrap_or_default(), path)
+                }
+                Err(error) => WorktreeSummary {
+                    error: Some(error),
+                    ..Default::default()
+                },
+            };
+        }
         WorktreeService::new(self.support_dir.clone()).state_summary(project_id, project_path)
     }
 
@@ -129,15 +139,25 @@ impl RuntimeService {
     ) -> Result<WorktreeSnapshot, String> {
         let project_id = request.project_id.clone();
         let project_path = request.project_path.clone();
-        if let Some(result) = self.remote_worktree_mutation(&project_path, |controller| {
-            controller.worktree_create(
-                &project_id,
-                &project_path,
-                &request.branch_name,
-                request.base_branch.as_deref(),
-            )
-        }) {
-            return result;
+        if let Some(runtime) = self.hosted_runtime_for_project_path(&project_path) {
+            return runtime.and_then(|runtime| {
+                runtime
+                    .worktree_create(
+                        &project_id,
+                        &project_path,
+                        &request.branch_name,
+                        request.base_branch.as_deref(),
+                        request.task_title.as_deref(),
+                    )
+                    .and_then(|value| {
+                        self.sync_hosted_created_worktree_snapshot(
+                            &project_id,
+                            &value,
+                            request.task_title.as_deref(),
+                            request.base_branch.as_deref(),
+                        )
+                    })
+            });
         }
         let result = WorktreeService::new(self.support_dir.clone()).create_from_request(request);
         if result.is_ok() {
@@ -151,35 +171,57 @@ impl RuntimeService {
         &self,
         request: WorktreeRemoveRequest,
     ) -> Result<WorktreeSnapshot, String> {
-        if let Some(result) = self.remote_worktree_mutation(&request.project_path, |controller| {
-            controller.worktree_remove(
-                &request.project_id,
-                &request.project_path,
-                &request.worktree_path,
-                request.remove_branch,
-            )
-        }) {
-            return result;
+        if let Some(runtime) = self.hosted_runtime_for_project_path(&request.project_path) {
+            return runtime.and_then(|runtime| {
+                runtime
+                    .worktree_remove(
+                        &request.project_id,
+                        &request.project_path,
+                        &request.worktree_path,
+                        request.remove_branch,
+                    )
+                    .and_then(|value| {
+                        self.sync_hosted_worktree_snapshot(&request.project_id, &value, false)
+                    })
+            });
         }
-        WorktreeService::new(self.support_dir.clone()).remove_from_request(request)
+        let project_id = request.project_id.clone();
+        let project_path = request.project_path.clone();
+        let result = WorktreeService::new(self.support_dir.clone()).remove_from_request(request);
+        if result.is_ok() {
+            self.remote_host
+                .broadcast_worktree_list_change(&project_id, &project_path);
+        }
+        result
     }
 
     pub fn merge_worktree_from_request(
         &self,
         request: WorktreeMergeRequest,
     ) -> Result<WorktreeSnapshot, String> {
-        if let Some(result) = self.remote_worktree_mutation(&request.project_path, |controller| {
-            controller.worktree_merge(
-                &request.project_id,
-                &request.project_path,
-                &request.worktree_path,
-                request.base_branch.as_deref(),
-                request.remove_branch.unwrap_or(false),
-            )
-        }) {
-            return result;
+        if let Some(runtime) = self.hosted_runtime_for_project_path(&request.project_path) {
+            return runtime.and_then(|runtime| {
+                runtime
+                    .worktree_merge(
+                        &request.project_id,
+                        &request.project_path,
+                        &request.worktree_path,
+                        request.base_branch.as_deref(),
+                        request.remove_branch.unwrap_or(false),
+                    )
+                    .and_then(|value| {
+                        self.sync_hosted_worktree_snapshot(&request.project_id, &value, false)
+                    })
+            });
         }
-        WorktreeService::new(self.support_dir.clone()).merge_from_request(request)
+        let project_id = request.project_id.clone();
+        let project_path = request.project_path.clone();
+        let result = WorktreeService::new(self.support_dir.clone()).merge_from_request(request);
+        if result.is_ok() {
+            self.remote_host
+                .broadcast_worktree_list_change(&project_id, &project_path);
+        }
+        result
     }
 
     pub fn select_worktree(&self, project_id: &str, worktree_id: &str) -> Result<(), String> {
@@ -197,14 +239,6 @@ impl RuntimeService {
         WorktreeService::new(self.support_dir.clone()).sync_from_git(project_id, project_path)
     }
 
-    pub fn create_worktree(
-        &self,
-        project_id: &str,
-        project_path: &str,
-    ) -> Result<WorktreeSummary, String> {
-        WorktreeService::new(self.support_dir.clone()).create_worktree(project_id, project_path)
-    }
-
     pub fn remove_worktree(
         &self,
         project_id: &str,
@@ -212,17 +246,15 @@ impl RuntimeService {
         worktree_id: &str,
         remove_branch: bool,
     ) -> Result<WorktreeSummary, String> {
-        let result = WorktreeService::new(self.support_dir.clone()).remove_worktree(
-            project_id,
-            project_path,
-            worktree_id,
+        let summary = self.reload_worktrees(Some(project_id), Some(project_path));
+        let worktree = mutation_worktree(&summary, project_id, worktree_id, "removed")?;
+        self.remove_worktree_from_request(WorktreeRemoveRequest {
+            project_id: project_id.to_string(),
+            project_path: project_path.to_string(),
+            worktree_path: worktree.path,
             remove_branch,
-        );
-        if result.is_ok() {
-            self.remote_host
-                .broadcast_worktree_list_change(project_id, project_path);
-        }
-        result
+        })?;
+        Ok(self.reload_worktrees(Some(project_id), Some(project_path)))
     }
 
     pub fn merge_worktree(
@@ -231,16 +263,22 @@ impl RuntimeService {
         project_path: &str,
         worktree_id: &str,
     ) -> Result<WorktreeSummary, String> {
-        let result = WorktreeService::new(self.support_dir.clone()).merge_worktree(
-            project_id,
-            project_path,
-            worktree_id,
-        );
-        if result.is_ok() {
-            self.remote_host
-                .broadcast_worktree_list_change(project_id, project_path);
-        }
-        result
+        let summary = self.reload_worktrees(Some(project_id), Some(project_path));
+        let worktree = mutation_worktree(&summary, project_id, worktree_id, "merged")?;
+        let base_branch = summary
+            .tasks
+            .iter()
+            .find(|task| task.worktree_id == worktree_id)
+            .map(|task| task.base_branch.trim().to_string())
+            .filter(|branch| !branch.is_empty());
+        self.merge_worktree_from_request(WorktreeMergeRequest {
+            project_id: project_id.to_string(),
+            project_path: project_path.to_string(),
+            worktree_path: worktree.path,
+            base_branch,
+            remove_branch: Some(false),
+        })?;
+        Ok(self.reload_worktrees(Some(project_id), Some(project_path)))
     }
 
     pub fn save_terminal_layout(
@@ -283,4 +321,59 @@ impl RuntimeService {
             active_path,
         )
     }
+
+    fn sync_hosted_worktree_snapshot(
+        &self,
+        project_id: &str,
+        value: &serde_json::Value,
+        prefer_payload_selection: bool,
+    ) -> Result<WorktreeSnapshot, String> {
+        let mut snapshot = worktree_snapshot_from_payload(value)?;
+        snapshot.tasks = self.sync_hosted_project_worktree_snapshot(
+            project_id,
+            &snapshot,
+            value.get("defaultBaseBranch").and_then(Value::as_str),
+            prefer_payload_selection,
+        )?;
+        Ok(snapshot)
+    }
+
+    fn sync_hosted_created_worktree_snapshot(
+        &self,
+        project_id: &str,
+        value: &serde_json::Value,
+        task_title: Option<&str>,
+        base_branch: Option<&str>,
+    ) -> Result<WorktreeSnapshot, String> {
+        let mut snapshot = worktree_snapshot_from_payload(value)?;
+        add_created_worktree_task(&mut snapshot, value, task_title, base_branch);
+        snapshot.tasks = self.sync_hosted_project_worktree_snapshot(
+            project_id,
+            &snapshot,
+            value.get("defaultBaseBranch").and_then(Value::as_str),
+            true,
+        )?;
+        Ok(snapshot)
+    }
+}
+
+fn mutation_worktree(
+    summary: &WorktreeSummary,
+    project_id: &str,
+    worktree_id: &str,
+    operation: &str,
+) -> Result<crate::worktree::WorktreeInfo, String> {
+    if let Some(error) = summary.error.as_deref() {
+        return Err(error.to_string());
+    }
+    let worktree = summary
+        .worktrees
+        .iter()
+        .find(|worktree| worktree.id == worktree_id)
+        .cloned()
+        .ok_or_else(|| "Worktree not found.".to_string())?;
+    if worktree.is_default || worktree.id == project_id {
+        return Err(format!("Default worktree cannot be {operation}."));
+    }
+    Ok(worktree)
 }

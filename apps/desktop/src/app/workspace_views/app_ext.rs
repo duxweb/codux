@@ -118,8 +118,7 @@ impl CoduxApp {
                 .state
                 .selected_project
                 .as_ref()
-                .and_then(|project| project.host_device_id.as_ref())
-                .is_some(),
+                .is_some_and(|project| project.is_remote()),
         }
     }
 

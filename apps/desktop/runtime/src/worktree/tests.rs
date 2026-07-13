@@ -103,6 +103,48 @@ fn summary_ignores_missing_non_default_worktree_selection() {
 }
 
 #[test]
+fn hosted_state_summary_preserves_selected_worktree_without_local_paths() {
+    let support_dir = temp_dir("hosted-worktree-selection");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "worktrees": [
+                {
+                    "id": "p1",
+                    "projectId": "p1",
+                    "name": "main",
+                    "branch": "main",
+                    "path": "/home/user/project",
+                    "status": "active",
+                    "isDefault": true
+                },
+                {
+                    "id": "w1",
+                    "projectId": "p1",
+                    "name": "feature",
+                    "branch": "feature",
+                    "path": "/home/user/.codux/worktrees/feature",
+                    "status": "active",
+                    "isDefault": false
+                }
+            ],
+            "selectedWorktreeIdByProject": {"p1": "w1"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let summary = WorktreeService::new(support_dir.clone())
+        .hosted_state_summary(Some("p1"), Some("/home/user/project"));
+
+    assert_eq!(summary.selected_worktree_id.as_deref(), Some("w1"));
+    assert!(summary.worktrees.iter().all(|worktree| worktree.exists));
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn select_worktree_rejects_missing_non_default_path() {
     let support_dir = temp_dir("worktree-select-missing");
     let project_dir = temp_dir("worktree-select-missing-project");
@@ -498,6 +540,46 @@ fn tauri_create_request_uses_requested_branch_and_task_title() {
         .find(|task| task.worktree_id == created.id)
         .expect("created task");
     assert_eq!(task.title, "Demo task");
+
+    fs::remove_dir_all(repo).ok();
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
+fn create_request_preserves_requested_base_branch_across_sync() {
+    let repo = temp_dir("worktree-create-base-branch");
+    create_repo_with_commit(&repo);
+    let git = super::GitRepository::discover(&repo).expect("discover repo");
+    let head = git.head().unwrap().peel_to_commit().unwrap();
+    git.branch("release", &head, false)
+        .expect("create base branch");
+    let support_dir = temp_dir("worktree-create-base-branch-support");
+    fs::create_dir_all(&support_dir).unwrap();
+    let service = WorktreeService::new(support_dir.clone());
+
+    let created = service
+        .create_from_request(WorktreeCreateRequest {
+            project_id: "project".to_string(),
+            project_path: repo.to_string_lossy().to_string(),
+            base_branch: Some("release".to_string()),
+            branch_name: "feature/from-release".to_string(),
+            task_title: Some("Release feature".to_string()),
+        })
+        .unwrap();
+    let created_task = created.tasks.first().expect("created task");
+    assert_eq!(created_task.base_branch, "release");
+    assert_eq!(
+        created_task.base_commit.as_deref(),
+        Some(head.id().to_string().as_str())
+    );
+
+    service
+        .sync_from_git("project", repo.to_str().expect("repo"))
+        .expect("refresh worktrees");
+    let refreshed = service.snapshot("project".to_string(), repo.to_string_lossy().to_string());
+    let refreshed_task = refreshed.tasks.first().expect("refreshed task");
+    assert_eq!(refreshed_task.base_branch, "release");
+    assert_eq!(refreshed_task.base_commit, created_task.base_commit);
 
     fs::remove_dir_all(repo).ok();
     fs::remove_dir_all(support_dir).ok();

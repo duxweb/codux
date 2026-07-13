@@ -26,7 +26,7 @@ impl RemoteHostRuntime {
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
-            host_device_id: None,
+            runtime_target: ProjectRuntimeTarget::Local,
         }) {
             Ok(baseline) => {
                 let project_id = baseline.selected_project_id.unwrap_or_default();
@@ -64,7 +64,7 @@ impl RemoteHostRuntime {
                 badge_text: None,
                 badge_symbol: None,
                 badge_color_hex: None,
-                host_device_id: None,
+                runtime_target: ProjectRuntimeTarget::Local,
             },
         ) {
             Ok(_) => {
@@ -161,24 +161,16 @@ impl RemoteHostRuntime {
     pub(super) fn remote_project_list_payload(&self, device_id: Option<&str>) -> Value {
         let store = ProjectStore::new(self.support_dir.clone());
         let baseline = store.list_snapshot();
-        // Only advertise LOCAL projects to a controller. A project backed by
-        // ANOTHER host (host_device_id set) lives on that host; this host can't
+        // Only advertise local projects to a controller. A project backed by
+        // another runtime target lives there; this host can't
         // serve its terminal — it would spawn a wrong local shell because the
         // remote path doesn't exist here. Chained host→host forwarding isn't
         // supported, so hiding them keeps the controller from opening a project
-        // it can never actually use. (host_device_id is on the full record, not
-        // the list summary, so derive the local set from `projects_snapshot`.)
+        // it can never actually use, so derive the local set from full records.
         let local_ids: HashSet<String> = store
             .projects_snapshot()
             .into_iter()
-            .filter(|project| {
-                project
-                    .host_device_id
-                    .as_deref()
-                    .map(str::trim)
-                    .unwrap_or("")
-                    .is_empty()
-            })
+            .filter(|project| project.runtime_target.is_local())
             .map(|project| project.id)
             .collect();
         let selected_project_id = self

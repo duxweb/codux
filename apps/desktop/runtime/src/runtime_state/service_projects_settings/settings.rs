@@ -152,6 +152,10 @@ impl RuntimeService {
         self.update_settings_with_side_effects(|settings| settings.toggle_developer_hud())
     }
 
+    pub fn toggle_wsl_enabled(&self) -> Result<SettingsSummary, String> {
+        self.update_settings_with_side_effects(|settings| settings.toggle_wsl_enabled())
+    }
+
     pub fn cycle_developer_refresh(&self) -> Result<SettingsSummary, String> {
         self.update_settings_with_side_effects(|settings| settings.cycle_developer_refresh())
     }

@@ -278,7 +278,7 @@ pub(super) fn workspace_toolbar_fingerprint(app: &CoduxApp) -> u64 {
                 project.id.clone(),
                 project.name.clone(),
                 project.path.clone(),
-                project.host_device_id.clone(),
+                project.runtime_target.clone(),
             )
         }),
         app.state.settings.language.clone(),

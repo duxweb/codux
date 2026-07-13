@@ -1,20 +1,26 @@
 fn wait_for_active_watch_path(service: &RuntimeService, expected: &str) {
-    for _ in 0..50 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
         let current = service
-            .active_file_watch_path
+            .active_project_watches
             .lock()
             .expect("active file watch")
+            .file_path
             .clone();
         if current.as_deref() == Some(expected) {
             return;
+        }
+        if std::time::Instant::now() >= deadline {
+            break;
         }
         thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(
         service
-            .active_file_watch_path
+            .active_project_watches
             .lock()
             .expect("active file watch")
+            .file_path
             .as_deref(),
         Some(expected)
     );

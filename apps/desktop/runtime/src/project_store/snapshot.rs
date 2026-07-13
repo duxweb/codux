@@ -16,6 +16,44 @@ impl ProjectStore {
         self.snapshot().projects
     }
 
+    pub fn runtime_target_for_workspace_path(
+        &self,
+        workspace_path: &str,
+    ) -> Result<super::ProjectRuntimeTarget, String> {
+        let snapshot = self.snapshot();
+        let project_for_path = |project: &ProjectRecord| {
+            project.path == workspace_path
+                || snapshot.worktrees.iter().any(|worktree| {
+                    worktree.project_id == project.id && worktree.path == workspace_path
+                })
+        };
+        if let Some(selected) = snapshot
+            .selected_project_id
+            .as_deref()
+            .and_then(|selected| {
+                snapshot
+                    .projects
+                    .iter()
+                    .find(|project| project.id == selected)
+            })
+            .filter(|project| project_for_path(project))
+        {
+            return Ok(selected.runtime_target.clone());
+        }
+        let matches = snapshot
+            .projects
+            .iter()
+            .filter(|project| project_for_path(project))
+            .collect::<Vec<_>>();
+        match matches.as_slice() {
+            [] => Ok(super::ProjectRuntimeTarget::Local),
+            [project] => Ok(project.runtime_target.clone()),
+            _ => Err(format!(
+                "Workspace path belongs to multiple runtime targets: {workspace_path}"
+            )),
+        }
+    }
+
     pub fn project_summaries(&self) -> Vec<ProjectSummary> {
         self.snapshot()
             .projects
@@ -94,7 +132,13 @@ impl ProjectStore {
             .worktrees
             .iter()
             .find(|worktree| normalize_path(&worktree.path) == normalized)
-            .map(worktree_summary)
+            .and_then(|worktree| {
+                let project = snapshot
+                    .projects
+                    .iter()
+                    .find(|project| project.id == worktree.project_id)?;
+                Some(worktree_summary(worktree, &project.runtime_target))
+            })
             .or_else(|| {
                 snapshot
                     .projects
@@ -158,7 +202,7 @@ pub(super) fn project_runtime_worktrees(
         project_id: project.id.clone(),
         path: project.path.clone(),
         is_default: true,
-        exists: project.host_device_id.is_some() || std::path::Path::new(&project.path).exists(),
+        exists: project.runtime_target.is_hosted() || std::path::Path::new(&project.path).exists(),
     })
     .chain(
         snapshot
@@ -170,7 +214,8 @@ pub(super) fn project_runtime_worktrees(
                 project_id: worktree.project_id.clone(),
                 path: worktree.path.clone(),
                 is_default: worktree.is_default,
-                exists: std::path::Path::new(&worktree.path).exists(),
+                exists: project.runtime_target.is_hosted()
+                    || std::path::Path::new(&worktree.path).exists(),
             }),
     )
     .collect()

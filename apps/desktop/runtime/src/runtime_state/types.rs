@@ -65,10 +65,17 @@ pub struct ProjectInfo {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     pub git_default_push_remote_name: Option<String>,
-    /// `Some(device_id)` when the project is hosted on a remote device; `None`
-    /// for a local project. Drives controller-transport routing and the sidebar
-    /// remote marker.
-    pub host_device_id: Option<String>,
+    pub runtime_target: ProjectRuntimeTarget,
+}
+
+impl ProjectInfo {
+    pub fn remote_device_id(&self) -> Option<&str> {
+        self.runtime_target.remote_device_id()
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.remote_device_id().is_some()
+    }
 }
 
 #[derive(Clone)]
@@ -80,13 +87,24 @@ pub struct RuntimeService {
     file_watch_manager: Arc<FileWatchManager>,
     git_watch_manager: Arc<git::GitWatchManager>,
     file_watch_events: Arc<Mutex<VecDeque<FileChangeEvent>>>,
-    active_file_watch_path: Arc<Mutex<Option<String>>>,
+    active_project_watches: Arc<Mutex<ActiveProjectWatches>>,
+    project_watch_registration: Arc<Mutex<()>>,
     ai_history_activation_keys: Arc<Mutex<HashSet<String>>>,
     git_cancels: Arc<Mutex<HashMap<String, git::GitCancelToken>>>,
     power_manager: Arc<PowerManager>,
     remote_host: Arc<RemoteHostRuntime>,
     remote_controllers: Arc<crate::remote::RemoteControllerManager>,
+    wsl_runtimes: Arc<crate::wsl::WslRuntimeManager>,
     host_browser_proxy: Arc<crate::host_browser::HostBrowserProxy>,
+}
+
+#[derive(Default)]
+struct ActiveProjectWatches {
+    generation: u64,
+    file_path: Option<String>,
+    git_path: Option<String>,
+    pending_file_unwatches: Vec<String>,
+    pending_git_unwatches: Vec<String>,
 }
 
 impl RuntimeService {
@@ -159,5 +177,18 @@ struct ProjectRecord {
     #[serde(default)]
     git_default_push_remote_name: Option<String>,
     #[serde(default)]
+    runtime_target: Option<ProjectRuntimeTarget>,
+    #[serde(default)]
     host_device_id: Option<String>,
+}
+
+impl ProjectRecord {
+    fn resolved_runtime_target(&self) -> ProjectRuntimeTarget {
+        self.runtime_target.clone().unwrap_or_else(|| {
+            self.host_device_id
+                .clone()
+                .map(|device_id| ProjectRuntimeTarget::Remote { device_id })
+                .unwrap_or_default()
+        })
+    }
 }

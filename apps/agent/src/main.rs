@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use codux_protocol::REMOTE_PROTOCOL_VERSION;
+use codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION;
 
 mod ai_stats;
 mod cmd_config;
@@ -16,6 +17,7 @@ mod memory;
 mod paths;
 mod projects;
 mod runstate;
+mod runtime_stdio;
 mod sessions;
 mod smoke;
 mod terminals;
@@ -113,6 +115,9 @@ enum Command {
     /// Internal smoke tests (pty | transport | serve).
     #[command(name = "smoke", hide = true)]
     Smoke { kind: String },
+    /// Run the local WSL runtime over stdin/stdout.
+    #[command(name = "runtime-stdio", hide = true)]
+    RuntimeStdio,
 }
 
 fn main() {
@@ -178,6 +183,7 @@ fn main() {
         Some(Command::DeviceRename { id }) => cmd_device::rename(&id),
         Some(Command::DeviceClear) => cmd_device::clear(),
         Some(Command::Smoke { kind }) => smoke::run(&kind).map(|output| println!("{output}")),
+        Some(Command::RuntimeStdio) => runtime_stdio::run(VERSION),
     };
     if let Err(error) = result {
         eprintln!("error: {error}");
@@ -188,4 +194,5 @@ fn main() {
 fn print_version() {
     println!("codux {VERSION}");
     println!("protocol {REMOTE_PROTOCOL_VERSION}");
+    println!("runtime-stdio {RUNTIME_STDIO_PROTOCOL_VERSION}");
 }

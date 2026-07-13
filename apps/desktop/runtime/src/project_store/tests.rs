@@ -69,31 +69,62 @@ fn create_move_and_close_preserve_unknown_fields_and_prune_related_state() {
 }
 
 #[test]
-fn create_project_persists_host_device_id_round_trip() {
+fn legacy_host_device_id_loads_as_remote_runtime_target() {
     let dir = temp_dir("project-store-host-device");
-    fs::create_dir_all(&dir).unwrap();
-    let project_dir = dir.join("remote-project");
-    fs::create_dir_all(&project_dir).unwrap();
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "projects": [{
+                "id": "remote-project",
+                "name": "Remote",
+                "path": "/srv/project",
+                "hostDeviceId": "device-xyz"
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let state = state_value(&support_dir);
+    let reloaded: Vec<ProjectRecord> = serde_json::from_value(state["projects"].clone()).unwrap();
+    assert_eq!(
+        reloaded[0].runtime_target,
+        ProjectRuntimeTarget::Remote {
+            device_id: "device-xyz".to_string()
+        }
+    );
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn create_project_persists_runtime_target_without_legacy_field() {
+    let dir = temp_dir("project-store-runtime-target");
     let support_dir = dir.join("support");
     fs::create_dir_all(&support_dir).unwrap();
 
     ProjectStore::new(support_dir.clone())
         .create_project(ProjectCreateRequest {
             name: "Remote".to_string(),
-            path: project_dir.to_str().unwrap().to_string(),
+            path: "/srv/project".to_string(),
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
-            host_device_id: Some("device-xyz".to_string()),
+            runtime_target: ProjectRuntimeTarget::Remote {
+                device_id: "device-xyz".to_string(),
+            },
         })
         .unwrap();
 
     let state = state_value(&support_dir);
-    assert_eq!(state["projects"][0]["hostDeviceId"], "device-xyz");
-
-    // The typed record round-trips the field rather than dropping it.
-    let reloaded: Vec<ProjectRecord> = serde_json::from_value(state["projects"].clone()).unwrap();
-    assert_eq!(reloaded[0].host_device_id.as_deref(), Some("device-xyz"));
+    assert_eq!(state["projects"][0]["runtimeTarget"]["kind"], "remote");
+    assert_eq!(
+        state["projects"][0]["runtimeTarget"]["deviceId"],
+        "device-xyz"
+    );
+    assert!(state["projects"][0].get("hostDeviceId").is_none());
 
     fs::remove_dir_all(dir).ok();
 }
@@ -116,7 +147,9 @@ fn create_remote_project_keeps_host_path_without_local_existence_check() {
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
-            host_device_id: Some("device-win".to_string()),
+            runtime_target: ProjectRuntimeTarget::Remote {
+                device_id: "device-win".to_string(),
+            },
         })
         .expect("creating a remote project must not require the path to exist locally");
 
@@ -124,7 +157,82 @@ fn create_remote_project_keeps_host_path_without_local_existence_check() {
     // The host path is stored verbatim (not canonicalized away), and tagged with
     // its host so the project routes over the controller.
     assert_eq!(state["projects"][0]["path"], host_path);
-    assert_eq!(state["projects"][0]["hostDeviceId"], "device-win");
+    assert_eq!(
+        state["projects"][0]["runtimeTarget"]["deviceId"],
+        "device-win"
+    );
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn same_wsl_path_in_different_distributions_creates_distinct_projects() {
+    let dir = temp_dir("project-store-wsl-identity");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    let store = ProjectStore::new(support_dir.clone());
+
+    for distribution in ["Ubuntu", "Debian"] {
+        store
+            .create_project(ProjectCreateRequest {
+                name: "Project".to_string(),
+                path: "/home/user/project".to_string(),
+                badge_text: None,
+                badge_symbol: None,
+                badge_color_hex: None,
+                runtime_target: ProjectRuntimeTarget::Wsl {
+                    distribution: distribution.to_string(),
+                },
+            })
+            .unwrap();
+    }
+
+    let projects = store.projects_snapshot();
+    assert_eq!(projects.len(), 2);
+    assert_ne!(projects[0].id, projects[1].id);
+    assert_eq!(
+        store
+            .runtime_target_for_workspace_path("/home/user/project")
+            .unwrap(),
+        ProjectRuntimeTarget::Wsl {
+            distribution: "Debian".to_string()
+        }
+    );
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn duplicate_workspace_path_without_selection_is_rejected() {
+    let dir = temp_dir("project-store-wsl-ambiguous");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "projects": [
+                {
+                    "id": "ubuntu",
+                    "name": "Project",
+                    "path": "/home/user/project",
+                    "runtimeTarget": { "kind": "wsl", "distribution": "Ubuntu" }
+                },
+                {
+                    "id": "debian",
+                    "name": "Project",
+                    "path": "/home/user/project",
+                    "runtimeTarget": { "kind": "wsl", "distribution": "Debian" }
+                }
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let error = ProjectStore::new(support_dir.clone())
+        .runtime_target_for_workspace_path("/home/user/project")
+        .unwrap_err();
+    assert!(error.contains("multiple runtime targets"));
 
     fs::remove_dir_all(dir).ok();
 }
@@ -318,6 +426,140 @@ fn worktree_selection_rejects_missing_non_default_workspace() {
     assert_eq!(
         store.active_workspace_path_for_project("p1").as_deref(),
         Some(project_dir.to_string_lossy().as_ref())
+    );
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn hosted_worktree_sync_preserves_other_projects_and_allows_selection() {
+    let dir = temp_dir("project-store-hosted-worktree-sync");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "projects": [
+                {
+                    "id": "wsl-project",
+                    "name": "WSL",
+                    "path": "/root/project",
+                    "runtimeTarget": { "kind": "wsl", "distribution": "Ubuntu" }
+                },
+                { "id": "local-project", "name": "Local", "path": "/tmp/local" }
+            ],
+            "worktrees": [
+                {
+                    "id": "old-wsl",
+                    "projectId": "wsl-project",
+                    "name": "Old",
+                    "branch": "old",
+                    "path": "/root/old",
+                    "status": "active",
+                    "isDefault": false,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                },
+                {
+                    "id": "local-worktree",
+                    "projectId": "local-project",
+                    "name": "Local",
+                    "branch": "local",
+                    "path": "/tmp/local-worktree",
+                    "status": "active",
+                    "isDefault": false,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                }
+            ],
+            "worktreeTasks": [
+                {
+                    "worktreeId": "old-wsl",
+                    "title": "Old task",
+                    "baseBranch": "main",
+                    "baseCommit": null,
+                    "status": "active",
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                    "startedAt": null,
+                    "completedAt": null
+                },
+                {
+                    "worktreeId": "local-worktree",
+                    "title": "Local task",
+                    "baseBranch": "main",
+                    "baseCommit": null,
+                    "status": "active",
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                    "startedAt": null,
+                    "completedAt": null
+                }
+            ],
+            "selectedWorktreeIdByProject": {
+                "wsl-project": "old-wsl",
+                "local-project": "local-worktree"
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let store = ProjectStore::new(support_dir.clone());
+    store
+        .replace_project_worktree_state(
+            "wsl-project",
+            vec![ProjectWorktreeRecord {
+                id: "new-wsl".to_string(),
+                project_id: "wsl-project".to_string(),
+                name: "New".to_string(),
+                branch: "new".to_string(),
+                path: "/root/new".to_string(),
+                status: "active".to_string(),
+                is_default: false,
+                created_at: 2,
+                updated_at: 2,
+            }],
+            vec![WorktreeTaskRecord {
+                worktree_id: "new-wsl".to_string(),
+                title: "New task".to_string(),
+                base_branch: "main".to_string(),
+                base_commit: None,
+                status: "active".to_string(),
+                created_at: 2,
+                updated_at: 2,
+                started_at: None,
+                completed_at: None,
+            }],
+            Some("new-wsl"),
+        )
+        .unwrap();
+
+    let state = state_value(&support_dir);
+    let worktrees = state["worktrees"].as_array().unwrap();
+    assert!(worktrees.iter().any(|worktree| worktree["id"] == "new-wsl"));
+    assert!(
+        worktrees
+            .iter()
+            .any(|worktree| worktree["id"] == "local-worktree")
+    );
+    assert!(!worktrees.iter().any(|worktree| worktree["id"] == "old-wsl"));
+    let tasks = state["worktreeTasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert!(tasks.iter().any(|task| task["worktreeId"] == "new-wsl"));
+    assert!(
+        tasks
+            .iter()
+            .any(|task| task["worktreeId"] == "local-worktree")
+    );
+    assert!(!tasks.iter().any(|task| task["worktreeId"] == "old-wsl"));
+    assert_eq!(
+        state["selectedWorktreeIdByProject"]["wsl-project"],
+        "new-wsl"
+    );
+    assert_eq!(
+        state["selectedWorktreeIdByProject"]["local-project"],
+        "local-worktree"
     );
 
     fs::remove_dir_all(dir).ok();

@@ -7,17 +7,29 @@ impl WorktreeService {
         // setup) lives in the shared `codux_git::worktree` engine so the desktop
         // and the headless agent create worktrees identically. Only the
         // task/selection bookkeeping below is desktop-specific.
+        let base_branch = request
+            .base_branch
+            .as_deref()
+            .and_then(normalized_string)
+            .or_else(|| current_branch(&request.project_path));
+        let base_commit = base_branch
+            .as_deref()
+            .and_then(|branch| commit_hash(&request.project_path, branch));
         let created = codux_git::worktree::create_worktree(
             &request.project_path,
             &request.branch_name,
-            request.base_branch.as_deref(),
+            base_branch.as_deref(),
         )?;
         let created_path = normalize_path(&created.display().to_string());
         let created_id = worktree_uuid(&request.project_id, &created_path);
         self.sync_from_git(&request.project_id, &request.project_path)?;
-        if let Some(task_title) = request.task_title.as_deref().and_then(normalized_string) {
-            self.update_task_title(&created_id, &task_title)?;
-        }
+        let task_title = request.task_title.as_deref().and_then(normalized_string);
+        self.update_task_metadata(
+            &created_id,
+            task_title.as_deref(),
+            base_branch.as_deref(),
+            base_commit.as_deref(),
+        )?;
         self.select_worktree(&request.project_id, &created_id)?;
         Ok(self.snapshot(request.project_id, request.project_path))
     }

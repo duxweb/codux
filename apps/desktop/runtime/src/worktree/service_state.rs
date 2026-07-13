@@ -43,7 +43,13 @@ impl WorktreeService {
         Ok(self.summary(Some(project_id), Some(project_path)))
     }
 
-    fn update_task_title(&self, worktree_id: &str, title: &str) -> Result<(), String> {
+    fn update_task_metadata(
+        &self,
+        worktree_id: &str,
+        title: Option<&str>,
+        base_branch: Option<&str>,
+        base_commit: Option<&str>,
+    ) -> Result<(), String> {
         let mut raw = raw_snapshot(&self.state_file);
         if let Some(tasks) = raw.get_mut("worktreeTasks").and_then(Value::as_array_mut) {
             for task in tasks {
@@ -51,7 +57,19 @@ impl WorktreeService {
                     continue;
                 };
                 if task.get("worktreeId").and_then(Value::as_str) == Some(worktree_id) {
-                    task.insert("title".to_string(), Value::String(title.to_string()));
+                    if let Some(title) = title {
+                        task.insert("title".to_string(), Value::String(title.to_string()));
+                    }
+                    if let Some(base_branch) = base_branch {
+                        task.insert(
+                            "baseBranch".to_string(),
+                            Value::String(base_branch.to_string()),
+                        );
+                    }
+                    task.insert(
+                        "baseCommit".to_string(),
+                        base_commit.map_or(Value::Null, |value| Value::String(value.to_string())),
+                    );
                 }
             }
         }

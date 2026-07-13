@@ -416,6 +416,11 @@ impl TerminalModel {
                 self.title = Some(format!("Terminal error: {message}"));
                 true
             }
+            TerminalUiEvent::Reconnected => {
+                self.exited = false;
+                self.title = None;
+                true
+            }
         }
     }
 

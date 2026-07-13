@@ -34,7 +34,9 @@ use super::types::{
 use super::{RemoteService, crypto, relay, remote_settings_from_raw, types};
 use crate::ai_history_indexer::{AIHistoryIndexer, AIHistoryProjectState};
 use crate::ai_history_normalized::AIHistoryProjectRequest;
-use crate::project_store::{ProjectCreateRequest, ProjectStore, ProjectUpdateRequest};
+use crate::project_store::{
+    ProjectCreateRequest, ProjectRuntimeTarget, ProjectStore, ProjectUpdateRequest,
+};
 use crate::terminal_layout::{
     TerminalLayoutService, TerminalPaneSummary, terminal_layout_storage_key,
 };

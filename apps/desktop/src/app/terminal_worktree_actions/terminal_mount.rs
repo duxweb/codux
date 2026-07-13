@@ -106,17 +106,54 @@ impl CoduxApp {
         }
     }
 
-    /// Re-point every remote pane at the pool's CURRENT controller for its host.
-    /// Runs on the slow tick (cheap: one Arc identity compare per remote pane),
-    /// so a reconnect can never strand a pane on an evicted controller — no
-    /// matter which project is selected, whether the pane is mounted or parked
-    /// in the registry, or whether the 1 Hz poll saw the Disconnected→Connected
-    /// edge. The host keeps PTY sessions and its per-device viewer registry
-    /// alive and resumes streaming by itself; the only client-side repair is
-    /// the forwarder + input-handle rebind. No teardown — scrollback and AI
-    /// state preserved, and each output frame carries a full screen snapshot,
-    /// so any gap during the outage repaints on the next frame.
-    pub(in crate::app) fn reconcile_remote_terminal_bindings(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::app) fn reconcile_hosted_terminal_bindings(&mut self, cx: &mut Context<Self>) {
+        let targets = self
+            .terminal_pane_registry
+            .values()
+            .chain(
+                self.terminals
+                    .iter()
+                    .flat_map(|tab| tab.panes.iter())
+                    .filter_map(|slot| slot.pane.as_ref()),
+            )
+            .filter_map(TerminalPane::hosted_runtime_target)
+            .collect::<HashSet<_>>();
+        for target in targets {
+            if let Ok(Some(controller)) =
+                self.runtime_service.terminal_controller_for_target(&target)
+            {
+                self.apply_hosted_terminal_controller(&target, controller, cx);
+                continue;
+            }
+            if !matches!(target, ProjectRuntimeTarget::Wsl { .. })
+                || !self.hosted_terminal_rebind_in_flight.insert(target.clone())
+            {
+                continue;
+            }
+            let runtime_service = self.runtime_service.clone();
+            cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+                let target_for_resolve = target.clone();
+                let result = codux_runtime::async_runtime::spawn_blocking(move || {
+                    runtime_service.terminal_controller_for_target_blocking(&target_for_resolve)
+                })
+                .await;
+                let _ = this.update(cx, |app, cx| {
+                    app.hosted_terminal_rebind_in_flight.remove(&target);
+                    if let Ok(Ok(Some(controller))) = result {
+                        app.apply_hosted_terminal_controller(&target, controller, cx);
+                    }
+                });
+            })
+            .detach();
+        }
+    }
+
+    fn apply_hosted_terminal_controller(
+        &mut self,
+        target: &ProjectRuntimeTarget,
+        controller: Arc<dyn codux_runtime::runtime_terminal::RuntimeTerminalController>,
+        cx: &mut Context<Self>,
+    ) {
         let mut rebound = 0_usize;
         let mounted = self
             .terminals
@@ -124,20 +161,14 @@ impl CoduxApp {
             .flat_map(|tab| tab.panes.iter())
             .filter_map(|slot| slot.pane.as_ref());
         for pane in self.terminal_pane_registry.values().chain(mounted) {
-            let Some(device_id) = pane.remote_device_id() else {
+            if pane.hosted_runtime_target().as_ref() != Some(target) {
                 continue;
-            };
-            let Ok(controller) = self
-                .runtime_service
-                .remote_controller_for_device(&device_id)
-            else {
-                continue;
-            };
-            if pane.rebind_remote_controller(controller) {
+            }
+            if pane.rebind_hosted_controller(controller.clone()) {
                 rebound += 1;
             }
         }
-        if rebound > 0 {
+        if rebound > 0 && matches!(target, ProjectRuntimeTarget::Remote { .. }) {
             self.status_message = "remote host reconnected — terminal resumed".to_string();
             self.invalidate_status_bar(cx);
         }
@@ -166,13 +197,10 @@ impl CoduxApp {
         &mut self,
         terminal_id: &str,
     ) -> Result<TerminalCleanupResult, String> {
-        // A remote terminal lives on the host; the local manager doesn't own it,
-        // so the kill below won't reap it. Close the host PTY here on a
-        // user-initiated close — otherwise persistent remote terminals accumulate
-        // one orphaned host shell per close until the host restarts. (A project
-        // switch never reaches this path, so switched-away shells stay alive.)
+        // A hosted terminal is not owned by the local manager, so close it through
+        // its runtime controller before removing the desktop binding.
         if let Some(pane) = self.terminal_pane_registry.get(terminal_id) {
-            pane.close_remote_session();
+            pane.close_hosted_session();
         }
         let lifecycle_removed = self.remove_registered_terminal_pane(terminal_id);
         let exists = self
@@ -403,7 +431,7 @@ impl CoduxApp {
             .state
             .selected_project
             .as_ref()
-            .and_then(|project| project.host_device_id.clone());
+            .and_then(|project| project.remote_device_id().map(str::to_string));
         if let Some(device_id) = remote_device {
             let locale = locale_from_language_setting(&self.state.settings.language);
             self.open_remote_project_web_url(

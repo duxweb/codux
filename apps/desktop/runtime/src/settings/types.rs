@@ -79,6 +79,7 @@ pub struct SettingsSummary {
     pub pet_speech_mute_on_fullscreen: bool,
     pub pet_speech_quiet_hours_enabled: bool,
     pub pet_speech_temporary_muted: bool,
+    pub wsl_enabled: bool,
     pub developer_hud: bool,
     pub developer_refresh: String,
     pub shortcuts: HashMap<String, String>,

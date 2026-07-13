@@ -11,6 +11,7 @@ mod tests {
         let support_dir = temp_dir("settings-default-scrollback");
         let summary = SettingsService::new(support_dir).summary();
         assert_eq!(summary.terminal_scrollback_lines, "2000");
+        assert!(summary.wsl_enabled);
     }
 
     #[test]
@@ -341,6 +342,10 @@ mod tests {
             .toggle_dock_badge()
             .expect("toggle dock badge");
         assert!(!dock_badge.shows_dock_badge);
+        let wsl = SettingsService::new(support_dir.clone())
+            .toggle_wsl_enabled()
+            .expect("toggle WSL integration");
+        assert!(!wsl.wsl_enabled);
 
         let memory = SettingsService::new(support_dir.clone())
             .toggle_memory_enabled()

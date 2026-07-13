@@ -92,6 +92,7 @@ impl CoduxApp {
             terminal_osc_titles: HashMap::new(),
             terminal_search_open: std::collections::HashSet::new(),
             terminal_attach_in_flight: std::collections::HashSet::new(),
+            hosted_terminal_rebind_in_flight: HashSet::new(),
             terminal_manager: Arc::new(TerminalManager::with_ai_runtime(
                 runtime_service.ai_runtime_bridge(),
             )),
@@ -140,6 +141,7 @@ impl CoduxApp {
             worktree_creator_window: None,
             child_windows: Vec::new(),
             parent_main_window: None,
+            parent_main_window_handle: None,
             desktop_pet_line: desktop_pet_fallback_line().to_string(),
             desktop_pet_tone: DesktopPetActivityTone::Normal,
             desktop_pet_plan_items: Vec::new(),
@@ -378,7 +380,12 @@ impl CoduxApp {
             project_editor_badge_symbol: None,
             project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
             project_editor_saving: false,
-            project_editor_host_device_id: None,
+            project_editor_runtime_target: ProjectRuntimeTarget::Local,
+            wsl_distribution_catalog: None,
+            wsl_distribution_catalog_loading: false,
+            wsl_selected_distribution: String::new(),
+            wsl_install_progress: None,
+            wsl_runtime_error: None,
             project_editor_browse_busy: false,
             project_editor_browse_path: String::new(),
             project_editor_browse_parent: None,
@@ -394,6 +401,7 @@ impl CoduxApp {
             worktree_creator_base_branch: String::new(),
             worktree_creator_name: String::new(),
             worktree_creator_error: None,
+            worktree_creator_loading: false,
             worktree_creator_submitting: false,
             update_dialog_phase: UpdateDialogPhase::Checking,
             update_dialog_status: None,
@@ -519,6 +527,7 @@ impl CoduxApp {
         runtime_service: RuntimeService,
     ) -> Self {
         let mut app = Self::new_settings_window_from_state(state, runtime, runtime_service);
+        let runtime_target = project.runtime_target.clone();
         app.window_mode = AppWindowMode::ProjectEditor;
         app.status_message = format!("editing project: {}", project.name);
         app.project_editor_project_id = Some(project.id);
@@ -528,7 +537,7 @@ impl CoduxApp {
         app.project_editor_badge_color_hex = project
             .badge_color_hex
             .unwrap_or_else(|| PROJECT_BADGE_COLORS[0].to_string());
-        app.project_editor_host_device_id = project.host_device_id;
+        app.project_editor_runtime_target = runtime_target;
         app
     }
 

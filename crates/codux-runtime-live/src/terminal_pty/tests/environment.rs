@@ -93,7 +93,7 @@ fn terminal_environment_injects_codux_runtime_context() {
         memory_index_file: Some(PathBuf::from(
             "/tmp/codux/memory-workspaces/project-1/MEMORY.md",
         )),
-        host_device_id: None,
+        runtime_target: Default::default(),
     };
     let env = terminal_environment(
         "/bin/zsh",
@@ -217,7 +217,7 @@ fn terminal_environment_treats_named_zsh_wrapper_as_zsh() {
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,
-        host_device_id: None,
+        runtime_target: Default::default(),
     };
 
     let env = terminal_environment(
@@ -291,7 +291,7 @@ fn terminal_environment_does_not_override_zdotdir_when_runtime_zsh_hook_is_incom
         memory_workspace_root: None,
         memory_prompt_file: None,
         memory_index_file: None,
-        host_device_id: None,
+        runtime_target: Default::default(),
     };
 
     let env = terminal_environment(
@@ -338,7 +338,7 @@ fn terminal_environment_keeps_runtime_context_compact() {
         memory_index_file: Some(PathBuf::from(
             "/tmp/codux/memory-workspaces/project-1/MEMORY.md",
         )),
-        host_device_id: None,
+        runtime_target: Default::default(),
     };
 
     let env = terminal_environment(

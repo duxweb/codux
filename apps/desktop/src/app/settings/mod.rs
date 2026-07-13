@@ -27,6 +27,7 @@ use gpui_component::{
     group_box::{GroupBox, GroupBoxVariants},
     input::{Input, InputEvent, InputState},
     menu::{DropdownMenu, PopupMenuItem},
+    progress::Progress,
     spinner::Spinner,
     switch::Switch,
 };
@@ -55,6 +56,8 @@ mod pet;
 mod remote;
 #[path = "panes/shortcuts.rs"]
 mod shortcuts;
+#[path = "panes/wsl.rs"]
+mod wsl;
 
 use self::{
     ai::settings_ai_pane,
@@ -70,6 +73,7 @@ use self::{
         remote_pending_pairing_overlay, settings_remote_pane,
     },
     shortcuts::settings_shortcuts_pane,
+    wsl::{SettingsWslPaneInput, settings_wsl_pane},
 };
 
 const CODUX_MOBILE_DOWNLOAD_URL: &str = "https://codux.dux.cn/features/mobile/";
@@ -84,6 +88,7 @@ pub(super) enum SettingsPane {
     Notifications,
     Remote,
     Shortcuts,
+    Wsl,
     Developer,
 }
 
@@ -99,6 +104,7 @@ impl SettingsPane {
             Self::Notifications => "settings.tab.notifications",
             Self::Remote => "settings.tab.remote",
             Self::Shortcuts => "settings.tab.shortcuts",
+            Self::Wsl => "settings.tab.wsl",
             Self::Developer => "settings.tab.developer",
         };
         match self {
@@ -111,6 +117,7 @@ impl SettingsPane {
             Self::Notifications => settings_text(language, key, "Notifications"),
             Self::Remote => settings_text(language, key, "Remote"),
             Self::Shortcuts => settings_text(language, key, "Shortcuts"),
+            Self::Wsl => settings_text(language, key, "WSL"),
             Self::Developer => settings_text(language, key, "Developer"),
         }
     }
@@ -126,12 +133,17 @@ impl SettingsPane {
             Self::Notifications => HeroIconName::Bell,
             Self::Remote => HeroIconName::GlobeAlt,
             Self::Shortcuts => HeroIconName::CommandLine,
+            Self::Wsl => HeroIconName::ComputerDesktop,
             Self::Developer => HeroIconName::WrenchScrewdriver,
         }
     }
+
+    fn visible(self) -> bool {
+        self != Self::Wsl || cfg!(target_os = "windows")
+    }
 }
 
-const SETTINGS_PANES: [SettingsPane; 10] = [
+const SETTINGS_PANES: [SettingsPane; 11] = [
     SettingsPane::General,
     SettingsPane::Appearance,
     SettingsPane::Pet,
@@ -141,6 +153,7 @@ const SETTINGS_PANES: [SettingsPane; 10] = [
     SettingsPane::Notifications,
     SettingsPane::Remote,
     SettingsPane::Shortcuts,
+    SettingsPane::Wsl,
     SettingsPane::Developer,
 ];
 
@@ -226,10 +239,15 @@ impl CoduxApp {
                             .px_3()
                             .pb_3()
                             .overflow_y_scrollbar()
-                            .children(SETTINGS_PANES.into_iter().map(|item| {
-                                settings_nav_row(item, pane == item, language, cx)
-                                    .into_any_element()
-                            })),
+                            .children(
+                                SETTINGS_PANES
+                                    .into_iter()
+                                    .filter(|item| item.visible())
+                                    .map(|item| {
+                                        settings_nav_row(item, pane == item, language, cx)
+                                            .into_any_element()
+                                    }),
+                            ),
                     ),
             )
             .child(
@@ -424,6 +442,18 @@ fn settings_pane_body(
         SettingsPane::Shortcuts => settings_shortcuts_pane(
             &app.state.settings,
             app.recording_shortcut_id.as_deref(),
+            cx,
+        ),
+        SettingsPane::Wsl => settings_wsl_pane(
+            SettingsWslPaneInput {
+                settings: &app.state.settings,
+                catalog: app.wsl_distribution_catalog.as_ref(),
+                loading: app.wsl_distribution_catalog_loading,
+                selected_distribution: &app.wsl_selected_distribution,
+                progress: app.wsl_install_progress.as_ref(),
+                error: app.wsl_runtime_error.as_deref(),
+            },
+            window,
             cx,
         ),
         SettingsPane::Developer => settings_developer_pane(&app.state.settings, window, cx),
