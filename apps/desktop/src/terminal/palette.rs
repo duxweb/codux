@@ -5,6 +5,8 @@ struct TerminalRgb {
     b: u8,
 }
 
+const MIN_TERMINAL_TEXT_CONTRAST: f32 = 3.0;
+
 #[derive(Debug, Clone)]
 pub struct ColorPalette {
     ansi_colors: [Hsla; 16],
@@ -345,14 +347,17 @@ fn osc_color_payload(color: Hsla) -> String {
 }
 
 fn relative_luminance(rgb: TerminalRgb) -> f32 {
-    let channel = |value: u8| {
-        let value = value as f32 / 255.0;
-        if value <= 0.04045 {
-            value / 12.92
-        } else {
-            ((value + 0.055) / 1.055).powf(2.4)
-        }
-    };
+    static SRGB_LINEAR: LazyLock<[f32; 256]> = LazyLock::new(|| {
+        std::array::from_fn(|value| {
+            let value = value as f32 / 255.0;
+            if value <= 0.04045 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            }
+        })
+    });
+    let channel = |value: u8| SRGB_LINEAR[value as usize];
     0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b)
 }
 
@@ -393,30 +398,64 @@ fn dim_color(color: Hsla, background: Hsla) -> Hsla {
     // readable floor so TUIs that mark bright/white text as faint do not vanish
     // on light terminal themes.
     const DIM_BLEND: f32 = 0.4;
-    const MIN_DIM_CONTRAST: f32 = 3.0;
     let foreground = hsla_to_rgb(color);
     let background = hsla_to_rgb(background);
     let dimmed = mix_rgb(foreground, background, DIM_BLEND);
-    if contrast_ratio(dimmed, background) >= MIN_DIM_CONTRAST {
-        return rgb_to_hsla(dimmed);
+    ensure_contrast(
+        rgb_to_hsla(dimmed),
+        rgb_to_hsla(background),
+        MIN_TERMINAL_TEXT_CONTRAST,
+    )
+}
+
+fn ensure_contrast(color: Hsla, background: Hsla, minimum: f32) -> Hsla {
+    let foreground = hsla_to_rgb(color);
+    let background = hsla_to_rgb(background);
+    if contrast_ratio(foreground, background) >= minimum {
+        return color;
     }
 
-    let target = if relative_luminance(background) > 0.5 {
-        TerminalRgb { r: 0, g: 0, b: 0 }
-    } else {
-        TerminalRgb {
-            r: 255,
-            g: 255,
-            b: 255,
-        }
+    let black = TerminalRgb { r: 0, g: 0, b: 0 };
+    let white = TerminalRgb {
+        r: 255,
+        g: 255,
+        b: 255,
     };
-    for step in 1..=20 {
-        let candidate = mix_rgb(dimmed, target, step as f32 / 20.0);
-        if contrast_ratio(candidate, background) >= MIN_DIM_CONTRAST {
-            return rgb_to_hsla(candidate);
+    let (preferred, alternate) = if relative_luminance(foreground) < relative_luminance(background) {
+        (black, white)
+    } else {
+        (white, black)
+    };
+
+    let adjusted = contrast_color_towards(foreground, background, preferred, minimum);
+    if contrast_ratio(adjusted, background) >= minimum {
+        return rgb_to_hsla(adjusted);
+    }
+    let alternate = contrast_color_towards(background, background, alternate, minimum);
+    if contrast_ratio(adjusted, background) >= contrast_ratio(alternate, background) {
+        rgb_to_hsla(adjusted)
+    } else {
+        rgb_to_hsla(alternate)
+    }
+}
+
+fn contrast_color_towards(
+    foreground: TerminalRgb,
+    background: TerminalRgb,
+    target: TerminalRgb,
+    minimum: f32,
+) -> TerminalRgb {
+    let mut low = 0.0;
+    let mut high = 1.0;
+    for _ in 0..8 {
+        let ratio = (low + high) / 2.0;
+        if contrast_ratio(mix_rgb(foreground, target, ratio), background) >= minimum {
+            high = ratio;
+        } else {
+            low = ratio;
         }
     }
-    rgb_to_hsla(target)
+    mix_rgb(foreground, target, high)
 }
 
 fn brighten_color(mut color: Hsla) -> Hsla {

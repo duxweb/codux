@@ -470,7 +470,7 @@ impl TerminalRenderer {
         let mut current: Option<TerminalBackgroundRect> = None;
         for indexed in cells {
             let col = indexed.point.column;
-            let bg = self.cell_render_colors(&indexed.cell).1;
+            let bg = self.cell_colors(&indexed.cell).1;
             let width_cols = indexed.cell.width.max(1);
             if bg == default_bg {
                 if let Some(rect) = current.take() {
@@ -640,6 +640,19 @@ impl TerminalRenderer {
     }
 
     fn cell_render_colors(&self, cell: &TerminalScreenCellSnapshot) -> (Hsla, Hsla) {
+        let (mut fg, bg) = self.cell_colors(cell);
+        if !cell.text.chars().all(char::is_whitespace)
+            && !terminal_cell_is_private_use(&cell.text)
+            && terminal_cell_codepoint(&cell.text)
+                .and_then(terminal_builtin_graphic)
+                .is_none()
+        {
+            fg = ensure_contrast(fg, bg, MIN_TERMINAL_TEXT_CONTRAST);
+        }
+        (fg, bg)
+    }
+
+    fn cell_colors(&self, cell: &TerminalScreenCellSnapshot) -> (Hsla, Hsla) {
         let mut fg = self.palette.resolve_fg(&cell.fg, false, cell.dim);
         let mut bg = self.palette.resolve_bg(&cell.bg);
         let bold_source = if cell.inverse { &cell.bg } else { &cell.fg };

@@ -235,6 +235,130 @@ fn dim_light_text_stays_readable_on_light_background() {
 }
 
 #[test]
+fn explicit_light_text_stays_readable_on_light_background() {
+    let renderer = TerminalRenderer::new(
+        default_terminal_font_family().to_string(),
+        px(14.0),
+        DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
+        ColorPalette::builder()
+            .background(0xfa, 0xfb, 0xfc)
+            .foreground(0x2a, 0x31, 0x40)
+            .build(),
+    );
+    let cell = test_cell(
+        TerminalScreenColor::Rgb {
+            r: 0xff,
+            g: 0xff,
+            b: 0xff,
+        },
+        TerminalScreenColor::Default,
+        false,
+        false,
+    );
+
+    let (foreground, background) = renderer.cell_render_colors(&cell);
+
+    assert!(
+        contrast_ratio(hsla_to_rgb(foreground), hsla_to_rgb(background))
+            >= MIN_TERMINAL_TEXT_CONTRAST,
+        "explicit light text should remain readable on light terminal themes"
+    );
+}
+
+#[test]
+fn contrast_adjustment_preserves_foreground_luminance_direction() {
+    let background = rgb_to_hsla(TerminalRgb {
+        r: 0x80,
+        g: 0x80,
+        b: 0x80,
+    });
+    let foreground = rgb_to_hsla(TerminalRgb {
+        r: 0x90,
+        g: 0x90,
+        b: 0x90,
+    });
+
+    let adjusted = hsla_to_rgb(ensure_contrast(
+        foreground,
+        background,
+        MIN_TERMINAL_TEXT_CONTRAST,
+    ));
+
+    assert!(relative_luminance(adjusted) > relative_luminance(hsla_to_rgb(background)));
+    assert!(contrast_ratio(adjusted, hsla_to_rgb(background)) >= MIN_TERMINAL_TEXT_CONTRAST);
+}
+
+#[test]
+fn inverse_text_uses_final_background_for_contrast() {
+    let renderer = TerminalRenderer::new(
+        default_terminal_font_family().to_string(),
+        px(14.0),
+        DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
+        ColorPalette::builder()
+            .background(0xfa, 0xfb, 0xfc)
+            .foreground(0x2a, 0x31, 0x40)
+            .build(),
+    );
+    let cell = test_cell(
+        TerminalScreenColor::Rgb {
+            r: 0xfa,
+            g: 0xfb,
+            b: 0xfc,
+        },
+        TerminalScreenColor::Rgb {
+            r: 0xff,
+            g: 0xff,
+            b: 0xff,
+        },
+        false,
+        true,
+    );
+
+    let (foreground, background) = renderer.cell_render_colors(&cell);
+
+    assert!(
+        contrast_ratio(hsla_to_rgb(foreground), hsla_to_rgb(background))
+            >= MIN_TERMINAL_TEXT_CONTRAST,
+        "inverse text should use its final background for contrast"
+    );
+}
+
+#[test]
+fn terminal_fill_glyphs_keep_their_color() {
+    let renderer = TerminalRenderer::new(
+        default_terminal_font_family().to_string(),
+        px(14.0),
+        DEFAULT_TERMINAL_LINE_HEIGHT_MULTIPLIER,
+        ColorPalette::builder()
+            .background(0xfa, 0xfb, 0xfc)
+            .foreground(0x2a, 0x31, 0x40)
+            .build(),
+    );
+    let mut cell = test_cell(
+        TerminalScreenColor::Rgb {
+            r: 0xff,
+            g: 0xff,
+            b: 0xff,
+        },
+        TerminalScreenColor::Default,
+        false,
+        false,
+    );
+    for text in ["█", "\u{f0954}"] {
+        cell.text = text.to_string();
+        let (foreground, _) = renderer.cell_render_colors(&cell);
+        assert_eq!(
+            hsla_to_rgb(foreground),
+            TerminalRgb {
+                r: 0xff,
+                g: 0xff,
+                b: 0xff,
+            }
+        );
+    }
+}
+
+#[test]
 fn inverse_bold_only_brightens_final_foreground() {
     let renderer = TerminalRenderer::new(
         default_terminal_font_family().to_string(),
@@ -250,18 +374,21 @@ fn inverse_bold_only_brightens_final_foreground() {
     );
 
     let (fg, bg) = renderer.cell_render_colors(&cell);
+    let expected_bg =
+        renderer
+            .palette
+            .resolve_fg(&TerminalScreenColor::Indexed { index: 4 }, false, false);
     assert_eq!(
         fg,
-        renderer
-            .palette
-            .resolve_fg(&TerminalScreenColor::Indexed { index: 9 }, false, false)
+        ensure_contrast(
+            renderer
+                .palette
+                .resolve_fg(&TerminalScreenColor::Indexed { index: 9 }, false, false),
+            expected_bg,
+            MIN_TERMINAL_TEXT_CONTRAST,
+        )
     );
-    assert_eq!(
-        bg,
-        renderer
-            .palette
-            .resolve_fg(&TerminalScreenColor::Indexed { index: 4 }, false, false)
-    );
+    assert_eq!(bg, expected_bg);
 }
 #[test]
 fn palette_resolves_configured_colors() {
