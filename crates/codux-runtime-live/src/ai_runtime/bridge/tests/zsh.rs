@@ -2,6 +2,81 @@ use super::*;
 
 #[cfg(not(windows))]
 #[test]
+fn zsh_hook_reenters_recreated_session_working_directory() {
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-zsh-cwd-recovery-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    let project = dir.join("project");
+    fs::create_dir_all(&project).unwrap();
+
+    let output = Command::new("zsh")
+        .args([
+            "-fc",
+            "source \"$DMUX_ZSH_HOOK_SCRIPT\"; builtin cd -- \"$DMUX_SESSION_CWD\" || exit 1; /bin/rmdir -- \"$DMUX_SESSION_CWD\" || exit 2; /bin/mkdir -- \"$DMUX_SESSION_CWD\" || exit 3; [[ . -ef \"$DMUX_SESSION_CWD\" ]] && exit 4; _dmux_ai_preexec 'git status'; [[ . -ef \"$DMUX_SESSION_CWD\" ]] || exit 5; builtin pwd -P",
+        ])
+        .env("DMUX_SESSION_CWD", &project)
+        .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
+        .env("DMUX_WRAPPER_BIN", bridge.wrapper_bin_dir())
+        .env_remove("DMUX_AI_HOOK_INSTALLED")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "hook should restore the shell cwd, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        fs::canonicalize(&project).unwrap().display().to_string()
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("restored working directory"),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn zsh_hook_preserves_a_valid_user_working_directory() {
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-zsh-cwd-preserve-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    let project = dir.join("project");
+    let other = dir.join("other");
+    fs::create_dir_all(&project).unwrap();
+    fs::create_dir_all(&other).unwrap();
+
+    let output = Command::new("zsh")
+        .args([
+            "-fc",
+            "source \"$DMUX_ZSH_HOOK_SCRIPT\"; builtin cd -- \"$OTHER_CWD\" || exit 1; _dmux_ai_preexec 'git status'; builtin pwd -P",
+        ])
+        .env("DMUX_SESSION_CWD", &project)
+        .env("DMUX_ZSH_HOOK_SCRIPT", bridge.zsh_hook_script())
+        .env("DMUX_WRAPPER_BIN", bridge.wrapper_bin_dir())
+        .env("OTHER_CWD", &other)
+        .env_remove("DMUX_AI_HOOK_INSTALLED")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        fs::canonicalize(&other).unwrap().display().to_string()
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("restored working directory"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
 fn zsh_runtime_hook_keeps_wrapper_bin_first_after_user_startup_files() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;

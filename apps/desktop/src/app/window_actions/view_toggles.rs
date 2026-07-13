@@ -24,6 +24,16 @@ impl CoduxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let selected_project_missing = self
+            .state
+            .selected_project
+            .as_ref()
+            .is_some_and(|project| self.runtime_service.project_root_missing(&project.id));
+        if selected_project_missing {
+            self.close_selected_project(window, cx);
+            return;
+        }
+
         match self.workspace_view {
             WorkspaceView::Terminal => {
                 // In split mode, if the file editor holds focus, Cmd+W closes the

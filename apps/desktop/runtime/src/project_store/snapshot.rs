@@ -16,6 +16,18 @@ impl ProjectStore {
         self.snapshot().projects
     }
 
+    pub fn project_root_missing(&self, project_id: &str) -> bool {
+        self.snapshot()
+            .projects
+            .into_iter()
+            .find(|project| project.id == project_id)
+            .is_some_and(|project| {
+                !project.runtime_target.is_hosted()
+                    && std::fs::metadata(project.path)
+                        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            })
+    }
+
     pub fn runtime_target_for_workspace_path(
         &self,
         workspace_path: &str,

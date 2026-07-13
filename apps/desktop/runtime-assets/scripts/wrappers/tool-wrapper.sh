@@ -170,6 +170,25 @@ log_line() {
   print -r -- "[$(/bin/date '+%Y-%m-%dT%H:%M:%S%z')] [wrapper] $1" >> "${DMUX_LOG_FILE}"
 }
 
+restore_working_directory() {
+  if [[ "${PWD:-}" == /* && . -ef "${PWD}" ]]; then
+    return 0
+  fi
+  local target="${DMUX_SESSION_CWD:-}"
+  if [[ -z "${target}" || ! -d "${target}" ]]; then
+    print -u2 -r -- "Codux: working directory is unavailable. Reconnect the project disk and try again."
+    log_line "launch blocked: working directory unavailable target=${target:-none}"
+    return 72
+  fi
+  if ! builtin cd -- "${target}" 2>/dev/null; then
+    print -u2 -r -- "Codux: unable to restore working directory: ${target}"
+    log_line "launch blocked: working directory restore failed target=${target}"
+    return 72
+  fi
+  print -u2 -r -- "Codux: restored working directory: ${target}"
+  log_line "restored working directory path=${target}"
+}
+
 is_passthrough_invocation() {
   local first="${1:-}"
   case "${first}" in
@@ -777,6 +796,8 @@ runtime_session_origin_for_resume() {
   [[ -n "${1:-}" ]] || return 0
   print -r -- "restored"
 }
+
+restore_working_directory || exit $?
 
 apply_managed_lifecycle_env() {
   local env_path="${wrapper_dir}/managed-env/${tool_name}.env"

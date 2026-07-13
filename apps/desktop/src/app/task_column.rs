@@ -577,7 +577,7 @@ fn task_column_content(
                 .flex_1()
                 .min_h_0()
                 .overflow_hidden()
-                .bg(theme::vibrancy_panel(color(theme::BG_COLUMN)))
+                .bg(task_column_surface(color(theme::BG_COLUMN)))
                 .flex()
                 .flex_col()
                 .child(
@@ -625,7 +625,7 @@ fn task_column_header(
         // full header height so its drag area covers the whole title bar.
         .border_b_1()
         .border_color(cx.theme().border)
-        .bg(theme::vibrancy(cx.theme().title_bar))
+        .bg(task_column_surface(cx.theme().title_bar))
         .child(
             // No `items_center`: children stretch to full header height so the
             // drag area fills it; the title text and buttons center themselves.
@@ -707,6 +707,10 @@ fn task_column_header(
                         ),
                 ),
         )
+}
+
+fn task_column_surface(base: gpui::Hsla) -> gpui::Hsla {
+    theme::vibrancy_panel(base)
 }
 
 fn task_list_area(
@@ -1524,5 +1528,13 @@ mod tests {
             worktree_row_title(&worktree("Draft", "uninitialized", false), "No Branch"),
             "No Branch"
         );
+    }
+
+    #[test]
+    fn task_column_header_and_body_share_surface_opacity() {
+        let header = task_column_surface(color(theme::BG_HEADER));
+        let body = task_column_surface(color(theme::BG_COLUMN));
+
+        assert_eq!(header.a, body.a);
     }
 }

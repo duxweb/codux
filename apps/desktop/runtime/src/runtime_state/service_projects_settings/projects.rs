@@ -26,6 +26,10 @@ impl RuntimeService {
         ProjectStore::new(self.support_dir.clone()).list_snapshot()
     }
 
+    pub fn project_root_missing(&self, project_id: &str) -> bool {
+        ProjectStore::new(self.support_dir.clone()).project_root_missing(project_id)
+    }
+
     pub fn project_create(
         &self,
         request: ProjectCreateRequest,

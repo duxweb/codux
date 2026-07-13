@@ -2,6 +2,56 @@ use super::*;
 
 #[cfg(not(windows))]
 #[test]
+fn codex_wrapper_reenters_recreated_session_working_directory() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-wrapper-cwd-recovery-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+    let project = dir.join("project");
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&project).unwrap();
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_codex = real_bin.join("codex");
+    fs::write(&fake_codex, "#!/bin/sh\n/bin/pwd -P\n").unwrap();
+    let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_codex, permissions).unwrap();
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+
+    let output = Command::new("zsh")
+        .args([
+            "-fc",
+            "builtin cd -- \"$DMUX_SESSION_CWD\" || exit 1; /bin/rmdir -- \"$DMUX_SESSION_CWD\" || exit 2; /bin/mkdir -- \"$DMUX_SESSION_CWD\" || exit 3; exec \"$CODEX_WRAPPER\"",
+        ])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_CWD", &project)
+        .env("CODEX_WRAPPER", bridge.wrapper_bin_dir().join("codex"))
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should restore the child cwd, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        fs::canonicalize(&project).unwrap().display().to_string()
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("restored working directory"),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
 fn codex_wrapper_applies_tool_permissions_and_memory_injection() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;

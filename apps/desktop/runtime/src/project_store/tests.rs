@@ -7,6 +7,39 @@ use std::{
 };
 
 #[test]
+fn project_root_missing_only_reports_deleted_local_projects() {
+    let dir = temp_dir("project-root-missing");
+    let local_dir = dir.join("local-project");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&local_dir).unwrap();
+    fs::create_dir_all(&support_dir).unwrap();
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "projects": [
+                {"id": "local", "path": local_dir},
+                {
+                    "id": "remote",
+                    "path": "/srv/project",
+                    "runtimeTarget": {"kind": "remote", "deviceId": "device-1"}
+                }
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let store = ProjectStore::new(support_dir);
+
+    assert!(!store.project_root_missing("local"));
+    fs::remove_dir_all(&local_dir).unwrap();
+    assert!(store.project_root_missing("local"));
+    assert!(!store.project_root_missing("remote"));
+    assert!(!store.project_root_missing("unknown"));
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn create_move_and_close_preserve_unknown_fields_and_prune_related_state() {
     let dir = temp_dir("project-store");
     fs::create_dir_all(&dir).unwrap();

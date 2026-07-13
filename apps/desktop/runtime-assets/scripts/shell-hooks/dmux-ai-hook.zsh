@@ -21,6 +21,18 @@ _dmux_log_line() {
   print -r -- "[$(/bin/date '+%Y-%m-%dT%H:%M:%S%z')] [zsh-hook] $1" >> "${DMUX_LOG_FILE}"
 }
 
+_dmux_restore_session_cwd() {
+  local target="${DMUX_SESSION_CWD:-}"
+  [[ -n "${target}" && -d "${target}" ]] || return 0
+  if [[ "${PWD:-}" == /* && . -ef "${PWD}" ]]; then
+    return 0
+  fi
+  if builtin cd -- "${target}" 2>/dev/null; then
+    print -u2 -r -- "Codux: restored working directory: ${target}"
+    _dmux_log_line "restored working directory path=${target}"
+  fi
+}
+
 _dmux_json_escape() {
   local value="$1"
   value="${value//\\/\\\\}"
@@ -174,6 +186,7 @@ _dmux_resolve_tool_from_command() {
 }
 
 _dmux_ai_preexec() {
+  _dmux_restore_session_cwd
   local tool
   tool="$(_dmux_resolve_tool_from_command "$1")" || return 0
   DMUX_ACTIVE_AI_TOOL="${tool}"
@@ -196,6 +209,7 @@ _dmux_ai_preexec() {
 }
 
 _dmux_ai_precmd() {
+  _dmux_restore_session_cwd
   _dmux_prepend_wrapper_bin
   _dmux_define_tool_shims
   [[ -n "${DMUX_ACTIVE_AI_TOOL}" ]] || return 0
