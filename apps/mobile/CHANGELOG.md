@@ -4,6 +4,22 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-13
+
+### Added
+
+- Added production-ready remote project control for files, Git, worktrees, terminals, AI activity, memory, host metrics, and device management through the shared Codux runtime protocol.
+
+### Changed
+
+- Unified mobile project, worktree, terminal, split, and tab selection with the desktop and headless Agent runtime model while keeping mobile viewport ownership independent.
+- Upgraded the shared Iroh transport lifecycle for faster startup, foreground resume, host switching, and reconnects.
+
+### Fixed
+
+- Fixed blank or stale terminal views after project/worktree switches, app backgrounding, transport failures, authorization changes, device removal, and desktop host restarts.
+- Fixed terminal creation, selection, input, cursor placement, scrollback, viewport takeover, and recovery for long-running TUI sessions.
+
 ## [2.0.0-rc.9] - 2026-07-11
 
 ### Changed

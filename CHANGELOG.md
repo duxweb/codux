@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-13
+
+### Added
+
+- Added cross-device workspaces for controlling projects, files, Git, worktrees, terminals, AI sessions, memory, and host metrics across Codux Desktop, Codux Mobile, and headless Agents.
+- Added local WSL project support on Windows, including distribution discovery, one-click Codux Runtime installation and updates, WSL file browsing, Git/worktree operations, and persistent terminal sessions.
+- Added a terminal list with search and select-all, richer terminal protocol support, project/worktree/terminal AI status indicators, AI usage charts, rotated diagnostics, and expanded Japanese and Korean documentation.
+
+### Changed
+
+- Unified local, WSL, and remote projects behind one runtime target architecture so files, Git, worktrees, terminals, and project activity follow the same routing and lifecycle rules.
+- Unified desktop, mobile, and Agent resource synchronization around shared protocol models, explicit subscription ownership, terminal viewport handoff, and stable latest-download assets.
+- Upgraded Iroh to 1.0.2 and reduced controller startup, foreground resume, host switching, and mDNS shutdown overhead.
+
+### Fixed
+
+- Fixed terminal stability across Windows, macOS, Linux, WSL, and remote hosts, including rapid worktree switching, host restarts, stale PTY sessions, ConPTY cursor/redraw issues, shell environment handling, file-descriptor pressure, and duplicate initialization.
+- Fixed remote/mobile recovery after disconnects, authorization changes, device removal, app backgrounding, and host restarts so project, worktree, terminal, AI statistics, memory, file, and Git state no longer remains stale or blank.
+- Fixed idle CPU and memory pressure from redundant repaint, polling, animation, and discovery work, and expanded runtime panic, rotating log, and terminal diagnostics for production failures.
+
 ## [2.0.0-rc.9] - 2026-07-11
 
 ### Changed
