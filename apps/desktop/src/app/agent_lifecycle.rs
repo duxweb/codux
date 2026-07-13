@@ -107,6 +107,52 @@ pub(in crate::app) fn aggregate_agent_lifecycle(
 }
 
 impl CoduxApp {
+    pub(in crate::app) fn any_pane_agent_working(&self) -> bool {
+        self.pane_agent_lifecycle
+            .values()
+            .any(|lifecycle| lifecycle.state == AgentLifecycleState::Working)
+    }
+
+    pub(in crate::app) fn ensure_agent_pulse(&mut self, cx: &mut gpui::Context<Self>) {
+        if self.agent_pulse_active
+            || !self.any_pane_agent_working()
+            || super::agent_display::reduce_motion_enabled()
+        {
+            return;
+        }
+        self.agent_pulse_active = true;
+        let timer = cx.background_executor().clone();
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            loop {
+                timer.timer(std::time::Duration::from_millis(33)).await;
+                let keep_running = this
+                    .update(cx, |app, cx| {
+                        if app.window_mode != super::AppWindowMode::Main
+                            || !app.any_pane_agent_working()
+                        {
+                            app.agent_pulse_active = false;
+                            return false;
+                        }
+                        if let Some(view) = &app.task_worktree_list_view {
+                            view.update(cx, |_, cx| cx.notify());
+                        }
+                        if let Some(view) = &app.task_terminal_list_view {
+                            view.update(cx, |_, cx| cx.notify());
+                        }
+                        if let Some(view) = &app.project_column_view {
+                            view.update(cx, |_, cx| cx.notify());
+                        }
+                        true
+                    })
+                    .unwrap_or(false);
+                if !keep_running {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(in crate::app) fn drain_and_apply_terminal_lifecycle_events(
         &mut self,
         events: &[codux_runtime::ai_runtime::AIRuntimeSupervisorEvent],

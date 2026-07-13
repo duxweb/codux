@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 
 - Fixed terminal stability across Windows, macOS, Linux, WSL, and remote hosts, including rapid worktree switching, host restarts, stale PTY sessions, ConPTY cursor/redraw issues, shell environment handling, file-descriptor pressure, and duplicate initialization.
 - Fixed remote/mobile recovery after disconnects, authorization changes, device removal, app backgrounding, and host restarts so project, worktree, terminal, AI statistics, memory, file, and Git state no longer remains stale or blank.
-- Fixed idle CPU and memory pressure from redundant repaint, polling, animation, and discovery work, and expanded runtime panic, rotating log, and terminal diagnostics for production failures.
+- Fixed idle and active CPU pressure from redundant repaint, polling, animation, and discovery work, including stuttering project/worktree/terminal status indicators; expanded runtime panic, rotating log, and terminal diagnostics for production failures.
 
 ## [2.0.0-rc.9] - 2026-07-11
 

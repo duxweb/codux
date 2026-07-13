@@ -266,6 +266,7 @@ impl CoduxApp {
             pending_runtime_refresh: None,
             ai_runtime_state_save_tick: 0,
             pane_agent_lifecycle: HashMap::new(),
+            agent_pulse_active: false,
             agent_git_refresh_after: None,
             ai_index_progress_visible_until: 0.0,
             ai_index_progress_generation: 0,
