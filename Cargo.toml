@@ -27,4 +27,4 @@ split-debuginfo = "unpacked"  # debuginfo stays in .o files → faster linking, 
 [patch.crates-io]
 async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
 async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
-swarm-discovery = { git = "https://github.com/dux-web/swarm-discovery.git", rev = "7bba21d90dbeb664ccd71efac3b16f612722cc59" }
+swarm-discovery = { git = "https://github.com/dux-web/swarm-discovery.git", rev = "bad0fd5b207090eb2d9c6f6509e0149283fb93c3" }

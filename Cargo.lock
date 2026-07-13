@@ -9409,8 +9409,8 @@ dependencies = [
 
 [[package]]
 name = "swarm-discovery"
-version = "0.6.2"
-source = "git+https://github.com/dux-web/swarm-discovery.git?rev=7bba21d90dbeb664ccd71efac3b16f612722cc59#7bba21d90dbeb664ccd71efac3b16f612722cc59"
+version = "0.6.3"
+source = "git+https://github.com/dux-web/swarm-discovery.git?rev=bad0fd5b207090eb2d9c6f6509e0149283fb93c3#bad0fd5b207090eb2d9c6f6509e0149283fb93c3"
 dependencies = [
  "acto",
  "hickory-proto",
