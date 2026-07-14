@@ -439,6 +439,60 @@ fn wsl_startup_restores_selected_worktree_terminal_layout_without_local_paths() 
     fs::remove_dir_all(support_dir).ok();
 }
 
+#[test]
+fn cached_wsl_worktrees_do_not_start_the_hosted_runtime() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-cached-wsl-worktrees-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&support_dir).expect("create support dir");
+    fs::write(
+        support_dir.join("settings.json"),
+        json!({ "wslEnabled": false }).to_string(),
+    )
+    .expect("write settings");
+    fs::write(
+        support_dir.join("state.json"),
+        json!({
+            "projects": [{
+                "id": "project-1",
+                "name": "WSL Project",
+                "path": "/home/user/project",
+                "runtimeTarget": { "kind": "wsl", "distribution": "Ubuntu" }
+            }],
+            "worktrees": [{
+                "id": "worktree-1",
+                "projectId": "project-1",
+                "name": "Feature",
+                "branch": "feature",
+                "path": "/home/user/.codux/worktrees/feature",
+                "status": "active",
+                "isDefault": false,
+                "createdAt": 1,
+                "updatedAt": 1
+            }],
+            "selectedProjectId": "project-1",
+            "selectedWorktreeIdByProject": { "project-1": "worktree-1" }
+        })
+        .to_string(),
+    )
+    .expect("write state");
+    let service = RuntimeService::new(support_dir.clone());
+
+    let summary = service.cached_worktrees_from_state(
+        Some("project-1"),
+        Some("/home/user/project"),
+    );
+
+    assert!(summary.available);
+    assert!(summary.error.is_none());
+    assert_eq!(summary.selected_worktree_id.as_deref(), Some("worktree-1"));
+    assert_eq!(summary.worktrees.len(), 1);
+    assert!(summary.worktrees[0].exists);
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
 #[cfg(unix)]
 #[test]
 fn project_and_worktree_switch_runs_runtime_activation_layout_pty_ai_and_git_flow() {

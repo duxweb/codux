@@ -13,6 +13,12 @@ use gpui_component::menu::{DropdownMenu, PopupMenuItem};
 
 const WORKSPACE_TAB_TEXT_SIZE: Rems = Rems(0.75);
 const WORKSPACE_TAB_LINE_HEIGHT: Rems = Rems(1.0);
+const WORKSPACE_WINDOW_CONTROL_BUTTON_WIDTH: f32 = 30.0;
+const WORKSPACE_WINDOW_CONTROL_GAP: f32 = 2.0;
+const WORKSPACE_WINDOW_CONTROL_LEADING_MARGIN: f32 = 4.0;
+const WORKSPACE_WINDOW_CONTROLS_WIDTH: f32 = WORKSPACE_WINDOW_CONTROL_LEADING_MARGIN
+    + WORKSPACE_WINDOW_CONTROL_BUTTON_WIDTH * 3.0
+    + WORKSPACE_WINDOW_CONTROL_GAP * 2.0;
 
 impl CoduxApp {
     pub(in crate::app) fn workspace_toolbar(
@@ -164,7 +170,12 @@ impl CoduxApp {
                             cx,
                         ))
                         .when(!cfg!(target_os = "macos"), |this| {
-                            this.child(workspace_window_controls(cx))
+                            this.child(
+                                div()
+                                    .flex_none()
+                                    .w(px(WORKSPACE_WINDOW_CONTROLS_WIDTH))
+                                    .h(px(28.0)),
+                            )
                         }),
                 ),
             cx,
@@ -305,10 +316,10 @@ fn workspace_open_button(
 
 fn workspace_window_controls(cx: &mut Context<CoduxApp>) -> impl IntoElement {
     div()
-        .ml(px(4.0))
+        .ml(px(WORKSPACE_WINDOW_CONTROL_LEADING_MARGIN))
         .flex()
         .items_center()
-        .gap(px(2.0))
+        .gap(px(WORKSPACE_WINDOW_CONTROL_GAP))
         .child(workspace_window_control_button(
             "workspace-window-minimize",
             HeroIconName::Minus,
@@ -323,10 +334,23 @@ fn workspace_window_controls(cx: &mut Context<CoduxApp>) -> impl IntoElement {
         ))
         .child(window_close_control(
             "workspace-window-close",
-            30.0,
+            WORKSPACE_WINDOW_CONTROL_BUTTON_WIDTH,
             false,
             cx,
         ))
+}
+
+pub(in crate::app) fn workspace_window_controls_overlay(
+    cx: &mut Context<CoduxApp>,
+) -> impl IntoElement {
+    // Keep native window-control hitboxes outside the cached workspace column.
+    div()
+        .absolute()
+        .top(px(12.0))
+        .right(px(10.0))
+        .w(px(WORKSPACE_WINDOW_CONTROLS_WIDTH))
+        .h(px(28.0))
+        .child(workspace_window_controls(cx))
 }
 
 fn workspace_window_control_button(
@@ -339,7 +363,7 @@ fn workspace_window_control_button(
         .compact()
         .ghost()
         .h(px(28.0))
-        .w(px(30.0))
+        .w(px(WORKSPACE_WINDOW_CONTROL_BUTTON_WIDTH))
         .text_color(cx.theme().muted_foreground)
         .window_control_area(area)
         .child(Icon::new(icon).size_3())

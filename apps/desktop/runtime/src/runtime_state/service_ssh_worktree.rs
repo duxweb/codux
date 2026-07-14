@@ -129,6 +129,26 @@ impl RuntimeService {
         WorktreeService::new(self.support_dir.clone()).state_summary(project_id, project_path)
     }
 
+    pub fn cached_worktrees_from_state(
+        &self,
+        project_id: Option<&str>,
+        project_path: Option<&str>,
+    ) -> WorktreeSummary {
+        let hosted_paths = project_path
+            .and_then(|path| {
+                ProjectStore::new(self.support_dir.clone())
+                    .runtime_target_for_workspace_path(path)
+                    .ok()
+            })
+            .is_some_and(|target| target.is_hosted());
+        let service = WorktreeService::new(self.support_dir.clone());
+        if hosted_paths {
+            service.hosted_state_summary(project_id, project_path)
+        } else {
+            service.state_summary(project_id, project_path)
+        }
+    }
+
     pub fn worktree_snapshot(&self, project_id: String, project_path: String) -> WorktreeSnapshot {
         WorktreeService::new(self.support_dir.clone()).snapshot(project_id, project_path)
     }

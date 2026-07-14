@@ -327,6 +327,7 @@ impl Render for CoduxApp {
             });
         }
         let root = div()
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -440,6 +441,9 @@ impl Render for CoduxApp {
                             ),
                     ),
             )
+            .when(!cfg!(target_os = "macos"), |this| {
+                this.child(workspace_toolbar::workspace_window_controls_overlay(cx))
+            })
             .when_some(self.toast_message.clone(), |this, message| {
                 this.child(
                     div()

@@ -177,7 +177,7 @@ impl CoduxApp {
         self.normalize_selected_db_profile();
         self.state.worktrees = self
             .runtime_service
-            .reload_worktrees_from_state(Some(&project.id), Some(&project.path));
+            .cached_worktrees_from_state(Some(&project.id), Some(&project.path));
         let terminal_owner_id = self
             .state
             .worktrees
