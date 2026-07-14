@@ -11,6 +11,10 @@ pub struct GitStatusSummary {
     pub staged: usize,
     pub unstaged: usize,
     pub untracked: usize,
+    #[serde(default)]
+    pub additions: i64,
+    #[serde(default)]
+    pub deletions: i64,
     pub is_repository: bool,
     pub error: Option<String>,
     pub changed_files: Vec<Value>,
@@ -47,6 +51,8 @@ pub fn git_status_payload(
         "unstaged": summary.unstaged,
         "untracked": summary.untracked,
         "changes": summary.staged + summary.unstaged + summary.untracked,
+        "additions": summary.additions,
+        "deletions": summary.deletions,
         "isRepository": summary.is_repository,
         "error": summary.error,
         "changedFiles": summary.changed_files,
@@ -79,6 +85,8 @@ mod tests {
         );
 
         assert_eq!(payload["changes"], 6);
+        assert_eq!(payload["additions"], 0);
+        assert_eq!(payload["deletions"], 0);
         assert_eq!(payload["branch"], "main");
         assert_eq!(payload["isRepository"], true);
     }

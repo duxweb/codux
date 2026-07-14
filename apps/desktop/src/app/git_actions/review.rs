@@ -26,18 +26,14 @@ impl CoduxApp {
         } else {
             content.head_content.as_str()
         };
-        let new_content = content
-            .index_content
-            .as_deref()
-            .unwrap_or(content.worktree_content.as_str());
-        let final_content = content.worktree_content.as_str();
-        let branch_content =
-            (self.git_review.mode == "taskBranch").then_some(content.head_content.as_str());
+        let current_content = if self.git_review.mode == "taskBranch" {
+            content.head_content.as_str()
+        } else {
+            content.worktree_content.as_str()
+        };
         self.git_review_derived_rows = Some(super::sidebars::build_git_review_derived_rows(
             original_content,
-            new_content,
-            final_content,
-            branch_content,
+            current_content,
             &content.deleted_lines,
             &content.added_lines,
         ));

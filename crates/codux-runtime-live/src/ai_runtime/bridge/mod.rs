@@ -192,6 +192,10 @@ impl AIRuntimeBridge {
         self.supervisor.drain_events()
     }
 
+    pub fn terminal_statuses_snapshot(&self) -> Vec<TerminalStatusEvent> {
+        self.supervisor.terminal_statuses_snapshot()
+    }
+
     pub fn submit_terminal_status(&self, status: TerminalStatusEvent) -> Result<(), String> {
         self.supervisor.submit_terminal_status(status)
     }

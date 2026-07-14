@@ -451,6 +451,8 @@ fn remote_git_status_payload_matches_domain_shape() {
             staged: 1,
             unstaged: 2,
             untracked: 3,
+            additions: 4,
+            deletions: 5,
             is_repository: true,
             error: None,
             changed_files: vec![crate::git::GitFileStatus {
@@ -484,6 +486,14 @@ fn remote_git_status_payload_matches_domain_shape() {
     assert_eq!(
         payload.get("changes").and_then(serde_json::Value::as_u64),
         Some(6)
+    );
+    assert_eq!(
+        payload.get("additions").and_then(serde_json::Value::as_i64),
+        Some(4)
+    );
+    assert_eq!(
+        payload.get("deletions").and_then(serde_json::Value::as_i64),
+        Some(5)
     );
     assert_eq!(
         payload

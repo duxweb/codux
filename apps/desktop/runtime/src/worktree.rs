@@ -23,7 +23,7 @@ use state::{
 use std::path::{Path, PathBuf};
 
 type GitRepository = git2::Repository;
-const WORKTREE_GIT_SUMMARY_NAMESPACE: &str = "worktree-git-summary";
+const WORKTREE_GIT_SUMMARY_NAMESPACE: &str = "worktree-git-summary-v2";
 
 pub struct WorktreeService {
     support_dir: PathBuf,

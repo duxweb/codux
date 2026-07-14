@@ -9,6 +9,10 @@ pub struct GitSummary {
     pub staged: usize,
     pub unstaged: usize,
     pub untracked: usize,
+    #[serde(default)]
+    pub additions: i64,
+    #[serde(default)]
+    pub deletions: i64,
     pub is_repository: bool,
     pub error: Option<String>,
     pub changed_files: Vec<GitFileStatus>,
@@ -20,6 +24,13 @@ pub struct GitSummary {
     pub stashes: Vec<GitStashSummary>,
     #[serde(default)]
     pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorkspaceSnapshot {
+    pub status: GitSummary,
+    pub review: GitReviewSummary,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

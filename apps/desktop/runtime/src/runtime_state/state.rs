@@ -9,12 +9,11 @@ impl RuntimeState {
         let selected_path = selected_project
             .as_ref()
             .map(|project| project.path.as_str());
-        let git = selected_path
-            .map(|path| load_git_summary(&support_dir, path))
+        let git_workspace = selected_path
+            .map(|path| load_git_workspace(&support_dir, path))
             .unwrap_or_default();
-        let git_review = selected_path
-            .map(|path| load_git_review(&support_dir, path, None))
-            .unwrap_or_default();
+        let git = git_workspace.status;
+        let git_review = git_workspace.review;
         let files = selected_path
             .map(|path| load_file_entries(path, None))
             .unwrap_or_default();
@@ -122,8 +121,9 @@ impl RuntimeState {
         };
 
         self.selected_project = Some(project.clone());
-        self.git = load_git_summary(&self.support_dir, &project.path);
-        self.git_review = load_git_review(&self.support_dir, &project.path, None);
+        let git_workspace = load_git_workspace(&self.support_dir, &project.path);
+        self.git = git_workspace.status;
+        self.git_review = git_workspace.review;
         self.files = load_file_entries(&project.path, None);
         self.ai_global_history = load_global_ai_history(&self.support_dir);
         self.refresh_daily_level();

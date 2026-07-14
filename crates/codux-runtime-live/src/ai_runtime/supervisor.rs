@@ -16,7 +16,7 @@ use crate::ai_runtime::{
     state::canonical_tool_name,
     store::{AIRuntimeStateMutation, AIRuntimeStateStore},
     store::{probe_request_for_session, should_poll_runtime_session},
-    terminal_status::TerminalStatusEvent,
+    terminal_status::{TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent},
     tool_driver::{runtime_screen_patterns, screen_starts_idle_tool},
 };
 use serde::Serialize;
@@ -70,6 +70,7 @@ pub struct AIRuntimeSupervisor {
     transcript_monitors: TranscriptMonitorMap,
     binding_scan: Arc<Mutex<AIRuntimeBindingScanState>>,
     events: Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    terminal_statuses: Arc<Mutex<HashMap<String, TerminalStatusEvent>>>,
     started: Mutex<bool>,
 }
 
@@ -79,6 +80,7 @@ struct AIRuntimeSupervisorLoopContext {
     transcript_monitors: TranscriptMonitorMap,
     binding_scan: Arc<Mutex<AIRuntimeBindingScanState>>,
     events: Arc<Mutex<Vec<AIRuntimeSupervisorEvent>>>,
+    terminal_statuses: Arc<Mutex<HashMap<String, TerminalStatusEvent>>>,
     runtime_event_dir: PathBuf,
     binding_dir: PathBuf,
 }
@@ -93,6 +95,7 @@ impl AIRuntimeSupervisor {
             transcript_monitors: Arc::new(Mutex::new(Default::default())),
             binding_scan: Arc::new(Mutex::new(Default::default())),
             events: Arc::new(Mutex::new(Vec::new())),
+            terminal_statuses: Arc::new(Mutex::new(HashMap::new())),
             started: Mutex::new(false),
         }
     }
@@ -128,6 +131,7 @@ impl AIRuntimeSupervisor {
             transcript_monitors: Arc::clone(&self.transcript_monitors),
             binding_scan: Arc::clone(&self.binding_scan),
             events: Arc::clone(&self.events),
+            terminal_statuses: Arc::clone(&self.terminal_statuses),
             runtime_event_dir,
             binding_dir,
         };
@@ -168,6 +172,9 @@ impl AIRuntimeSupervisor {
             return false;
         };
         if !*started {
+            if let Ok(mut statuses) = self.terminal_statuses.lock() {
+                statuses.remove(terminal_id);
+            }
             return self.state.remove_session(terminal_id);
         }
         drop(started);
@@ -209,6 +216,21 @@ impl AIRuntimeSupervisor {
             .map(|mut events| events.drain(..).collect())
             .unwrap_or_default()
     }
+
+    pub fn terminal_statuses_snapshot(&self) -> Vec<TerminalStatusEvent> {
+        let mut statuses: Vec<TerminalStatusEvent> = self
+            .terminal_statuses
+            .lock()
+            .map(|statuses| statuses.values().cloned().collect())
+            .unwrap_or_default();
+        statuses.sort_by(|left, right| {
+            right
+                .updated_at
+                .total_cmp(&left.updated_at)
+                .then_with(|| left.terminal_id.cmp(&right.terminal_id))
+        });
+        statuses
+    }
 }
 
 impl Default for AIRuntimeSupervisor {
@@ -227,6 +249,7 @@ fn supervisor_loop(
         transcript_monitors,
         binding_scan,
         events,
+        terminal_statuses,
         runtime_event_dir,
         binding_dir,
     } = context;
@@ -274,6 +297,17 @@ fn supervisor_loop(
                 after_mutation(&state, &transcript_monitors, &events, mutation);
             }
             AIRuntimeSupervisorMessage::TerminalStatus(status) => {
+                if status.source != TERMINAL_COMMAND_OSC_SOURCE
+                    && let Ok(mut statuses) = terminal_statuses.lock()
+                {
+                    let should_update = statuses
+                        .get(&status.terminal_id)
+                        .map(|current| status.updated_at >= current.updated_at)
+                        .unwrap_or(true);
+                    if should_update {
+                        statuses.insert(status.terminal_id.clone(), status.clone());
+                    }
+                }
                 push_event(&events, AIRuntimeSupervisorEvent::TerminalStatus { status });
             }
             AIRuntimeSupervisorMessage::TranscriptTail(terminal_ids) => {
@@ -296,6 +330,9 @@ fn supervisor_loop(
                     ..Default::default()
                 };
                 let removed = mutation.did_change;
+                if let Ok(mut statuses) = terminal_statuses.lock() {
+                    statuses.remove(&terminal_id);
+                }
                 after_mutation(&state, &transcript_monitors, &events, mutation);
                 let _ = reply.send(removed);
             }

@@ -126,6 +126,9 @@ pub struct CoduxApp {
     pub(in crate::app) desktop_pet_line: String,
     pub(in crate::app) desktop_pet_tone: DesktopPetActivityTone,
     pub(in crate::app) desktop_pet_plan_items: Vec<DesktopPetPlanItem>,
+    pub(in crate::app) desktop_pet_terminal_statuses:
+        Vec<codux_runtime::ai_runtime::TerminalStatusEvent>,
+    pub(in crate::app) desktop_pet_runtime_activity_active: bool,
     pub(in crate::app) desktop_pet_main_window_fullscreen: bool,
     pub(in crate::app) desktop_pet_active_llm_key: String,
     pub(in crate::app) desktop_pet_requested_llm_key: String,
@@ -671,17 +674,6 @@ pub(in crate::app) fn worktree_terminal_storage_key(key: &WorktreeScopeKey) -> S
 
 pub(in crate::app) fn worktree_summary_has_rows(summary: &WorktreeSummary) -> bool {
     summary.available && !summary.worktrees.is_empty()
-}
-
-pub(in crate::app) fn worktree_summary_has_git_counts(summary: &WorktreeSummary) -> bool {
-    summary.worktrees.iter().any(|worktree| {
-        let git = &worktree.git_summary;
-        git.changes > 0
-            || git.incoming != 0
-            || git.outgoing != 0
-            || git.additions != 0
-            || git.deletions != 0
-    })
 }
 
 impl Default for GitOperationCompletion {

@@ -41,22 +41,11 @@ pub(super) fn project_worktree_snapshot(worktree: ScannedWorktree) -> ProjectWor
 
 pub(super) fn project_worktree_git_summary(path: &str) -> ProjectWorktreeGitSummary {
     let status_snapshot = GitService::status(path);
-    let review_snapshot = GitService::review(path, None);
-    let additions = review_snapshot
-        .files
-        .iter()
-        .map(|file| file.additions)
-        .sum();
-    let deletions = review_snapshot
-        .files
-        .iter()
-        .map(|file| file.deletions)
-        .sum();
     ProjectWorktreeGitSummary {
         changes: status_snapshot.staged + status_snapshot.unstaged + status_snapshot.untracked,
         incoming: status_snapshot.behind,
         outgoing: status_snapshot.ahead,
-        additions,
-        deletions,
+        additions: status_snapshot.additions,
+        deletions: status_snapshot.deletions,
     }
 }

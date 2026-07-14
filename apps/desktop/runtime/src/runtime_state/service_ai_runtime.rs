@@ -41,6 +41,10 @@ impl RuntimeService {
         self.ai_runtime.drain_supervisor_events()
     }
 
+    pub fn ai_runtime_terminal_statuses(&self) -> Vec<crate::ai_runtime::TerminalStatusEvent> {
+        self.ai_runtime.terminal_statuses_snapshot()
+    }
+
     pub fn drain_ai_runtime_events_and_enqueue_memory(&self) -> AIRuntimeDrainResult {
         let events = self.ai_runtime.drain_supervisor_events();
         // Mirror terminal status to connected controllers so a viewer of this

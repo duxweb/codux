@@ -85,6 +85,7 @@ impl CoduxApp {
     }
 
     pub(super) fn refresh_desktop_pet_live_runtime_state(&mut self) {
+        self.desktop_pet_terminal_statuses = self.runtime_service.ai_runtime_terminal_statuses();
         let snapshot = self.runtime_service.ai_runtime_state_snapshot();
         // This runs every 500ms while the pet window is open. When nothing is
         // tracked and nothing is currently shown there is no work to do, so skip
@@ -448,12 +449,21 @@ impl CoduxApp {
     pub(super) fn refresh_desktop_pet_activity_line(&mut self, cx: &mut Context<Self>) {
         let line = desktop_pet_runtime_activity_line(
             &self.state.ai_runtime_state,
+            &self.desktop_pet_terminal_statuses,
             &self.state.settings.language,
         );
         if !line.text.trim().is_empty() {
+            self.desktop_pet_runtime_activity_active = true;
             self.set_desktop_pet_activity(line.text, line.tone, line.plan_items, cx);
             self.request_desktop_pet_llm_line(cx);
             return;
+        }
+
+        if self.desktop_pet_runtime_activity_active {
+            self.desktop_pet_runtime_activity_active = false;
+            self.desktop_pet_active_llm_key.clear();
+            self.desktop_pet_requested_llm_key.clear();
+            self.set_desktop_pet_activity_line(String::new(), DesktopPetActivityTone::Normal, cx);
         }
 
         let now = SystemTime::now()
@@ -565,9 +575,11 @@ impl CoduxApp {
     }
 
     pub(super) fn request_desktop_pet_llm_line(&mut self, cx: &mut Context<Self>) {
-        let Some(context) =
-            desktop_pet_llm_context(&self.state.ai_runtime_state, &self.state.settings.language)
-        else {
+        let Some(context) = desktop_pet_llm_context(
+            &self.state.ai_runtime_state,
+            &self.desktop_pet_terminal_statuses,
+            &self.state.settings.language,
+        ) else {
             self.desktop_pet_active_llm_key.clear();
             return;
         };
@@ -1303,7 +1315,7 @@ impl CoduxApp {
         cx: &mut Context<Self>,
     ) -> DesktopPetSide {
         let bounds = window.bounds();
-        let display = cx.primary_display();
+        let display = window.display(cx).or_else(|| cx.primary_display());
         let visible_bounds = display
             .as_ref()
             .map(|display| display.visible_bounds())
@@ -1343,73 +1355,47 @@ impl CoduxApp {
                 frame_count: PET_WAITING_FRAME_COUNT,
             };
         }
-        if self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .any(|session| session.state == "needs-input")
-        {
-            return DesktopPetAnimation {
-                row: 8,
-                frame_count: PET_REVIEW_FRAME_COUNT,
-            };
-        }
-
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs_f64())
             .unwrap_or(0.0);
-        let has_running_session = self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .any(|session| session.state == "running");
-        if let Some(session) = self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .filter(|session| {
-                session.state != "running"
-                    && session.state != "needs-input"
-                    && session.has_completed_turn
-                    && now - session.updated_at <= DESKTOP_PET_COMPLETION_VISIBLE_SECONDS
-                    && !has_running_session
-            })
-            .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-        {
-            return if session.was_interrupted {
+        match desktop_pet_runtime_status(
+            &self.state.ai_runtime_state,
+            &self.desktop_pet_terminal_statuses,
+            now,
+        ) {
+            Some(DesktopPetRuntimeStatus::Waiting { .. }) => DesktopPetAnimation {
+                row: 8,
+                frame_count: PET_REVIEW_FRAME_COUNT,
+            },
+            Some(DesktopPetRuntimeStatus::Completed { status, .. })
+                if matches!(
+                    status.state,
+                    codux_runtime::ai_runtime::TerminalStatusState::Error
+                        | codux_runtime::ai_runtime::TerminalStatusState::Warning
+                ) =>
+            {
                 DesktopPetAnimation {
                     row: 5,
                     frame_count: PET_FAILED_FRAME_COUNT,
                 }
-            } else {
-                DesktopPetAnimation {
-                    row: 3,
-                    frame_count: PET_WAVING_FRAME_COUNT,
-                }
-            };
-        }
-
-        if self
-            .state
-            .ai_runtime_state
-            .sessions
-            .iter()
-            .any(|session| session.state == "running")
-            || self.state.pet.daily_xp > 0
-        {
-            return DesktopPetAnimation {
+            }
+            Some(DesktopPetRuntimeStatus::Completed { .. }) => DesktopPetAnimation {
+                row: 3,
+                frame_count: PET_WAVING_FRAME_COUNT,
+            },
+            Some(DesktopPetRuntimeStatus::Working { .. }) => DesktopPetAnimation {
                 row: 7,
                 frame_count: PET_RUNNING_FRAME_COUNT,
-            };
-        }
-
-        DesktopPetAnimation {
-            row: 0,
-            frame_count: PET_IDLE_FRAME_COUNT,
+            },
+            None if self.state.pet.daily_xp > 0 => DesktopPetAnimation {
+                row: 7,
+                frame_count: PET_RUNNING_FRAME_COUNT,
+            },
+            None => DesktopPetAnimation {
+                row: 0,
+                frame_count: PET_IDLE_FRAME_COUNT,
+            },
         }
     }
 

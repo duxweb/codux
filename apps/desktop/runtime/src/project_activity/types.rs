@@ -39,16 +39,6 @@ pub struct GitStatusEvent {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GitReviewEvent {
-    pub project_id: String,
-    pub project_name: String,
-    pub project_path: String,
-    pub base_branch: Option<String>,
-    pub snapshot: GitReviewSummary,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WorktreeSnapshotEvent {
     pub project_id: String,
     pub project_path: String,
@@ -76,13 +66,7 @@ pub enum ProjectActivityEvent {
         project_name: String,
         project_path: String,
         snapshot: GitSummary,
-    },
-    GitReview {
-        project_id: String,
-        project_name: String,
-        project_path: String,
-        base_branch: Option<String>,
-        snapshot: GitReviewSummary,
+        review: GitReviewSummary,
     },
     WorktreeSnapshot {
         project_id: String,
@@ -105,29 +89,11 @@ impl ProjectActivityEvent {
                 project_name,
                 project_path,
                 snapshot,
+                ..
             } => Some(GitStatusEvent {
                 project_id: project_id.clone(),
                 project_name: project_name.clone(),
                 project_path: project_path.clone(),
-                snapshot: snapshot.clone(),
-            }),
-            _ => None,
-        }
-    }
-
-    pub fn git_review_event(&self) -> Option<GitReviewEvent> {
-        match self {
-            Self::GitReview {
-                project_id,
-                project_name,
-                project_path,
-                base_branch,
-                snapshot,
-            } => Some(GitReviewEvent {
-                project_id: project_id.clone(),
-                project_name: project_name.clone(),
-                project_path: project_path.clone(),
-                base_branch: base_branch.clone(),
                 snapshot: snapshot.clone(),
             }),
             _ => None,

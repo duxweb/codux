@@ -1798,26 +1798,16 @@ impl CoduxApp {
                 ProjectActivityEvent::GitStatus {
                     project_path,
                     snapshot,
+                    review,
                     ..
                 } if selected_git_path == Some(project_path.as_str())
                     || selected_path == Some(project_path.as_str()) =>
                 {
                     self.state.git = snapshot;
+                    self.git_review = review;
                     self.sync_current_worktree_git_summary_from_current_git();
                     self.normalize_selected_git_file();
                     self.normalize_selected_git_branch();
-                    applied += 1;
-                }
-                ProjectActivityEvent::GitReview {
-                    project_path,
-                    snapshot,
-                    ..
-                } if selected_git_path == Some(project_path.as_str())
-                    || selected_path == Some(project_path.as_str()) =>
-                {
-                    self.git_review = snapshot;
-                    self.sync_current_worktree_git_summary_from_current_git();
-                    self.normalize_selected_git_file();
                     applied += 1;
                 }
                 ProjectActivityEvent::WorktreeSnapshot {

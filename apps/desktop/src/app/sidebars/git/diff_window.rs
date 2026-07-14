@@ -26,7 +26,7 @@ pub(super) fn git_diff_window_body(
             .child(git_diff_window_content_panel(
                 "git-diff-window-current-code",
                 &current_label,
-                rows.final_file.clone(),
+                rows.current.clone(),
                 VirtualListScrollHandle::from(code_scroll_handle),
                 cx,
             ))

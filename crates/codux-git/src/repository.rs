@@ -19,7 +19,7 @@ type GitStatusFiles = (
     Vec<GitFileStatus>,
 );
 
-fn git_status_from_repo(repo: &GitRepository) -> GitSummary {
+fn git_status_and_files_from_repo(repo: &GitRepository) -> (GitSummary, Vec<GitFileStatus>) {
     let branch = current_branch_name(repo);
     let upstream = upstream_branch_name(repo);
     let (ahead, behind) = ahead_behind(repo).unwrap_or((0, 0));
@@ -59,24 +59,56 @@ fn git_status_from_repo(repo: &GitRepository) -> GitSummary {
         .filter(|file| is_untracked_status(file))
         .count();
 
-    GitSummary {
-        branch,
-        upstream,
-        ahead,
-        behind,
-        head_pushed,
-        staged,
-        unstaged,
-        untracked,
-        is_repository: true,
-        error: status_error,
-        changed_files,
-        branches,
-        remote_branches,
-        remotes,
-        commits,
-        stashes,
-        tags,
+    (
+        GitSummary {
+            branch,
+            upstream,
+            ahead,
+            behind,
+            head_pushed,
+            staged,
+            unstaged,
+            untracked,
+            additions: 0,
+            deletions: 0,
+            is_repository: true,
+            error: status_error,
+            changed_files,
+            branches,
+            remote_branches,
+            remotes,
+            commits,
+            stashes,
+            tags,
+        },
+        raw_changed_files,
+    )
+}
+
+fn git_workspace_snapshot_from_repo(repo: &GitRepository) -> GitWorkspaceSnapshot {
+    let (mut status, changed_files) = git_status_and_files_from_repo(repo);
+    let mut review = git_working_tree_review_from_files(repo, &changed_files);
+    if let Some(error) = status.error.clone() {
+        review.error = Some(error);
+    }
+    status.additions = review.files.iter().map(|file| file.additions).sum();
+    status.deletions = review.files.iter().map(|file| file.deletions).sum();
+    GitWorkspaceSnapshot { status, review }
+}
+
+fn git_workspace_error_snapshot(error: String) -> GitWorkspaceSnapshot {
+    GitWorkspaceSnapshot {
+        status: GitSummary {
+            branch: "uninitialized".to_string(),
+            error: Some(error.clone()),
+            ..Default::default()
+        },
+        review: GitReviewSummary {
+            mode: "workingTreeAudit".to_string(),
+            title: "Uncommitted Audit".to_string(),
+            error: Some(error),
+            ..Default::default()
+        },
     }
 }
 
@@ -130,7 +162,6 @@ fn git_status_snapshot_from_repo(repo: &GitRepository) -> GitStatusSnapshot {
 }
 
 fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitReviewSummary {
-    let root = repo_root(repo);
     let base = base_branch
         .map(str::trim)
         .filter(|value| !value.is_empty() && *value != "current branch")
@@ -151,6 +182,14 @@ fn git_review_from_repo(repo: &GitRepository, base_branch: Option<&str>) -> GitR
     }
 
     let changed_files = flatten_status_files(repo);
+    git_working_tree_review_from_files(repo, &changed_files)
+}
+
+fn git_working_tree_review_from_files(
+    repo: &GitRepository,
+    changed_files: &[GitFileStatus],
+) -> GitReviewSummary {
+    let root = repo_root(repo);
     let stats = working_tree_review_stats_git2(repo);
     let mut seen_paths = HashSet::new();
     let mut files = Vec::new();

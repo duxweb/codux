@@ -230,14 +230,17 @@ fn state_summary_reads_active_git_from_runtime_state() {
         .unwrap(),
     )
     .unwrap();
-    crate::runtime_cache::save_git_summary(
+    crate::runtime_cache::save_git_workspace(
         &support_dir,
         project_path,
-        &crate::git::GitSummary {
-            branch: "main".to_string(),
-            ahead: 2,
-            behind: 1,
-            is_repository: true,
+        &crate::git::GitWorkspaceSnapshot {
+            status: crate::git::GitSummary {
+                branch: "main".to_string(),
+                ahead: 2,
+                behind: 1,
+                is_repository: true,
+                ..Default::default()
+            },
             ..Default::default()
         },
     );
@@ -282,6 +285,37 @@ fn summary_includes_per_worktree_git_stats() {
     assert_eq!(summary.worktrees.len(), 1);
     assert_eq!(summary.worktrees[0].git_summary.changes, 1);
     assert_eq!(summary.worktrees[0].git_summary.additions, 1);
+    assert_eq!(summary.worktrees[0].git_summary.deletions, 0);
+
+    fs::remove_dir_all(support_dir).ok();
+    fs::remove_dir_all(repo).ok();
+}
+
+#[test]
+fn committed_worktree_changes_do_not_appear_as_uncommitted_stats() {
+    let support_dir = temp_dir("worktree-summary-clean-commit");
+    let repo = temp_dir("worktree-summary-clean-commit-repo");
+    fs::create_dir_all(&support_dir).unwrap();
+    create_repo_with_commit(&repo);
+    commit_file(&repo, "README.md", "hello\ncommitted\n", "second");
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::to_string_pretty(&json!({
+            "worktrees": [
+                {"id": "w1", "projectId": "p1", "name": "main", "branch": "main", "path": repo, "status": "todo", "isDefault": true}
+            ],
+            "selectedWorktreeIdByProject": {"p1": "w1"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let summary = WorktreeService::new(support_dir.clone())
+        .summary(Some("p1"), Some(repo.to_str().expect("repo path")));
+
+    assert_eq!(summary.worktrees.len(), 1);
+    assert_eq!(summary.worktrees[0].git_summary.changes, 0);
+    assert_eq!(summary.worktrees[0].git_summary.additions, 0);
     assert_eq!(summary.worktrees[0].git_summary.deletions, 0);
 
     fs::remove_dir_all(support_dir).ok();

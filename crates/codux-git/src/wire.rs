@@ -45,6 +45,8 @@ pub fn wire_status_summary(summary: GitSummary) -> WireStatusSummary {
         staged: summary.staged,
         unstaged: summary.unstaged,
         untracked: summary.untracked,
+        additions: summary.additions,
+        deletions: summary.deletions,
         is_repository: summary.is_repository,
         error: summary.error,
         changed_files: summary

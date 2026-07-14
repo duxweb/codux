@@ -2,6 +2,7 @@
 enum DiffTarget {
     Index,
     Worktree,
+    Workspace,
 }
 
 fn git2_diff_to_string(
@@ -15,6 +16,9 @@ fn git2_diff_to_string(
     let diff = match target {
         DiffTarget::Index => repo.diff_tree_to_index(tree.as_ref(), None, Some(&mut options)),
         DiffTarget::Worktree => repo.diff_index_to_workdir(None, Some(&mut options)),
+        DiffTarget::Workspace => {
+            repo.diff_tree_to_workdir_with_index(tree.as_ref(), Some(&mut options))
+        }
     }
     .map_err(|error| error.message().to_string())?;
     diff_to_string(&diff)
@@ -50,10 +54,7 @@ fn git2_commit_review_files(
 
 fn working_tree_review_stats_git2(repo: &GitRepository) -> HashMap<String, (i64, i64)> {
     let mut stats = HashMap::new();
-    if let Ok(diff) = diff_for_review_stats(repo, DiffTarget::Index) {
-        merge_review_stats_from_diff(&mut stats, &diff);
-    }
-    if let Ok(diff) = diff_for_review_stats(repo, DiffTarget::Worktree) {
+    if let Ok(diff) = diff_for_review_stats(repo, DiffTarget::Workspace) {
         merge_review_stats_from_diff(&mut stats, &diff);
     }
     stats
@@ -67,6 +68,7 @@ fn diff_for_review_stats(
     let diff = match target {
         DiffTarget::Index => repo.diff_tree_to_index(tree.as_ref(), None, None),
         DiffTarget::Worktree => repo.diff_index_to_workdir(None, None),
+        DiffTarget::Workspace => repo.diff_tree_to_workdir_with_index(tree.as_ref(), None),
     }
     .map_err(|error| error.message().to_string())?;
     Ok(diff)

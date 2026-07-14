@@ -20,8 +20,8 @@ use git_jobs::{GitJob, GitJobQueue};
 use intervals::{configured_interval_seconds, projects_due_for_git_interval, upsert_project};
 use types::TrackedProject;
 pub use types::{
-    GitProjectChangedEvent, GitReviewEvent, GitStatusEvent, ProjectActivityEvent,
-    ProjectActivitySnapshot, ProjectActivityTrackedProject, WorktreeSnapshotEvent,
+    GitProjectChangedEvent, GitStatusEvent, ProjectActivityEvent, ProjectActivitySnapshot,
+    ProjectActivityTrackedProject, WorktreeSnapshotEvent,
 };
 
 const MIN_GIT_REFRESH_SECONDS: u64 = 15;

@@ -42,9 +42,6 @@ impl ProjectActivityCoordinator {
             support_dir: self.support_dir.clone(),
             project: project.clone(),
         });
-        self.git_jobs.submit(GitJob::Review {
-            project: TrackedProject::from(project),
-        });
     }
 
     pub fn refresh_git_changed(
@@ -97,9 +94,6 @@ impl ProjectActivityCoordinator {
             self.git_jobs.submit(GitJob::Worktree {
                 support_dir: self.support_dir.clone(),
                 project: project.clone(),
-            });
-            self.git_jobs.submit(GitJob::Review {
-                project: TrackedProject::from(project),
             });
         }
     }

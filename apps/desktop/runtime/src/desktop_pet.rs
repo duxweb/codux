@@ -427,6 +427,42 @@ mod tests {
     }
 
     #[test]
+    fn side_uses_the_current_display_work_area() {
+        let size = DesktopPetPhysicalSize {
+            width: 200.0,
+            height: 120.0,
+        };
+        assert_eq!(
+            desktop_pet_side_for_position(
+                DesktopPetPhysicalPosition { x: -1180.0, y: 0.0 },
+                size,
+                DesktopPetWorkArea {
+                    x: -1280.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                    scale_factor: 1.0,
+                },
+            ),
+            DesktopPetSide::Right
+        );
+        assert_eq!(
+            desktop_pet_side_for_position(
+                DesktopPetPhysicalPosition { x: 2460.0, y: 0.0 },
+                size,
+                DesktopPetWorkArea {
+                    x: 1440.0,
+                    y: 0.0,
+                    width: 1280.0,
+                    height: 800.0,
+                    scale_factor: 1.0,
+                },
+            ),
+            DesktopPetSide::Left
+        );
+    }
+
+    #[test]
     fn hit_test_accepts_sprite_and_optional_bubble() {
         let layout = DesktopPetHitLayout {
             position: DesktopPetPhysicalPosition { x: 100.0, y: 200.0 },

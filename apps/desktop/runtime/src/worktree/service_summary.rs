@@ -161,7 +161,8 @@ impl WorktreeService {
             .as_ref()
             .and_then(|id| worktrees.iter().find(|worktree| &worktree.id == id))
             .and_then(|worktree| {
-                crate::runtime_cache::cached_git_summary(&self.support_dir, &worktree.path)
+                crate::runtime_cache::cached_git_workspace(&self.support_dir, &worktree.path)
+                    .map(|snapshot| snapshot.status)
             })
             .unwrap_or_default();
 

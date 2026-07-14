@@ -37,9 +37,6 @@ pub(super) enum GitJob {
         project: TrackedProject,
         fetch_remote: bool,
     },
-    Review {
-        project: TrackedProject,
-    },
     Worktree {
         support_dir: std::path::PathBuf,
         project: ProjectSummary,
@@ -60,7 +57,6 @@ impl SerialJob for GitJob {
                 },
                 &project.path,
             ),
-            Self::Review { project } => git_job_key("review", &project.path),
             Self::Worktree { project, .. } => git_job_key("worktree", &project.path),
         }
     }
@@ -76,7 +72,6 @@ fn run_git_job(
             project,
             fetch_remote,
         } => run_git_refresh_job(&events, support_dir, project, fetch_remote),
-        GitJob::Review { project } => run_git_review_job(&events, support_dir, project),
         GitJob::Worktree {
             support_dir,
             project,
@@ -94,12 +89,12 @@ fn run_git_refresh_job(
     let project_id = project.id.clone();
     let project_name = project.name.clone();
     let project_path = project.path.clone();
-    let mut snapshot = GitService::status(&project_path);
+    let mut workspace = GitService::workspace_snapshot(&project_path);
     let mut remote_refresh = if fetch_remote { "skipped" } else { "disabled" };
-    if fetch_remote && snapshot.is_repository && !snapshot.remotes.is_empty() {
+    if fetch_remote && workspace.status.is_repository && !workspace.status.remotes.is_empty() {
         match GitService::fetch(&project_path) {
             Ok(()) => {
-                snapshot = GitService::status(&project_path);
+                workspace = GitService::workspace_snapshot(&project_path);
                 remote_refresh = "ok";
             }
             Err(error) => {
@@ -114,21 +109,25 @@ fn run_git_refresh_job(
             }
         }
     }
-    let is_repository = snapshot.is_repository;
-    let ahead = snapshot.ahead;
-    let behind = snapshot.behind;
-    let staged_count = snapshot.staged;
-    let unstaged_count = snapshot.unstaged;
-    let untracked_count = snapshot.untracked;
-    if snapshot.is_repository || snapshot.error.is_none() || Path::new(&project_path).exists() {
-        crate::runtime_cache::save_git_summary(support_dir, &project_path, &snapshot);
+    let is_repository = workspace.status.is_repository;
+    let ahead = workspace.status.ahead;
+    let behind = workspace.status.behind;
+    let staged_count = workspace.status.staged;
+    let unstaged_count = workspace.status.unstaged;
+    let untracked_count = workspace.status.untracked;
+    if workspace.status.is_repository
+        || workspace.status.error.is_none()
+        || Path::new(&project_path).exists()
+    {
+        crate::runtime_cache::save_git_workspace(support_dir, &project_path, &workspace);
         push_event(
             events,
             ProjectActivityEvent::GitStatus {
                 project_id: project_id.clone(),
                 project_name: project_name.clone(),
                 project_path: project_path.clone(),
-                snapshot,
+                snapshot: workspace.status,
+                review: workspace.review,
             },
         );
     }
@@ -148,36 +147,6 @@ fn run_git_refresh_job(
             unstaged_count,
             untracked_count
         ),
-    );
-}
-
-fn run_git_review_job(
-    events: &Arc<Mutex<VecDeque<ProjectActivityEvent>>>,
-    support_dir: &Path,
-    project: TrackedProject,
-) {
-    let started_at = Instant::now();
-    let project_id = project.id.clone();
-    let project_path = project.path.clone();
-    let review = GitService::review(&project.path, None);
-    if review.is_repository || review.error.is_none() || Path::new(&project.path).exists() {
-        crate::runtime_cache::save_git_review(support_dir, &project_path, None, &review);
-        push_event(
-            events,
-            ProjectActivityEvent::GitReview {
-                project_id: project.id,
-                project_name: project.name,
-                project_path: project.path,
-                base_branch: None,
-                snapshot: review,
-            },
-        );
-    }
-    runtime_trace_elapsed(
-        "git",
-        "refresh_review",
-        started_at,
-        &format!("project={project_id} path={project_path}"),
     );
 }
 

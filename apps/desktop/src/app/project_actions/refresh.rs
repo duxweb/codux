@@ -122,9 +122,8 @@ impl CoduxApp {
             let result = codux_runtime::async_runtime::run_limited_blocking_with_priority(
                 codux_runtime::async_runtime::BLOCKING_PRIORITY_FOREGROUND + generation,
                 move || {
-                    let git = runtime_service.reload_project_git(&project_path);
-                    let mut git_review = runtime_service
-                        .reload_project_git_review(&project_path, base_branch.as_deref());
+                    let (git, mut git_review) = runtime_service
+                        .reload_project_git_state(&project_path, base_branch.as_deref());
                     super::git_actions::merge_git_review_status_files(&mut git_review, &git);
                     (scope_key, generation, git, git_review)
                 },

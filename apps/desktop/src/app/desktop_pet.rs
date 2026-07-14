@@ -1,7 +1,10 @@
 use super::*;
 use chrono::Timelike as _;
+use codux_runtime::ai_runtime::{
+    TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent, TerminalStatusState,
+};
 
-pub(in crate::app) const DESKTOP_PET_COMPLETION_VISIBLE_SECONDS: f64 = 10.0;
+pub(in crate::app) const DESKTOP_PET_TRANSIENT_STATUS_VISIBLE_SECONDS: f64 = 30.0;
 /// A running session keeps its plan snapshot even after the agent stops touching
 /// it, so a finished/abandoned plan (e.g. 3/4 with the last item never checked)
 /// would pin the "N/M" bubble indefinitely. Only treat the plan as live progress
@@ -97,6 +100,22 @@ pub(in crate::app) struct DesktopPetActivityLine {
     pub(in crate::app) plan_items: Vec<DesktopPetPlanItem>,
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::app) enum DesktopPetRuntimeStatus<'a> {
+    Waiting {
+        session: &'a codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+        status: &'a TerminalStatusEvent,
+    },
+    Completed {
+        session: &'a codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+        status: &'a TerminalStatusEvent,
+    },
+    Working {
+        session: &'a codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
+        status: &'a TerminalStatusEvent,
+    },
+}
+
 impl DesktopPetActivityLine {
     fn empty() -> Self {
         Self {
@@ -142,8 +161,48 @@ fn replace_three_placeholders(template: String, first: &str, second: &str, third
         .replacen("%@", third, 1)
 }
 
+pub(in crate::app) fn desktop_pet_runtime_status<'a>(
+    runtime: &'a codux_runtime::ai_runtime_state::AIRuntimeStateSummary,
+    terminal_statuses: &'a [TerminalStatusEvent],
+    now: f64,
+) -> Option<DesktopPetRuntimeStatus<'a>> {
+    let statuses = runtime.sessions.iter().filter_map(|session| {
+        desktop_pet_terminal_status_for_session(terminal_statuses, session)
+            .map(|status| (session, status))
+    });
+    if let Some((session, status)) = statuses
+        .clone()
+        .filter(|(_, status)| {
+            status.state == TerminalStatusState::Waiting
+                && desktop_pet_transient_status_is_visible(status, now)
+        })
+        .max_by(|left, right| left.1.updated_at.total_cmp(&right.1.updated_at))
+    {
+        return Some(DesktopPetRuntimeStatus::Waiting { session, status });
+    }
+    if let Some((session, status)) = statuses
+        .clone()
+        .filter(|(_, status)| {
+            matches!(
+                status.state,
+                TerminalStatusState::Completed
+                    | TerminalStatusState::Error
+                    | TerminalStatusState::Warning
+            ) && desktop_pet_transient_status_is_visible(status, now)
+        })
+        .max_by(|left, right| left.1.updated_at.total_cmp(&right.1.updated_at))
+    {
+        return Some(DesktopPetRuntimeStatus::Completed { session, status });
+    }
+    let (session, status) = statuses
+        .filter(|(_, status)| status.state == TerminalStatusState::Working)
+        .max_by(|left, right| left.1.updated_at.total_cmp(&right.1.updated_at))?;
+    Some(DesktopPetRuntimeStatus::Working { session, status })
+}
+
 pub(in crate::app) fn desktop_pet_runtime_activity_line(
     runtime: &codux_runtime::ai_runtime_state::AIRuntimeStateSummary,
+    terminal_statuses: &[TerminalStatusEvent],
     language: &str,
 ) -> DesktopPetActivityLine {
     let locale = locale_from_language_setting(language);
@@ -152,140 +211,111 @@ pub(in crate::app) fn desktop_pet_runtime_activity_line(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64())
         .unwrap_or(0.0);
-    let has_running_session = runtime
-        .sessions
-        .iter()
-        .any(|session| session.state == "running");
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| {
-            session.state == "needs-input"
-                && session
-                    .notification_type
+    match desktop_pet_runtime_status(runtime, terminal_statuses, now) {
+        Some(DesktopPetRuntimeStatus::Waiting { session, .. }) => {
+            let is_permission = session
+                .notification_type
+                .as_deref()
+                .map(is_permission_request_notification_type)
+                .unwrap_or(false);
+            let text = if is_permission {
+                if let Some(target) = session
+                    .target_tool_name
                     .as_deref()
-                    .map(is_permission_request_notification_type)
-                    .unwrap_or(false)
-        })
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-    {
-        if let Some(target) = session
-            .target_tool_name
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            return DesktopPetActivityLine {
-                text: replace_two_placeholders(
-                    tr(
-                        "pet.activity.permission_waiting_target_format",
-                        "%@ needs permission for %@",
-                    ),
-                    &session.tool,
-                    target,
-                ),
-                tone: DesktopPetActivityTone::Attention,
-                plan_items: Vec::new(),
-            };
-        }
-        return DesktopPetActivityLine {
-            text: replace_first_placeholder(
-                tr(
-                    "pet.activity.permission_waiting_format",
-                    "%@ needs permission",
-                ),
-                &session.tool,
-            ),
-            tone: DesktopPetActivityTone::Attention,
-            plan_items: Vec::new(),
-        };
-    }
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| session.state == "needs-input")
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-    {
-        return DesktopPetActivityLine {
-            text: normalized_desktop_pet_preview(session.message.as_deref()).unwrap_or_else(|| {
-                replace_first_placeholder(
-                    tr("pet.activity.waiting_input_format", "%@ needs input"),
-                    &session.tool,
-                )
-            }),
-            tone: DesktopPetActivityTone::Attention,
-            plan_items: Vec::new(),
-        };
-    }
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| desktop_pet_completion_is_visible(session, now, has_running_session))
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-    {
-        if session.was_interrupted {
-            return DesktopPetActivityLine {
-                text: replace_first_placeholder(
-                    tr("pet.activity.failed_format", "%@ failed"),
-                    &session.tool,
-                ),
-                tone: DesktopPetActivityTone::Warning,
-                plan_items: Vec::new(),
-            };
-        }
-        return DesktopPetActivityLine {
-            text: replace_first_placeholder(
-                tr("pet.activity.completed_format", "%@ completed"),
-                &session.tool,
-            ),
-            tone: DesktopPetActivityTone::Success,
-            plan_items: Vec::new(),
-        };
-    }
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| session.state == "running")
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-    {
-        // A fully-completed plan is not live progress — ignore it so the bubble
-        // falls through to the preview/running line instead of pinning "N/N".
-        if let Some(plan_items) = desktop_pet_plan_items(session, now)
-            .filter(|items| items.iter().any(|item| item.status != "completed"))
-        {
-            let completed = plan_items
-                .iter()
-                .filter(|item| item.status == "completed")
-                .count();
-            let total = plan_items.len();
-            return DesktopPetActivityLine {
-                text: replace_three_placeholders(
-                    tr("pet.activity.plan_format", "%@ tasks %@/%@"),
-                    &desktop_pet_session_project_label(session),
-                    &completed.to_string(),
-                    &total.to_string(),
-                ),
-                tone: DesktopPetActivityTone::Normal,
-                plan_items,
-            };
-        }
-        return DesktopPetActivityLine {
-            text: normalized_desktop_pet_preview(session.latest_assistant_preview.as_deref())
-                .unwrap_or_else(|| {
+                    .filter(|value| !value.trim().is_empty())
+                {
+                    replace_two_placeholders(
+                        tr(
+                            "pet.activity.permission_waiting_target_format",
+                            "%@ needs permission for %@",
+                        ),
+                        &session.tool,
+                        target,
+                    )
+                } else {
                     replace_first_placeholder(
-                        tr("pet.activity.running_format", "%@ is running"),
+                        tr(
+                            "pet.activity.permission_waiting_format",
+                            "%@ needs permission",
+                        ),
                         &session.tool,
                     )
-                }),
-            tone: DesktopPetActivityTone::Normal,
-            plan_items: Vec::new(),
-        };
+                }
+            } else {
+                normalized_desktop_pet_preview(session.message.as_deref()).unwrap_or_else(|| {
+                    replace_first_placeholder(
+                        tr("pet.activity.waiting_input_format", "%@ needs input"),
+                        &session.tool,
+                    )
+                })
+            };
+            DesktopPetActivityLine {
+                text,
+                tone: DesktopPetActivityTone::Attention,
+                plan_items: Vec::new(),
+            }
+        }
+        Some(DesktopPetRuntimeStatus::Completed { session, status }) => {
+            let failed = matches!(
+                status.state,
+                TerminalStatusState::Error | TerminalStatusState::Warning
+            );
+            DesktopPetActivityLine {
+                text: replace_first_placeholder(
+                    if failed {
+                        tr("pet.activity.failed_format", "%@ failed")
+                    } else {
+                        tr("pet.activity.completed_format", "%@ completed")
+                    },
+                    &session.tool,
+                ),
+                tone: if failed {
+                    DesktopPetActivityTone::Warning
+                } else {
+                    DesktopPetActivityTone::Success
+                },
+                plan_items: Vec::new(),
+            }
+        }
+        Some(DesktopPetRuntimeStatus::Working { session, .. }) => {
+            // A fully-completed plan is not live progress — ignore it so the bubble
+            // falls through to the preview/running line instead of pinning "N/N".
+            if let Some(plan_items) = desktop_pet_plan_items(session, now)
+                .filter(|items| items.iter().any(|item| item.status != "completed"))
+            {
+                let completed = plan_items
+                    .iter()
+                    .filter(|item| item.status == "completed")
+                    .count();
+                let total = plan_items.len();
+                DesktopPetActivityLine {
+                    text: replace_three_placeholders(
+                        tr("pet.activity.plan_format", "%@ tasks %@/%@"),
+                        &desktop_pet_session_project_label(session),
+                        &completed.to_string(),
+                        &total.to_string(),
+                    ),
+                    tone: DesktopPetActivityTone::Normal,
+                    plan_items,
+                }
+            } else {
+                DesktopPetActivityLine {
+                    text: normalized_desktop_pet_preview(
+                        session.latest_assistant_preview.as_deref(),
+                    )
+                    .unwrap_or_else(|| {
+                        replace_first_placeholder(
+                            tr("pet.activity.running_format", "%@ is running"),
+                            &session.tool,
+                        )
+                    }),
+                    tone: DesktopPetActivityTone::Normal,
+                    plan_items: Vec::new(),
+                }
+            }
+        }
+        None => DesktopPetActivityLine::empty(),
     }
-
-    DesktopPetActivityLine::empty()
 }
 
 fn desktop_pet_session_project_label(
@@ -334,6 +364,7 @@ fn desktop_pet_plan_items(
 
 pub(in crate::app) fn desktop_pet_llm_context(
     runtime: &codux_runtime::ai_runtime_state::AIRuntimeStateSummary,
+    terminal_statuses: &[TerminalStatusEvent],
     language: &str,
 ) -> Option<DesktopPetLlmContext> {
     let locale = locale_from_language_setting(language);
@@ -342,160 +373,131 @@ pub(in crate::app) fn desktop_pet_llm_context(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs_f64())
         .unwrap_or(0.0);
-    let has_running_session = runtime
-        .sessions
-        .iter()
-        .any(|session| session.state == "running");
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| {
-            session.state == "needs-input"
-                && session
-                    .notification_type
-                    .as_deref()
-                    .map(is_permission_request_notification_type)
-                    .unwrap_or(false)
-        })
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-    {
-        let fallback_text = if let Some(target) = session
-            .target_tool_name
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-        {
-            replace_two_placeholders(
-                tr(
-                    "pet.activity.permission_waiting_target_format",
-                    "%@ needs permission for %@",
-                ),
-                &session.tool,
-                target,
-            )
-        } else {
-            replace_first_placeholder(
-                tr(
-                    "pet.activity.permission_waiting_format",
-                    "%@ needs permission",
-                ),
-                &session.tool,
-            )
-        };
-        return Some(DesktopPetLlmContext {
-            event: "permission",
-            fallback_text,
-            facts: if let Some(target) = session
-                .target_tool_name
+    match desktop_pet_runtime_status(runtime, terminal_statuses, now)? {
+        DesktopPetRuntimeStatus::Waiting { session, status } => {
+            let is_permission = session
+                .notification_type
                 .as_deref()
-                .filter(|value| !value.trim().is_empty())
-            {
-                format!(
-                    "{} is waiting for permission to use {target}.",
-                    session.tool
-                )
+                .map(is_permission_request_notification_type)
+                .unwrap_or(false);
+            if is_permission {
+                let target = session
+                    .target_tool_name
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty());
+                Some(DesktopPetLlmContext {
+                    event: "permission",
+                    fallback_text: if let Some(target) = target {
+                        replace_two_placeholders(
+                            tr(
+                                "pet.activity.permission_waiting_target_format",
+                                "%@ needs permission for %@",
+                            ),
+                            &session.tool,
+                            target,
+                        )
+                    } else {
+                        replace_first_placeholder(
+                            tr(
+                                "pet.activity.permission_waiting_format",
+                                "%@ needs permission",
+                            ),
+                            &session.tool,
+                        )
+                    },
+                    facts: if let Some(target) = target {
+                        format!(
+                            "{} is waiting for permission to use {target}.",
+                            session.tool
+                        )
+                    } else {
+                        format!("{} is waiting for permission.", session.tool)
+                    },
+                    tone: DesktopPetActivityTone::Attention,
+                    tool: session.tool.clone(),
+                    updated_at: status.updated_at,
+                })
+            } else if normalized_desktop_pet_preview(session.message.as_deref()).is_none() {
+                Some(DesktopPetLlmContext {
+                    event: "needsInput",
+                    fallback_text: replace_first_placeholder(
+                        tr("pet.activity.waiting_input_format", "%@ needs input"),
+                        &session.tool,
+                    ),
+                    facts: format!("{} is waiting for user input.", session.tool),
+                    tone: DesktopPetActivityTone::Attention,
+                    tool: session.tool.clone(),
+                    updated_at: status.updated_at,
+                })
             } else {
-                format!("{} is waiting for permission.", session.tool)
-            },
-            tone: DesktopPetActivityTone::Attention,
-            tool: session.tool.clone(),
-            updated_at: session.updated_at,
-        });
-    }
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| session.state == "needs-input")
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-        .filter(|session| normalized_desktop_pet_preview(session.message.as_deref()).is_none())
-    {
-        return Some(DesktopPetLlmContext {
-            event: "needsInput",
-            fallback_text: replace_first_placeholder(
-                tr("pet.activity.waiting_input_format", "%@ needs input"),
-                &session.tool,
-            ),
-            facts: format!("{} is waiting for user input.", session.tool),
-            tone: DesktopPetActivityTone::Attention,
-            tool: session.tool.clone(),
-            updated_at: session.updated_at,
-        });
-    }
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| desktop_pet_completion_is_visible(session, now, has_running_session))
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-    {
-        let failed = session.was_interrupted;
-        return Some(DesktopPetLlmContext {
-            event: if failed { "failed" } else { "completed" },
-            fallback_text: if failed {
-                replace_first_placeholder(
-                    tr("pet.activity.failed_format", "%@ failed"),
+                None
+            }
+        }
+        DesktopPetRuntimeStatus::Completed { session, status } => {
+            let failed = matches!(
+                status.state,
+                TerminalStatusState::Error | TerminalStatusState::Warning
+            );
+            Some(DesktopPetLlmContext {
+                event: if failed { "failed" } else { "completed" },
+                fallback_text: replace_first_placeholder(
+                    if failed {
+                        tr("pet.activity.failed_format", "%@ failed")
+                    } else {
+                        tr("pet.activity.completed_format", "%@ completed")
+                    },
                     &session.tool,
-                )
-            } else {
-                replace_first_placeholder(
-                    tr("pet.activity.completed_format", "%@ completed"),
-                    &session.tool,
-                )
-            },
-            facts: if failed {
-                format!(
-                    "{} finished with an interrupted or failed state.",
-                    session.tool
-                )
-            } else {
-                format!("{} completed the latest turn.", session.tool)
-            },
-            tone: if failed {
-                DesktopPetActivityTone::Warning
-            } else {
-                DesktopPetActivityTone::Success
-            },
-            tool: session.tool.clone(),
-            updated_at: session.updated_at,
-        });
+                ),
+                facts: if failed {
+                    format!(
+                        "{} finished with an interrupted or failed state.",
+                        session.tool
+                    )
+                } else {
+                    format!("{} completed the latest turn.", session.tool)
+                },
+                tone: if failed {
+                    DesktopPetActivityTone::Warning
+                } else {
+                    DesktopPetActivityTone::Success
+                },
+                tool: session.tool.clone(),
+                updated_at: status.updated_at,
+            })
+        }
+        DesktopPetRuntimeStatus::Working { session, status } => {
+            normalized_desktop_pet_preview(session.latest_assistant_preview.as_deref())
+                .is_none()
+                .then(|| DesktopPetLlmContext {
+                    event: "running",
+                    fallback_text: replace_first_placeholder(
+                        tr("pet.activity.running_format", "%@ is running"),
+                        &session.tool,
+                    ),
+                    facts: format!("{} is currently running.", session.tool),
+                    tone: DesktopPetActivityTone::Normal,
+                    tool: session.tool.clone(),
+                    updated_at: status.updated_at,
+                })
+        }
     }
-
-    if let Some(session) = runtime
-        .sessions
-        .iter()
-        .filter(|session| session.state == "running")
-        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
-        .filter(|session| {
-            normalized_desktop_pet_preview(session.latest_assistant_preview.as_deref()).is_none()
-        })
-    {
-        return Some(DesktopPetLlmContext {
-            event: "running",
-            fallback_text: replace_first_placeholder(
-                tr("pet.activity.running_format", "%@ is running"),
-                &session.tool,
-            ),
-            facts: format!("{} is currently running.", session.tool),
-            tone: DesktopPetActivityTone::Normal,
-            tool: session.tool.clone(),
-            updated_at: session.updated_at,
-        });
-    }
-
-    None
 }
 
-fn desktop_pet_completion_is_visible(
+fn desktop_pet_terminal_status_for_session<'a>(
+    terminal_statuses: &'a [TerminalStatusEvent],
     session: &codux_runtime::ai_runtime_state::AIRuntimeSessionSummary,
-    now: f64,
-    has_running_session: bool,
-) -> bool {
-    session.state != "running"
-        && session.state != "needs-input"
-        && session.has_completed_turn
-        && now - session.updated_at <= DESKTOP_PET_COMPLETION_VISIBLE_SECONDS
-        && !has_running_session
+) -> Option<&'a TerminalStatusEvent> {
+    terminal_statuses
+        .iter()
+        .filter(|status| {
+            status.source != TERMINAL_COMMAND_OSC_SOURCE
+                && status.terminal_id == session.terminal_id
+        })
+        .max_by(|left, right| left.updated_at.total_cmp(&right.updated_at))
+}
+
+fn desktop_pet_transient_status_is_visible(status: &TerminalStatusEvent, now: f64) -> bool {
+    (0.0..=DESKTOP_PET_TRANSIENT_STATUS_VISIBLE_SECONDS).contains(&(now - status.updated_at))
 }
 
 pub(in crate::app) fn desktop_pet_llm_cooldown_seconds(value: &str) -> f64 {
@@ -1179,6 +1181,36 @@ mod tests {
         }
     }
 
+    fn terminal_status(state: TerminalStatusState, updated_at: f64) -> TerminalStatusEvent {
+        TerminalStatusEvent {
+            terminal_id: "term-a".to_string(),
+            terminal_instance_id: Some("instance-a".to_string()),
+            project_id: Some("project-a".to_string()),
+            worktree_id: Some("project-a".to_string()),
+            state,
+            updated_at,
+            source: "terminal-title-osc".to_string(),
+        }
+    }
+
+    fn terminal_status_for(
+        terminal_id: &str,
+        state: TerminalStatusState,
+        updated_at: f64,
+    ) -> TerminalStatusEvent {
+        TerminalStatusEvent {
+            terminal_id: terminal_id.to_string(),
+            ..terminal_status(state, updated_at)
+        }
+    }
+
+    fn current_time() -> f64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs_f64())
+            .unwrap_or(0.0)
+    }
+
     #[test]
     fn runtime_activity_line_uses_running_assistant_preview() {
         let mut session = runtime_session("running");
@@ -1188,7 +1220,8 @@ mod tests {
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "zh-CN");
+        let statuses = [terminal_status(TerminalStatusState::Working, 2.0)];
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "zh-CN");
 
         assert_eq!(line.text, "Analyzing files\nPreparing patch");
         assert_eq!(line.tone, DesktopPetActivityTone::Normal);
@@ -1224,7 +1257,8 @@ mod tests {
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let statuses = [terminal_status(TerminalStatusState::Working, now)];
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert!(line.text.contains("Codux"));
         assert!(!line.text.contains("codex"));
@@ -1255,7 +1289,8 @@ mod tests {
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let statuses = [terminal_status(TerminalStatusState::Working, 10.0)];
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert!(line.plan_items.is_empty());
         assert_eq!(line.text, "Fallback text");
@@ -1263,11 +1298,13 @@ mod tests {
 
     #[test]
     fn runtime_activity_line_prioritizes_permission_requests() {
+        let now = current_time();
         let mut running = runtime_session("running");
-        running.updated_at = 20.0;
+        running.terminal_id = "term-running".to_string();
+        running.updated_at = now;
         running.latest_assistant_preview = Some("Working".to_string());
         let mut permission = runtime_session("needs-input");
-        permission.updated_at = 10.0;
+        permission.updated_at = now - 10.0;
         permission.notification_type = Some("PermissionRequest".to_string());
         permission.target_tool_name = Some("Write".to_string());
         let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
@@ -1275,7 +1312,11 @@ mod tests {
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let statuses = [
+            terminal_status_for("term-running", TerminalStatusState::Working, now),
+            terminal_status(TerminalStatusState::Waiting, now - 10.0),
+        ];
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert!(line.text.contains("codex"));
         assert!(line.text.contains("Write"));
@@ -1284,6 +1325,7 @@ mod tests {
 
     #[test]
     fn runtime_activity_line_uses_needs_input_message() {
+        let now = current_time();
         let mut session = runtime_session("needs-input");
         session.message = Some("Choose an option\n\nthen continue".to_string());
         let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
@@ -1291,7 +1333,8 @@ mod tests {
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let statuses = [terminal_status(TerminalStatusState::Waiting, now)];
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert_eq!(line.text, "Choose an option\nthen continue");
         assert_eq!(line.tone, DesktopPetActivityTone::Attention);
@@ -1299,61 +1342,68 @@ mod tests {
 
     #[test]
     fn runtime_activity_line_reports_recent_completion() {
-        let mut session = runtime_session("completed");
+        let mut session = runtime_session("running");
         session.updated_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs_f64())
             .unwrap_or(0.0);
-        session.has_completed_turn = true;
+        session.has_completed_turn = false;
+        let statuses = [terminal_status(
+            TerminalStatusState::Completed,
+            session.updated_at,
+        )];
         let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
             sessions: vec![session],
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert!(line.text.contains("codex"));
         assert_eq!(line.tone, DesktopPetActivityTone::Success);
     }
 
     #[test]
-    fn runtime_activity_line_suppresses_completion_while_running() {
+    fn runtime_activity_line_prioritizes_completion_over_running() {
         let mut completed = runtime_session("completed");
-        completed.updated_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_secs_f64())
-            .unwrap_or(0.0);
+        completed.updated_at = current_time();
         completed.has_completed_turn = true;
         let mut running = runtime_session("running");
         running.terminal_id = "term-running".to_string();
         running.updated_at = completed.updated_at + 1.0;
+        let statuses = [
+            terminal_status(TerminalStatusState::Completed, completed.updated_at),
+            TerminalStatusEvent {
+                terminal_id: "term-running".to_string(),
+                ..terminal_status(TerminalStatusState::Working, running.updated_at)
+            },
+        ];
         let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
             sessions: vec![completed, running],
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
-        assert!(line.text.contains("running"));
-        assert_eq!(line.tone, DesktopPetActivityTone::Normal);
+        assert!(line.text.contains("completed"));
+        assert_eq!(line.tone, DesktopPetActivityTone::Success);
     }
 
     #[test]
     fn runtime_activity_line_hides_expired_completion() {
         let mut session = runtime_session("completed");
-        session.updated_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_secs_f64())
-            .unwrap_or(0.0)
-            - DESKTOP_PET_COMPLETION_VISIBLE_SECONDS
-            - 1.0;
+        session.updated_at = current_time() - DESKTOP_PET_TRANSIENT_STATUS_VISIBLE_SECONDS - 1.0;
         session.has_completed_turn = true;
+        let statuses = [terminal_status(
+            TerminalStatusState::Completed,
+            session.updated_at,
+        )];
         let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
             sessions: vec![session],
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert!(line.text.is_empty());
         assert_eq!(line.tone, DesktopPetActivityTone::Normal);
@@ -1366,17 +1416,140 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs_f64())
             .unwrap_or(0.0);
-        session.has_completed_turn = true;
-        session.was_interrupted = true;
+        session.has_completed_turn = false;
+        let statuses = [terminal_status(
+            TerminalStatusState::Error,
+            session.updated_at,
+        )];
         let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
             sessions: vec![session],
             ..Default::default()
         };
 
-        let line = desktop_pet_runtime_activity_line(&runtime, "english");
+        let line = desktop_pet_runtime_activity_line(&runtime, &statuses, "english");
 
         assert!(line.text.contains("codex"));
         assert_eq!(line.tone, DesktopPetActivityTone::Warning);
+    }
+
+    #[test]
+    fn runtime_activity_line_does_not_infer_completion_without_osc() {
+        let mut session = runtime_session("completed");
+        session.updated_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs_f64())
+            .unwrap_or(0.0);
+        session.has_completed_turn = true;
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![session],
+            ..Default::default()
+        };
+
+        let line = desktop_pet_runtime_activity_line(&runtime, &[], "english");
+
+        assert!(line.text.is_empty());
+        assert_eq!(line.tone, DesktopPetActivityTone::Normal);
+    }
+
+    #[test]
+    fn runtime_status_prioritizes_waiting_over_completion_and_working() {
+        let now = 100.0;
+        let waiting = runtime_session("needs-input");
+        let mut completed = runtime_session("completed");
+        completed.terminal_id = "term-completed".to_string();
+        let mut working = runtime_session("running");
+        working.terminal_id = "term-working".to_string();
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![waiting, completed, working],
+            ..Default::default()
+        };
+        let statuses = [
+            terminal_status(TerminalStatusState::Waiting, now - 20.0),
+            terminal_status_for("term-completed", TerminalStatusState::Completed, now - 5.0),
+            terminal_status_for("term-working", TerminalStatusState::Working, now),
+        ];
+
+        assert!(matches!(
+            desktop_pet_runtime_status(&runtime, &statuses, now),
+            Some(DesktopPetRuntimeStatus::Waiting { .. })
+        ));
+    }
+
+    #[test]
+    fn runtime_status_falls_through_expired_transient_priorities() {
+        let now = 100.0;
+        let waiting = runtime_session("needs-input");
+        let mut completed = runtime_session("completed");
+        completed.terminal_id = "term-completed".to_string();
+        let mut working = runtime_session("running");
+        working.terminal_id = "term-working".to_string();
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![waiting, completed, working],
+            ..Default::default()
+        };
+        let statuses = [
+            terminal_status(TerminalStatusState::Waiting, now - 31.0),
+            terminal_status_for("term-completed", TerminalStatusState::Completed, now - 30.0),
+            terminal_status_for("term-working", TerminalStatusState::Working, now),
+        ];
+
+        assert!(matches!(
+            desktop_pet_runtime_status(&runtime, &statuses, now),
+            Some(DesktopPetRuntimeStatus::Completed { .. })
+        ));
+
+        let statuses = [
+            terminal_status(TerminalStatusState::Waiting, now - 31.0),
+            terminal_status_for(
+                "term-completed",
+                TerminalStatusState::Completed,
+                now - 30.001,
+            ),
+            terminal_status_for("term-working", TerminalStatusState::Working, now),
+        ];
+        assert!(matches!(
+            desktop_pet_runtime_status(&runtime, &statuses, now),
+            Some(DesktopPetRuntimeStatus::Working { .. })
+        ));
+    }
+
+    #[test]
+    fn runtime_status_uses_each_terminals_latest_state() {
+        let now = 100.0;
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![runtime_session("running")],
+            ..Default::default()
+        };
+        let statuses = [
+            terminal_status(TerminalStatusState::Completed, now - 1.0),
+            terminal_status(TerminalStatusState::Working, now),
+        ];
+
+        assert!(matches!(
+            desktop_pet_runtime_status(&runtime, &statuses, now),
+            Some(DesktopPetRuntimeStatus::Working { .. })
+        ));
+    }
+
+    #[test]
+    fn llm_context_uses_the_same_runtime_priority() {
+        let now = current_time();
+        let mut waiting = runtime_session("needs-input");
+        waiting.message = None;
+        let mut completed = runtime_session("completed");
+        completed.terminal_id = "term-completed".to_string();
+        let runtime = codux_runtime::ai_runtime_state::AIRuntimeStateSummary {
+            sessions: vec![waiting, completed],
+            ..Default::default()
+        };
+        let statuses = [
+            terminal_status(TerminalStatusState::Waiting, now - 10.0),
+            terminal_status_for("term-completed", TerminalStatusState::Completed, now),
+        ];
+
+        let context = desktop_pet_llm_context(&runtime, &statuses, "english").unwrap();
+        assert_eq!(context.event, "needsInput");
+        assert_eq!(context.tone, DesktopPetActivityTone::Attention);
     }
 
     #[test]

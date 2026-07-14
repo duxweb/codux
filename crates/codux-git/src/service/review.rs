@@ -92,15 +92,8 @@ impl GitService {
         } else if let Some(base) = base {
             git2_commit_diff_to_string(&repo, base, Some(&file_path), 0).unwrap_or_default()
         } else {
-            let unstaged = git2_diff_to_string(&repo, DiffTarget::Worktree, Some(&file_path), 0)
-                .unwrap_or_default();
-            let staged = git2_diff_to_string(&repo, DiffTarget::Index, Some(&file_path), 0)
-                .unwrap_or_default();
-            match (staged.trim().is_empty(), unstaged.trim().is_empty()) {
-                (true, _) => unstaged,
-                (_, true) => staged,
-                _ => format!("{staged}\n{unstaged}"),
-            }
+            git2_diff_to_string(&repo, DiffTarget::Workspace, Some(&file_path), 0)
+                .unwrap_or_default()
         };
         let (deleted_lines, added_lines) = if is_untracked {
             (

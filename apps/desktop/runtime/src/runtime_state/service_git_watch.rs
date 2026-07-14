@@ -68,6 +68,27 @@ impl RuntimeService {
         refresh_git_summary(&self.support_dir, project_path)
     }
 
+    pub fn reload_project_git_state(
+        &self,
+        project_path: &str,
+        base_branch: Option<&str>,
+    ) -> (git::GitSummary, git::GitReviewSummary) {
+        if self.hosted_runtime_for_project_path(project_path).is_some() {
+            return (
+                self.reload_project_git(project_path),
+                self.reload_project_git_review(project_path, base_branch),
+            );
+        }
+        let workspace = git::GitService::workspace_snapshot(project_path);
+        crate::runtime_cache::save_git_workspace(&self.support_dir, project_path, &workspace);
+        let review = if base_branch.is_none() {
+            workspace.review
+        } else {
+            refresh_git_review(&self.support_dir, project_path, base_branch)
+        };
+        (workspace.status, review)
+    }
+
     pub fn stored_project_git_state(
         &self,
         project_path: &str,
@@ -84,12 +105,23 @@ impl RuntimeService {
                 git::GitReviewSummary::default(),
             );
         }
-        (
-            crate::runtime_cache::cached_git_summary(&self.support_dir, project_path)
-                .unwrap_or_default(),
-            crate::runtime_cache::cached_git_review(&self.support_dir, project_path, base_branch)
-                .unwrap_or_default(),
-        )
+        if let Some(workspace) =
+            crate::runtime_cache::cached_git_workspace(&self.support_dir, project_path)
+        {
+            let review = match base_branch {
+                Some(base) => {
+                    crate::runtime_cache::cached_git_review(
+                        &self.support_dir,
+                        project_path,
+                        Some(base),
+                    )
+                    .unwrap_or_default()
+                }
+                None => workspace.review.clone(),
+            };
+            return (workspace.status, review);
+        }
+        (git::GitSummary::default(), git::GitReviewSummary::default())
     }
 
     pub fn reload_project_git_review(

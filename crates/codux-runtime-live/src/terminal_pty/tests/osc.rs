@@ -64,6 +64,60 @@ fn terminal_progress_osc_emits_completed_status() {
 
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Completed);
     assert_eq!(status.source, "terminal-progress-osc");
+    assert_eq!(bridge.terminal_statuses_snapshot(), vec![status.clone()]);
+
+    assert!(bridge.drain_supervisor_events().is_empty());
+    assert_eq!(bridge.terminal_statuses_snapshot(), vec![status]);
+    assert!(!bridge.remove_session(&terminal_id));
+    assert!(bridge.terminal_statuses_snapshot().is_empty());
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn terminal_status_snapshot_rejects_older_updates() {
+    let (dir, bridge, terminal_id, _watcher) = watcher_fixture("terminal-status-order");
+    let latest = TerminalStatusEvent {
+        terminal_id: terminal_id.clone(),
+        terminal_instance_id: Some("terminal-instance-1".to_string()),
+        project_id: Some("project-1".to_string()),
+        worktree_id: Some("worktree-1".to_string()),
+        state: TerminalStatusState::Completed,
+        updated_at: 20.0,
+        source: "terminal-progress-osc".to_string(),
+    };
+    let mut older = latest.clone();
+    older.state = TerminalStatusState::Working;
+    older.updated_at = 10.0;
+
+    bridge.submit_terminal_status(latest.clone()).unwrap();
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Completed);
+    bridge.submit_terminal_status(older).unwrap();
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+
+    assert_eq!(bridge.terminal_statuses_snapshot(), vec![latest]);
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn terminal_command_osc_does_not_replace_ai_status_snapshot() {
+    let (dir, bridge, terminal_id, mut watcher) = watcher_fixture("terminal-status-command");
+
+    push_output(&mut watcher, &terminal_id, b"\x1b]9;4;0\x07");
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Completed);
+
+    push_output(
+        &mut watcher,
+        &terminal_id,
+        b"\x1b]133;C\x07\x1b]133;D;0\x07",
+    );
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
+
+    let statuses = bridge.terminal_statuses_snapshot();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].terminal_id, terminal_id);
+    assert_eq!(statuses[0].state, TerminalStatusState::Completed);
 
     let _ = std::fs::remove_dir_all(dir);
 }

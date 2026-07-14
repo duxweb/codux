@@ -145,6 +145,8 @@ impl CoduxApp {
             desktop_pet_line: desktop_pet_fallback_line().to_string(),
             desktop_pet_tone: DesktopPetActivityTone::Normal,
             desktop_pet_plan_items: Vec::new(),
+            desktop_pet_terminal_statuses: Vec::new(),
+            desktop_pet_runtime_activity_active: false,
             desktop_pet_main_window_fullscreen: false,
             desktop_pet_active_llm_key: String::new(),
             desktop_pet_requested_llm_key: String::new(),

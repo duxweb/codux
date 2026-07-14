@@ -280,18 +280,8 @@ impl CoduxApp {
             changes: self.state.git.staged + self.state.git.unstaged + self.state.git.untracked,
             incoming: self.state.git.behind,
             outgoing: self.state.git.ahead,
-            additions: self
-                .git_review
-                .files
-                .iter()
-                .map(|file| file.additions)
-                .sum(),
-            deletions: self
-                .git_review
-                .files
-                .iter()
-                .map(|file| file.deletions)
-                .sum(),
+            additions: self.state.git.additions,
+            deletions: self.state.git.deletions,
         };
         let Some(worktree) = self.state.worktrees.worktrees.iter_mut().find(|worktree| {
             worktree.project_id == scope_key.project_id && worktree.id == scope_key.worktree_id

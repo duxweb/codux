@@ -62,7 +62,6 @@ pub(in crate::app) fn git_review_workspace(
         let message = git_review_error_message(&error, labels.as_ref());
         return git_review_empty_workspace(message).into_any_element();
     }
-    let task_branch_mode = review.mode == "taskBranch";
     let original_title = labels.review_original.clone();
     let body = div()
         .flex()
@@ -123,28 +122,12 @@ pub(in crate::app) fn git_review_workspace(
                     cx,
                 ))
                 .child(git_review_content_panel(
-                    "git-review-new-code",
-                    labels.review_new_file.as_str(),
-                    derived_rows.new_file.clone(),
-                    VirtualListScrollHandle::from(code_scroll_handle.clone()),
+                    "git-review-current-code",
+                    labels.diff_current.as_str(),
+                    derived_rows.current.clone(),
+                    VirtualListScrollHandle::from(code_scroll_handle),
                     cx,
                 ))
-                .child(git_review_content_panel(
-                    "git-review-final-code",
-                    labels.review_final_file.as_str(),
-                    derived_rows.final_file.clone(),
-                    VirtualListScrollHandle::from(code_scroll_handle.clone()),
-                    cx,
-                ))
-                .when(task_branch_mode, |this| {
-                    this.child(git_review_content_panel(
-                        "git-review-branch-code",
-                        labels.review_branch.as_str(),
-                        derived_rows.branch.clone().unwrap_or_default(),
-                        VirtualListScrollHandle::from(code_scroll_handle.clone()),
-                        cx,
-                    ))
-                })
         });
     body.into_any_element()
 }

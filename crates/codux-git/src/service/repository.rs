@@ -1,16 +1,16 @@
 impl GitService {
     pub fn status(project_path: &str) -> GitSummary {
+        Self::workspace_snapshot(project_path).status
+    }
+
+    pub fn workspace_snapshot(project_path: &str) -> GitWorkspaceSnapshot {
         let repo = match open_git_repository(project_path) {
             Ok(repo) => repo,
             Err(error) => {
-                return GitSummary {
-                    branch: "uninitialized".to_string(),
-                    error: Some(error),
-                    ..Default::default()
-                };
+                return git_workspace_error_snapshot(error);
             }
         };
-        git_status_from_repo(&repo)
+        git_workspace_snapshot_from_repo(&repo)
     }
 
     pub fn init(project_path: &str) -> Result<(), String> {

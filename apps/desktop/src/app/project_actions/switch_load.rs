@@ -451,11 +451,6 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn merge_selected_project_worktrees(&mut self, worktrees: WorktreeSummary) {
-        if worktree_summary_has_git_counts(&self.state.worktrees)
-            && !worktree_summary_has_git_counts(&worktrees)
-        {
-            return;
-        }
         if worktree_summary_has_rows(&worktrees)
             || !worktree_summary_has_rows(&self.state.worktrees)
         {

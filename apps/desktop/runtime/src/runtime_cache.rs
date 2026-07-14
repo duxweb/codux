@@ -1,21 +1,28 @@
 use crate::{git, persistent_cache::PersistentCacheStore};
 use std::path::{Path, PathBuf};
 
-const GIT_SUMMARY_NAMESPACE: &str = "git-summary";
 const GIT_REVIEW_NAMESPACE: &str = "git-review";
+const GIT_WORKSPACE_NAMESPACE: &str = "git-workspace";
 
-pub fn cached_git_summary(support_dir: &Path, project_path: &str) -> Option<git::GitSummary> {
-    let summary = cache(support_dir)
+pub fn cached_git_workspace(
+    support_dir: &Path,
+    project_path: &str,
+) -> Option<git::GitWorkspaceSnapshot> {
+    let snapshot = cache(support_dir)
         .ok()?
-        .get_json::<git::GitSummary>(GIT_SUMMARY_NAMESPACE, project_path)
+        .get_json::<git::GitWorkspaceSnapshot>(GIT_WORKSPACE_NAMESPACE, project_path)
         .ok()
         .flatten()?;
-    summary.is_repository.then_some(summary)
+    snapshot.status.is_repository.then_some(snapshot)
 }
 
-pub fn save_git_summary(support_dir: &Path, project_path: &str, summary: &git::GitSummary) {
+pub fn save_git_workspace(
+    support_dir: &Path,
+    project_path: &str,
+    snapshot: &git::GitWorkspaceSnapshot,
+) {
     if let Ok(cache) = cache(support_dir) {
-        let _ = cache.put_json(GIT_SUMMARY_NAMESPACE, project_path, summary);
+        let _ = cache.put_json(GIT_WORKSPACE_NAMESPACE, project_path, snapshot);
     }
 }
 
@@ -24,6 +31,11 @@ pub fn cached_git_review(
     project_path: &str,
     base_branch: Option<&str>,
 ) -> Option<git::GitReviewSummary> {
+    if base_branch.is_none()
+        && let Some(snapshot) = cached_git_workspace(support_dir, project_path)
+    {
+        return Some(snapshot.review);
+    }
     let key = git_review_key(project_path, base_branch);
     cache(support_dir)
         .ok()?

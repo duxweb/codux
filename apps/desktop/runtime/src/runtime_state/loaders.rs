@@ -46,31 +46,18 @@ fn load_settings(support_dir: &Path) -> SettingsSummary {
     SettingsService::new(support_dir.to_path_buf()).summary()
 }
 
-fn load_git_summary(support_dir: &Path, project_path: &str) -> git::GitSummary {
-    crate::runtime_cache::cached_git_summary(support_dir, project_path).unwrap_or_else(|| {
-        let summary = git::GitService::status(project_path);
-        crate::runtime_cache::save_git_summary(support_dir, project_path, &summary);
-        summary
+fn load_git_workspace(support_dir: &Path, project_path: &str) -> git::GitWorkspaceSnapshot {
+    crate::runtime_cache::cached_git_workspace(support_dir, project_path).unwrap_or_else(|| {
+        let snapshot = git::GitService::workspace_snapshot(project_path);
+        crate::runtime_cache::save_git_workspace(support_dir, project_path, &snapshot);
+        snapshot
     })
 }
 
-fn load_git_review(
-    support_dir: &Path,
-    project_path: &str,
-    base_branch: Option<&str>,
-) -> git::GitReviewSummary {
-    crate::runtime_cache::cached_git_review(support_dir, project_path, base_branch).unwrap_or_else(
-        || {
-            let review = git::GitService::review(project_path, base_branch);
-            crate::runtime_cache::save_git_review(support_dir, project_path, base_branch, &review);
-            review
-        },
-    )
-}
-
 fn refresh_git_summary(support_dir: &Path, project_path: &str) -> git::GitSummary {
-    let summary = git::GitService::status(project_path);
-    crate::runtime_cache::save_git_summary(support_dir, project_path, &summary);
+    let snapshot = git::GitService::workspace_snapshot(project_path);
+    let summary = snapshot.status.clone();
+    crate::runtime_cache::save_git_workspace(support_dir, project_path, &snapshot);
     summary
 }
 
@@ -79,6 +66,12 @@ fn refresh_git_review(
     project_path: &str,
     base_branch: Option<&str>,
 ) -> git::GitReviewSummary {
+    if base_branch.is_none() {
+        let snapshot = git::GitService::workspace_snapshot(project_path);
+        let review = snapshot.review.clone();
+        crate::runtime_cache::save_git_workspace(support_dir, project_path, &snapshot);
+        return review;
+    }
     let review = git::GitService::review(project_path, base_branch);
     crate::runtime_cache::save_git_review(support_dir, project_path, base_branch, &review);
     review

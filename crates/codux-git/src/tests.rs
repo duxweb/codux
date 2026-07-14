@@ -52,6 +52,100 @@ mod tests {
     }
 
     #[test]
+    fn workspace_snapshot_excludes_committed_changes_from_uncommitted_stats() {
+        let repo = temp_dir("git-workspace-snapshot");
+        GitService::init(repo.to_str().expect("repo")).expect("init repo");
+        let repository = GitRepository::open(&repo).expect("open repo");
+        let mut config = repository.config().expect("config");
+        config
+            .set_str("user.email", "codux@example.test")
+            .expect("email");
+        config.set_str("user.name", "Codux").expect("name");
+        fs::write(repo.join("tracked.txt"), "first\n").expect("initial file");
+        GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt")
+            .expect("stage initial file");
+        GitService::commit_staged(repo.to_str().expect("repo"), "initial")
+            .expect("initial commit");
+
+        fs::write(repo.join("tracked.txt"), "second\nline\n").expect("committed update");
+        GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt")
+            .expect("stage update");
+        GitService::commit_staged(repo.to_str().expect("repo"), "update")
+            .expect("update commit");
+
+        let clean = GitService::workspace_snapshot(repo.to_str().expect("repo"));
+        assert_eq!(clean.status.staged, 0);
+        assert_eq!(clean.status.unstaged, 0);
+        assert_eq!(clean.status.untracked, 0);
+        assert_eq!(clean.status.additions, 0);
+        assert_eq!(clean.status.deletions, 0);
+        assert!(clean.review.files.is_empty());
+
+        fs::write(repo.join("tracked.txt"), "second\nchanged\n").expect("working update");
+        let dirty = GitService::workspace_snapshot(repo.to_str().expect("repo"));
+        let review_additions = dirty
+            .review
+            .files
+            .iter()
+            .map(|file| file.additions)
+            .sum::<i64>();
+        let review_deletions = dirty
+            .review
+            .files
+            .iter()
+            .map(|file| file.deletions)
+            .sum::<i64>();
+        assert_eq!(dirty.status.unstaged, 1);
+        assert_eq!(dirty.status.additions, review_additions);
+        assert_eq!(dirty.status.deletions, review_deletions);
+        assert_eq!(dirty.status.additions, 1);
+        assert_eq!(dirty.status.deletions, 1);
+
+        fs::remove_dir_all(repo).ok();
+    }
+
+    #[test]
+    fn workspace_snapshot_counts_staged_then_modified_file_once() {
+        let repo = temp_dir("git-workspace-staged-modified");
+        GitService::init(repo.to_str().expect("repo")).expect("init repo");
+        let repository = GitRepository::open(&repo).expect("open repo");
+        let mut config = repository.config().expect("config");
+        config
+            .set_str("user.email", "codux@example.test")
+            .expect("email");
+        config.set_str("user.name", "Codux").expect("name");
+        fs::write(repo.join("tracked.txt"), "base\n").expect("initial file");
+        GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt")
+            .expect("stage initial file");
+        GitService::commit_staged(repo.to_str().expect("repo"), "initial")
+            .expect("initial commit");
+
+        fs::write(repo.join("tracked.txt"), "staged\n").expect("staged content");
+        GitService::stage_file(repo.to_str().expect("repo"), "tracked.txt")
+            .expect("stage content");
+        fs::write(repo.join("tracked.txt"), "final\n").expect("final content");
+
+        let snapshot = GitService::workspace_snapshot(repo.to_str().expect("repo"));
+        assert_eq!(snapshot.status.staged, 1);
+        assert_eq!(snapshot.status.unstaged, 1);
+        assert_eq!(snapshot.status.additions, 1);
+        assert_eq!(snapshot.status.deletions, 1);
+        assert_eq!(snapshot.review.files.len(), 1);
+        assert_eq!(snapshot.review.files[0].additions, 1);
+        assert_eq!(snapshot.review.files[0].deletions, 1);
+
+        let content = GitService::review_file_content(
+            repo.to_str().expect("repo"),
+            "tracked.txt",
+            None,
+        );
+        assert_eq!(content.deleted_lines, vec![1]);
+        assert_eq!(content.added_lines, vec![1]);
+
+        fs::remove_dir_all(repo).ok();
+    }
+
+    #[test]
     fn status_collapses_untracked_directories_until_expanded() {
         let repo = temp_dir("git-untracked-dir");
         GitService::init(repo.to_str().expect("repo")).expect("init repo");

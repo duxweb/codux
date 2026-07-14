@@ -47,9 +47,7 @@ pub(super) enum GitReviewLineTone {
 #[derive(Clone, Default)]
 pub(in crate::app) struct GitReviewDerivedRows {
     pub(super) original: Rc<Vec<GitReviewAlignedCell>>,
-    pub(super) new_file: Rc<Vec<GitReviewAlignedCell>>,
-    pub(super) final_file: Rc<Vec<GitReviewAlignedCell>>,
-    pub(super) branch: Option<Rc<Vec<GitReviewAlignedCell>>>,
+    pub(super) current: Rc<Vec<GitReviewAlignedCell>>,
 }
 
 #[derive(Clone, Default)]
@@ -156,7 +154,7 @@ fn git_review_code_line(cell: GitReviewAlignedCell, content_width: Pixels) -> An
         .flex()
         // Fixed to the longest-line width (≥ viewport via the list) so row
         // backgrounds span the full scrollable width and lines stay aligned
-        // across the three columns when scrolled horizontally.
+        // across both columns when scrolled horizontally.
         .w(content_width)
         .min_w(gpui::relative(1.0))
         .when_some(line_bg, |this, bg| this.bg(bg))
@@ -183,28 +181,22 @@ fn git_review_code_line(cell: GitReviewAlignedCell, content_width: Pixels) -> An
 
 pub(in crate::app) fn build_git_review_derived_rows(
     original_content: &str,
-    new_content: &str,
-    final_content: &str,
-    branch_content: Option<&str>,
+    current_content: &str,
     deleted_lines: &[usize],
     added_lines: &[usize],
 ) -> GitReviewDerivedRows {
     let original_lines = split_review_lines(original_content);
-    let new_lines = split_review_lines(new_content);
-    let final_lines = split_review_lines(final_content);
-    let branch_lines = branch_content.map(split_review_lines);
+    let current_lines = split_review_lines(current_content);
     let deleted = deleted_lines.iter().copied().collect::<HashSet<_>>();
     let added = added_lines.iter().copied().collect::<HashSet<_>>();
 
     let mut original_cells = Vec::new();
-    let mut new_cells = Vec::new();
-    let mut final_cells = Vec::new();
-    let mut branch_cells = branch_lines.as_ref().map(|_| Vec::new());
+    let mut current_cells = Vec::new();
     let mut old_line = 1usize;
     let mut new_line = 1usize;
 
     while original_cells.len() < 600
-        && (old_line <= original_lines.len() || new_line <= final_lines.len())
+        && (old_line <= original_lines.len() || new_line <= current_lines.len())
     {
         if deleted.contains(&old_line) || added.contains(&new_line) {
             let mut deleted_block = Vec::new();
@@ -214,7 +206,7 @@ pub(in crate::app) fn build_git_review_derived_rows(
             }
 
             let mut added_block = Vec::new();
-            while new_line <= final_lines.len() && added.contains(&new_line) {
+            while new_line <= current_lines.len() && added.contains(&new_line) {
                 added_block.push(new_line);
                 new_line += 1;
             }
@@ -228,31 +220,15 @@ pub(in crate::app) fn build_git_review_derived_rows(
                     old_number,
                     Some(GitReviewLineTone::Deletion),
                 ));
-                new_cells.push(review_cell(
-                    &new_lines,
+                current_cells.push(review_cell(
+                    &current_lines,
                     new_number,
                     Some(GitReviewLineTone::Addition),
                 ));
-                final_cells.push(review_cell(
-                    &final_lines,
-                    new_number,
-                    Some(GitReviewLineTone::Addition),
-                ));
-                if let (Some(lines), Some(cells)) = (&branch_lines, &mut branch_cells) {
-                    cells.push(review_cell(
-                        lines,
-                        new_number,
-                        Some(GitReviewLineTone::Addition),
-                    ));
-                }
             }
         } else {
             original_cells.push(review_cell(&original_lines, Some(old_line), None));
-            new_cells.push(review_cell(&new_lines, Some(new_line), None));
-            final_cells.push(review_cell(&final_lines, Some(new_line), None));
-            if let (Some(lines), Some(cells)) = (&branch_lines, &mut branch_cells) {
-                cells.push(review_cell(lines, Some(new_line), None));
-            }
+            current_cells.push(review_cell(&current_lines, Some(new_line), None));
             old_line += 1;
             new_line += 1;
         }
@@ -260,9 +236,7 @@ pub(in crate::app) fn build_git_review_derived_rows(
 
     GitReviewDerivedRows {
         original: Rc::new(original_cells),
-        new_file: Rc::new(new_cells),
-        final_file: Rc::new(final_cells),
-        branch: branch_cells.map(Rc::new),
+        current: Rc::new(current_cells),
     }
 }
 
@@ -723,4 +697,32 @@ pub(super) fn collect_immediate_git_review_entries(
         }
     }
     (dirs, direct_files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derived_rows_align_original_and_current_content() {
+        let rows =
+            build_git_review_derived_rows("keep\nold\ntail\n", "keep\nnew\ntail\n", &[2], &[2]);
+
+        assert_eq!(rows.original.len(), 3);
+        assert_eq!(rows.current.len(), 3);
+        assert_eq!(rows.original[0].text, "keep");
+        assert_eq!(rows.current[0].text, "keep");
+        assert_eq!(rows.original[1].text, "old");
+        assert!(matches!(
+            rows.original[1].tone,
+            Some(GitReviewLineTone::Deletion)
+        ));
+        assert_eq!(rows.current[1].text, "new");
+        assert!(matches!(
+            rows.current[1].tone,
+            Some(GitReviewLineTone::Addition)
+        ));
+        assert_eq!(rows.original[2].text, "tail");
+        assert_eq!(rows.current[2].text, "tail");
+    }
 }
