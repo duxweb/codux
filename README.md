@@ -101,7 +101,7 @@ Environment directives include Codux memory plus runtime commands such as `codux
 
 > **Beta.** Connecting to a headless host ships first as a beta in this release — the connection, pairing, and host-side data flow are still under active testing, so expect rough edges. Feedback is very welcome.
 
-Desktop, phone, and a headless host all act as **peers** over end-to-end encrypted **P2P / relay links**, so you can keep driving long agent runs from anywhere.
+Powered by [iroh](https://iroh.computer), desktop, phone, and a headless host all act as **peers** over end-to-end encrypted **P2P / relay links**, so you can keep driving long agent runs from anywhere.
 
 - **Direct when possible.** Codux prefers P2P paths and falls back to relay when the network requires it.
 - **Not SSH remote desktop.** Pair devices once, then connect straight into Codux itself.
