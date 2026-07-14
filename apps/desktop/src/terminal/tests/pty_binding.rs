@@ -98,6 +98,50 @@ fn pending_terminal_binding_matches_requested_config_before_attach() {
 }
 
 #[test]
+fn pending_terminal_binding_rejects_different_runtime_target() {
+    let config = TerminalPtyConfig {
+        cwd: Some("/tmp/project".to_string()),
+        project_id: Some("project-1".to_string()),
+        terminal_id: Some("terminal-1".to_string()),
+        session_key: Some("gpui:project-1:terminal-1".to_string()),
+        ..Default::default()
+    };
+    let (binding, _initial_layout_rx) = TerminalSessionBinding::pending(config.clone());
+    let mut wsl_config = config;
+    wsl_config.runtime_target = ProjectRuntimeTarget::Wsl {
+        distribution: "Ubuntu-24.04".to_string(),
+    };
+
+    assert!(!binding.matches_pty_config(&wsl_config));
+}
+
+#[test]
+fn hosted_terminal_binding_rejects_different_distribution() {
+    let config = TerminalPtyConfig {
+        terminal_id: Some("terminal-1".to_string()),
+        runtime_target: ProjectRuntimeTarget::Wsl {
+            distribution: "Ubuntu-24.04".to_string(),
+        },
+        ..Default::default()
+    };
+    let (binding, _initial_layout_rx) = TerminalSessionBinding::pending(config.clone());
+    binding.attach_hosted(
+        Arc::new(HostedTestController::default()),
+        "terminal-1".to_string(),
+        flume::unbounded().0,
+        flume::unbounded().0,
+        flume::unbounded().0,
+        config.clone(),
+    );
+    let mut other_distribution = config;
+    other_distribution.runtime_target = ProjectRuntimeTarget::Wsl {
+        distribution: "Debian".to_string(),
+    };
+
+    assert!(!binding.matches_pty_config(&other_distribution));
+}
+
+#[test]
 fn hosted_restore_recreates_missing_session_after_registering_forwarders() {
     let controller = HostedTestController::default();
     let config = TerminalPtyConfig {

@@ -104,7 +104,7 @@ impl CoduxApp {
         .detach();
     }
 
-    fn restore_selected_project_terminal_layout_now(
+    pub(in crate::app) fn restore_selected_project_terminal_layout_now(
         &mut self,
         generation: u64,
         window: &mut Window,

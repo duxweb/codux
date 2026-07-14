@@ -6,6 +6,66 @@ pub(in crate::app) struct TerminalCleanupResult {
 }
 
 impl CoduxApp {
+    pub(in crate::app) fn close_terminal_sessions_for_owners(
+        &mut self,
+        owner_ids: &HashSet<String>,
+        cx: &mut Context<Self>,
+    ) {
+        let belongs_to_project = |terminal_id: &str| {
+            owner_ids
+                .iter()
+                .any(|owner_id| terminal_id_belongs_to_owner(terminal_id, owner_id))
+        };
+        let mut terminal_ids = self
+            .terminal_pane_registry
+            .keys()
+            .filter(|terminal_id| belongs_to_project(terminal_id))
+            .cloned()
+            .collect::<HashSet<_>>();
+        terminal_ids.extend(
+            self.terminal_manager
+                .list()
+                .into_iter()
+                .filter(|session| {
+                    owner_ids.contains(&session.project_id) || belongs_to_project(&session.id)
+                })
+                .map(|session| session.id),
+        );
+        for tab in &self.terminals {
+            for (pane_index, slot) in tab.panes.iter().enumerate() {
+                if let Some(terminal_id) = Self::terminal_slot_terminal_id(tab, pane_index, slot)
+                    && belongs_to_project(&terminal_id)
+                {
+                    terminal_ids.insert(terminal_id);
+                }
+            }
+        }
+        terminal_ids.extend(
+            self.collapsed_terminal_panes
+                .iter()
+                .filter_map(|slot| slot.terminal_id.clone())
+                .filter(|terminal_id| belongs_to_project(terminal_id)),
+        );
+
+        let mut lifecycle_removed = false;
+        for terminal_id in terminal_ids {
+            self.terminal_attach_in_flight.remove(&terminal_id);
+            match self.kill_terminal_session_if_present(&terminal_id) {
+                Ok(cleanup) => lifecycle_removed |= cleanup.lifecycle_removed,
+                Err(error) => self.runtime_trace(
+                    "terminal",
+                    &format!(
+                        "close_for_project_rebind_failed terminal_id={terminal_id} error={error}"
+                    ),
+                ),
+            }
+        }
+        if lifecycle_removed {
+            self.sync_project_lifecycle_state(cx);
+            self.invalidate_task_column(cx);
+        }
+    }
+
     pub(in crate::app) fn ensure_active_terminal_mounted(
         &mut self,
         cx: &mut Context<Self>,

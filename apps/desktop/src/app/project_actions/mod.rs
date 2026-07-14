@@ -1,5 +1,4 @@
 use super::*;
-use crate::app::app_events::{ChildWindowUpdateKind, publish_child_window_update};
 use crate::app::app_state::{FilePickerRenameDraft, RemoteBrowseEntry};
 use crate::app::terminal_worktree_actions::TerminalLayoutSnapshot;
 use crate::app::window_actions::{AuxiliaryWindowSlot, AuxiliaryWindowSpec};

@@ -84,7 +84,7 @@ impl CoduxApp {
 
     pub(in crate::app) fn open_project_create_window(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let locale = locale_from_language_setting(&self.state.settings.language);
@@ -93,6 +93,9 @@ impl CoduxApp {
             self.invalidate_project_management(cx);
             return;
         }
+
+        let parent_main_window = cx.entity().downgrade();
+        let parent_window_handle = window.window_handle();
 
         self.open_auxiliary_window(
             AuxiliaryWindowSpec {
@@ -109,8 +112,15 @@ impl CoduxApp {
                 failed_prefix: "failed to open project creator",
             },
             cx,
-            |state, runtime, runtime_service, _window, _cx| {
-                CoduxApp::new_project_creator_window_from_state(state, runtime, runtime_service)
+            move |state, runtime, runtime_service, _window, _cx| {
+                let mut app = CoduxApp::new_project_creator_window_from_state(
+                    state,
+                    runtime,
+                    runtime_service,
+                );
+                app.parent_main_window = Some(parent_main_window);
+                app.parent_main_window_handle = Some(parent_window_handle);
+                app
             },
             |_view, _window, _cx| {},
         );
@@ -119,7 +129,7 @@ impl CoduxApp {
 
     pub(in crate::app) fn open_selected_project_editor_window(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(project) = self.state.selected_project.clone() else {
@@ -135,6 +145,9 @@ impl CoduxApp {
             return;
         }
 
+        let parent_main_window = cx.entity().downgrade();
+        let parent_window_handle = window.window_handle();
+
         self.open_auxiliary_window(
             AuxiliaryWindowSpec {
                 slot: AuxiliaryWindowSlot::ProjectEditor,
@@ -147,12 +160,15 @@ impl CoduxApp {
             },
             cx,
             move |state, runtime, runtime_service, _window, _cx| {
-                CoduxApp::new_project_editor_window_from_state(
+                let mut app = CoduxApp::new_project_editor_window_from_state(
                     project,
                     state,
                     runtime,
                     runtime_service,
-                )
+                );
+                app.parent_main_window = Some(parent_main_window);
+                app.parent_main_window_handle = Some(parent_window_handle);
+                app
             },
             |_view, _window, _cx| {},
         );

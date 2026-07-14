@@ -1,6 +1,90 @@
 use super::*;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ProjectEditorStateTransition {
+    Refresh,
+    Switch,
+    Rebind,
+}
+
+fn project_editor_state_transition(
+    previous: Option<&ProjectInfo>,
+    next: Option<&ProjectInfo>,
+) -> ProjectEditorStateTransition {
+    match (previous, next) {
+        (Some(previous), Some(next)) if previous.id == next.id => {
+            if previous.path == next.path && previous.runtime_target == next.runtime_target {
+                ProjectEditorStateTransition::Refresh
+            } else {
+                ProjectEditorStateTransition::Rebind
+            }
+        }
+        (None, None) => ProjectEditorStateTransition::Refresh,
+        _ => ProjectEditorStateTransition::Switch,
+    }
+}
+
 impl CoduxApp {
+    pub(in crate::app) fn apply_project_editor_state(
+        &mut self,
+        next: RuntimeState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let transition = project_editor_state_transition(
+            self.state.selected_project.as_ref(),
+            next.selected_project.as_ref(),
+        );
+        if transition == ProjectEditorStateTransition::Refresh {
+            self.apply_project_list_state(next, cx);
+            return;
+        }
+
+        if self.state.selected_project.is_some() {
+            self.sync_terminal_state_for_project_switch();
+        }
+        if transition == ProjectEditorStateTransition::Rebind
+            && let Some(project) = self.state.selected_project.as_ref()
+        {
+            let project_id = project.id.clone();
+            let mut owner_ids = HashSet::from([project_id.clone()]);
+            owner_ids.extend(
+                self.state
+                    .worktrees
+                    .worktrees
+                    .iter()
+                    .filter(|worktree| worktree.project_id == project_id)
+                    .map(|worktree| worktree.id.clone()),
+            );
+            self.close_terminal_sessions_for_owners(&owner_ids, cx);
+            for (key, entry) in &mut self.terminal_layout_cache {
+                if key.project_id == project_id {
+                    entry.runtime = TerminalRuntimeSummary::default();
+                }
+            }
+            self.file_panel_cache
+                .retain(|key, _| key.project_id != project_id);
+        }
+
+        let selected_project_id = next
+            .selected_project
+            .as_ref()
+            .map(|project| project.id.clone());
+        self.state.projects = next.projects;
+        self.prune_worktree_scoped_caches();
+        let Some(project_id) = selected_project_id else {
+            self.state.selected_project = None;
+            self.sync_project_list_state(cx);
+            return;
+        };
+        self.select_project_after_state_reload(project_id, window, cx);
+        self.restore_selected_project_terminal_layout_now(
+            self.project_switch_generation,
+            window,
+            cx,
+        );
+    }
+
     pub(in crate::app) fn apply_project_list_state(
         &mut self,
         next: RuntimeState,
@@ -451,5 +535,87 @@ impl CoduxApp {
             });
         })
         .detach();
+    }
+}
+
+#[cfg(test)]
+mod project_editor_state_transition_tests {
+    use super::*;
+
+    fn project(id: &str, path: &str, runtime_target: ProjectRuntimeTarget) -> ProjectInfo {
+        ProjectInfo {
+            id: id.to_string(),
+            name: id.to_string(),
+            path: path.to_string(),
+            exists: true,
+            badge: String::new(),
+            badge_symbol: None,
+            badge_color_hex: None,
+            git_default_push_remote_name: None,
+            runtime_target,
+        }
+    }
+
+    #[test]
+    fn switches_to_newly_created_project() {
+        let previous = project("local", "C:\\workspace\\local", ProjectRuntimeTarget::Local);
+        let next = project(
+            "wsl",
+            "/home/user/project",
+            ProjectRuntimeTarget::Wsl {
+                distribution: "Ubuntu-24.04".to_string(),
+            },
+        );
+
+        assert_eq!(
+            project_editor_state_transition(Some(&previous), Some(&next)),
+            ProjectEditorStateTransition::Switch
+        );
+    }
+
+    #[test]
+    fn rebinds_changed_runtime_target() {
+        let previous = project("project", "/home/user/project", ProjectRuntimeTarget::Local);
+        let next = project(
+            "project",
+            "/home/user/project",
+            ProjectRuntimeTarget::Wsl {
+                distribution: "Ubuntu-24.04".to_string(),
+            },
+        );
+
+        assert_eq!(
+            project_editor_state_transition(Some(&previous), Some(&next)),
+            ProjectEditorStateTransition::Rebind
+        );
+    }
+
+    #[test]
+    fn rebinds_changed_project_path() {
+        let previous = project("project", "/old/project", ProjectRuntimeTarget::Local);
+        let next = project("project", "/new/project", ProjectRuntimeTarget::Local);
+
+        assert_eq!(
+            project_editor_state_transition(Some(&previous), Some(&next)),
+            ProjectEditorStateTransition::Rebind
+        );
+    }
+
+    #[test]
+    fn refreshes_metadata_only_edit() {
+        let previous = project(
+            "project",
+            "/home/user/project",
+            ProjectRuntimeTarget::Wsl {
+                distribution: "Ubuntu-24.04".to_string(),
+            },
+        );
+        let mut next = previous.clone();
+        next.name = "Renamed".to_string();
+
+        assert_eq!(
+            project_editor_state_transition(Some(&previous), Some(&next)),
+            ProjectEditorStateTransition::Refresh
+        );
     }
 }

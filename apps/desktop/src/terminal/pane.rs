@@ -1003,6 +1003,9 @@ impl TerminalSessionBinding {
     fn matches_pty_config(&self, config: &TerminalPtyConfig) -> bool {
         let inner = self.inner.lock();
         if let Some(session) = inner.session.as_ref() {
+            if config.runtime_target.is_hosted() {
+                return false;
+            }
             return session.matches_config(config, None);
         }
         if let Some(hosted) = inner.hosted.as_ref() {
@@ -1015,7 +1018,8 @@ impl TerminalSessionBinding {
             return config
                 .terminal_id
                 .as_deref()
-                .is_some_and(|terminal_id| terminal_id == hosted.session_id);
+                .is_some_and(|terminal_id| terminal_id == hosted.session_id)
+                && terminal_pty_configs_match(&hosted.config, config);
         }
         inner
             .pending_match_config
@@ -1032,6 +1036,7 @@ fn terminal_pty_configs_match(left: &TerminalPtyConfig, right: &TerminalPtyConfi
             == normalized_config_value(right.session_key.as_deref())
         && normalized_config_value(left.terminal_id.as_deref())
             == normalized_config_value(right.terminal_id.as_deref())
+        && left.runtime_target == right.runtime_target
 }
 
 fn normalized_config_path(value: Option<&str>) -> Option<String> {

@@ -771,6 +771,8 @@ impl CoduxApp {
         let badge_color_hex = self.project_editor_badge_color_hex.clone();
         let runtime_target = self.project_editor_runtime_target.clone();
         let runtime_service = self.runtime_service.clone();
+        let parent_main_window = self.parent_main_window.clone();
+        let parent_window_handle = self.parent_main_window_handle;
         let window_handle = window.window_handle();
         self.project_editor_saving = true;
         self.status_message = if project_id.is_some() {
@@ -812,20 +814,18 @@ impl CoduxApp {
             // `project_editor_saving` stuck true — making the Create/Save button
             // silently do nothing on the next click). Only the window removal,
             // which genuinely needs the window, stays on the window handle.
+            let parent_state = result.as_ref().ok().map(|(state, _)| state.clone());
             let should_close = this
                 .update(cx, |app, cx| {
                     app.project_editor_saving = false;
                     let close = match result {
-                        Ok((state, name)) => {
+                        Ok((_, name)) => {
                             let was_editing = app.project_editor_project_id.is_some();
-                            app.state = state;
-                            app.sync_project_list_state(cx);
                             app.status_message = if was_editing {
                                 format!("project saved: {name}")
                             } else {
                                 format!("project created: {name}")
                             };
-                            publish_child_window_update(ChildWindowUpdateKind::Project);
                             true
                         }
                         Err(error) => {
@@ -841,6 +841,15 @@ impl CoduxApp {
                     close
                 })
                 .unwrap_or(false);
+            if let (Some(parent), Some(parent_window_handle), Some(state)) =
+                (parent_main_window, parent_window_handle, parent_state)
+            {
+                let _ = parent_window_handle.update(cx, |_root, window, cx| {
+                    let _ = parent.update(cx, |app, cx| {
+                        app.apply_project_editor_state(state, window, cx);
+                    });
+                });
+            }
             if should_close {
                 let _ = window_handle.update(cx, |_root, window, _cx| window.remove_window());
             }
