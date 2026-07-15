@@ -30,3 +30,4 @@ pub(crate) const TERMINAL_PROGRESS_OSC_SOURCE: &str = "terminal-progress-osc";
 pub(crate) const TERMINAL_TITLE_OSC_SOURCE: &str = "terminal-title-osc";
 pub(crate) const TERMINAL_NOTIFICATION_OSC_SOURCE: &str = "terminal-notification-osc";
 pub const TERMINAL_COMMAND_OSC_SOURCE: &str = "terminal-command-osc";
+pub(crate) const TERMINAL_LIFECYCLE_SOURCE: &str = "terminal-lifecycle";

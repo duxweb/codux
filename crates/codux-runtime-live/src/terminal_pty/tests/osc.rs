@@ -41,6 +41,13 @@ fn push_output(watcher: &mut AIRuntimeTerminalOutputWatcher, terminal_id: &str, 
     });
 }
 
+fn push_exit(watcher: &mut AIRuntimeTerminalOutputWatcher, terminal_id: &str) {
+    watcher.handle_terminal_event(&TerminalEvent::Exit {
+        session_id: terminal_id.to_string(),
+        exit_code: Some(0),
+    });
+}
+
 #[test]
 fn terminal_progress_osc_emits_working_status_without_session_mutation() {
     let (dir, bridge, terminal_id, mut watcher) = watcher_fixture("terminal-progress-start");
@@ -101,6 +108,33 @@ fn terminal_status_snapshot_rejects_older_updates() {
 }
 
 #[test]
+fn terminal_status_snapshot_rejects_older_idle_clear() {
+    let (dir, bridge, terminal_id, _watcher) = watcher_fixture("terminal-status-idle-order");
+    let working = TerminalStatusEvent {
+        terminal_id: terminal_id.clone(),
+        terminal_instance_id: Some("terminal-instance-1".to_string()),
+        project_id: Some("project-1".to_string()),
+        worktree_id: Some("worktree-1".to_string()),
+        state: TerminalStatusState::Working,
+        updated_at: 20.0,
+        source: "terminal-progress-osc".to_string(),
+    };
+    let mut older_idle = working.clone();
+    older_idle.state = TerminalStatusState::Idle;
+    older_idle.updated_at = 10.0;
+    older_idle.source = "terminal-command-osc".to_string();
+
+    bridge.submit_terminal_status(working.clone()).unwrap();
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+    bridge.submit_terminal_status(older_idle).unwrap();
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
+
+    assert_eq!(bridge.terminal_statuses_snapshot(), vec![working]);
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn terminal_command_osc_does_not_replace_ai_status_snapshot() {
     let (dir, bridge, terminal_id, mut watcher) = watcher_fixture("terminal-status-command");
 
@@ -110,7 +144,7 @@ fn terminal_command_osc_does_not_replace_ai_status_snapshot() {
     push_output(
         &mut watcher,
         &terminal_id,
-        b"\x1b]133;C\x07\x1b]133;D;0\x07",
+        b"\x1b]133;C\x07\x1b]133;D;0\x07\x1b]133;A\x07",
     );
     wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
 
@@ -186,6 +220,36 @@ fn terminal_command_osc_drives_working_then_clears() {
     );
     let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
     assert_eq!(status.source, "terminal-command-osc");
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn shell_prompt_clears_stale_ai_working_without_command_finish() {
+    let (dir, bridge, terminal_id, mut watcher) = watcher_fixture("terminal-osc-prompt-clear");
+
+    push_output(&mut watcher, &terminal_id, b"\x1b]9;4;3\x07");
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+
+    push_output(&mut watcher, &terminal_id, b"\x1b]133;A\x07");
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
+    assert_eq!(status.source, "terminal-command-osc");
+    assert!(bridge.terminal_statuses_snapshot().is_empty());
+
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn terminal_exit_clears_stale_title_working() {
+    let (dir, bridge, terminal_id, mut watcher) = watcher_fixture("terminal-exit-clear");
+
+    push_output(&mut watcher, &terminal_id, "\x1b]0;⠋ | Data\x07".as_bytes());
+    wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Working);
+
+    push_exit(&mut watcher, &terminal_id);
+    let status = wait_for_terminal_status(&bridge, &terminal_id, TerminalStatusState::Idle);
+    assert_eq!(status.source, "terminal-lifecycle");
+    assert!(bridge.terminal_statuses_snapshot().is_empty());
 
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -17,9 +17,10 @@ pub(super) enum TerminalTitleAgentSignal {
 }
 
 // OSC 133 semantic marks emitted by Codux's staged shell integration:
-// C = command started, D = command finished (A/B prompt marks are ignored).
+// A = prompt, C = command started, D = command finished (B is ignored).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum TerminalCommandOscState {
+    Prompt,
     Started,
     Finished,
 }
@@ -190,6 +191,7 @@ fn terminal_command_osc_state(payload: &[u8]) -> Option<TerminalCommandOscState>
         .position(|byte| *byte == b';')
         .unwrap_or(payload.len());
     match &payload[..kind_end] {
+        b"A" => Some(TerminalCommandOscState::Prompt),
         b"C" => Some(TerminalCommandOscState::Started),
         b"D" => Some(TerminalCommandOscState::Finished),
         _ => None,

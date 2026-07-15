@@ -177,6 +177,20 @@ fn terminal_progress_osc_parser_accepts_percent_error_and_warning() {
 }
 
 #[test]
+fn terminal_command_osc_parser_detects_prompt_start_and_finish() {
+    let mut parser = TerminalOscParser::default();
+
+    assert_eq!(
+        parser.push(b"\x1b]133;A\x07\x1b]133;C\x07\x1b]133;D;0\x07"),
+        vec![
+            TerminalOscEvent::Command(TerminalCommandOscState::Prompt),
+            TerminalOscEvent::Command(TerminalCommandOscState::Started),
+            TerminalOscEvent::Command(TerminalCommandOscState::Finished),
+        ]
+    );
+}
+
+#[test]
 fn terminal_osc_parser_detects_codex_wait_notifications() {
     let mut parser = TerminalOscParser::default();
 

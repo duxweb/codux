@@ -43,11 +43,19 @@ impl AIRuntimeTerminalOutputWatcher {
     }
 
     pub(super) fn handle_terminal_event(&mut self, event: &TerminalEvent) {
-        let TerminalEvent::Output {
-            session_id, bytes, ..
-        } = event
-        else {
-            return;
+        let (session_id, bytes) = match event {
+            TerminalEvent::Output {
+                session_id, bytes, ..
+            } => (session_id, bytes),
+            TerminalEvent::Exit { session_id, .. } => {
+                if session_id == &self.binding.terminal_id {
+                    self.clear_terminal_status(
+                        crate::ai_runtime::terminal_status::TERMINAL_LIFECYCLE_SOURCE,
+                    );
+                }
+                return;
+            }
+            _ => return,
         };
         if session_id != &self.binding.terminal_id {
             return;
@@ -78,13 +86,14 @@ impl AIRuntimeTerminalOutputWatcher {
                         crate::ai_runtime::terminal_status::TERMINAL_NOTIFICATION_OSC_SOURCE,
                     );
                 }
-                TerminalOscEvent::Command(state) => self.submit_terminal_status(
-                    match state {
-                        TerminalCommandOscState::Started => TerminalStatusState::Working,
-                        // D clears rather than completing: per-command green dots
-                        // for every `ls` would be pure noise.
-                        TerminalCommandOscState::Finished => TerminalStatusState::Idle,
-                    },
+                TerminalOscEvent::Command(TerminalCommandOscState::Started) => self
+                    .submit_terminal_status(
+                        TerminalStatusState::Working,
+                        crate::ai_runtime::terminal_status::TERMINAL_COMMAND_OSC_SOURCE,
+                    ),
+                TerminalOscEvent::Command(
+                    TerminalCommandOscState::Prompt | TerminalCommandOscState::Finished,
+                ) => self.clear_terminal_status(
                     crate::ai_runtime::terminal_status::TERMINAL_COMMAND_OSC_SOURCE,
                 ),
                 TerminalOscEvent::Title(signal) => self.handle_title_signal(signal),
@@ -114,6 +123,11 @@ impl AIRuntimeTerminalOutputWatcher {
             state,
             crate::ai_runtime::terminal_status::TERMINAL_TITLE_OSC_SOURCE,
         );
+    }
+
+    fn clear_terminal_status(&mut self, source: &str) {
+        self.last_title_signal = None;
+        self.submit_terminal_status(TerminalStatusState::Idle, source);
     }
 
     fn submit_terminal_status(&self, state: TerminalStatusState, source: &str) {

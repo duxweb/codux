@@ -16,7 +16,7 @@ use crate::ai_runtime::{
     state::canonical_tool_name,
     store::{AIRuntimeStateMutation, AIRuntimeStateStore},
     store::{probe_request_for_session, should_poll_runtime_session},
-    terminal_status::{TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent},
+    terminal_status::{TERMINAL_COMMAND_OSC_SOURCE, TerminalStatusEvent, TerminalStatusState},
     tool_driver::{runtime_screen_patterns, screen_starts_idle_tool},
 };
 use serde::Serialize;
@@ -297,15 +297,24 @@ fn supervisor_loop(
                 after_mutation(&state, &transcript_monitors, &events, mutation);
             }
             AIRuntimeSupervisorMessage::TerminalStatus(status) => {
-                if status.source != TERMINAL_COMMAND_OSC_SOURCE
-                    && let Ok(mut statuses) = terminal_statuses.lock()
-                {
-                    let should_update = statuses
-                        .get(&status.terminal_id)
-                        .map(|current| status.updated_at >= current.updated_at)
-                        .unwrap_or(true);
-                    if should_update {
-                        statuses.insert(status.terminal_id.clone(), status.clone());
+                if let Ok(mut statuses) = terminal_statuses.lock() {
+                    if status.state == TerminalStatusState::Idle {
+                        if statuses.get(&status.terminal_id).is_some_and(|current| {
+                            matches!(
+                                current.state,
+                                TerminalStatusState::Working | TerminalStatusState::Waiting
+                            ) && status.updated_at >= current.updated_at
+                        }) {
+                            statuses.remove(&status.terminal_id);
+                        }
+                    } else if status.source != TERMINAL_COMMAND_OSC_SOURCE {
+                        let should_update = statuses
+                            .get(&status.terminal_id)
+                            .map(|current| status.updated_at >= current.updated_at)
+                            .unwrap_or(true);
+                        if should_update {
+                            statuses.insert(status.terminal_id.clone(), status.clone());
+                        }
                     }
                 }
                 push_event(&events, AIRuntimeSupervisorEvent::TerminalStatus { status });
