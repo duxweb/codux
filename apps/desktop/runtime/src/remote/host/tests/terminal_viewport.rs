@@ -76,7 +76,7 @@ fn terminal_baseline_viewport_does_not_steal_from_other_owner() {
 }
 
 #[test]
-fn session_terminal_baseline_viewport_targets_only_subscribed_split() {
+fn session_terminal_baseline_auto_claims_and_targets_only_subscribed_split() {
     let support_dir = temp_support_dir("codux-remote-project-baseline-active-viewport");
     write_paired_remote_settings(&support_dir);
     let project_dir = support_dir.join("project-a");
@@ -134,9 +134,6 @@ fn session_terminal_baseline_viewport_targets_only_subscribed_split() {
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
-    terminals
-        .claim_viewport(&session_a, "remote:phone-a")
-        .expect("phone owns active split");
     transport.take_messages();
     runtime.handle_resource_subscribe(&RemoteEnvelope {
         kind: REMOTE_RESOURCE_SUBSCRIBE.to_string(),
@@ -197,6 +194,7 @@ fn session_terminal_baseline_viewport_targets_only_subscribed_split() {
     let background_state = terminals
         .viewport_state(&session_b)
         .expect("background viewport state");
+    assert_eq!(active_state.owner, "remote:phone-a");
     assert_eq!(active_state.cols, 72);
     assert_eq!(active_state.rows, 18);
     assert_eq!(background_state.cols, 100);

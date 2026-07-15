@@ -564,7 +564,7 @@ impl RemoteRuntimeModel {
             request_terminal_list: bind.request_terminal_list,
             request_project_select_id: bind.request_project_select_id,
             bind_session_id: bind.bind_session_id.or(created_bind_session_id),
-            bind_full_buffer: terminal_visible && (created_should_bind || bind.bind_full_buffer),
+            bind_full_buffer: terminal_visible && bind.bind_full_buffer,
             flush_terminal_input: terminal_visible
                 && !reset_terminal_input
                 && bind.flush_terminal_input,
@@ -654,7 +654,7 @@ impl RemoteRuntimeModel {
             request_terminal_list: terminal_visible && terminal.is_none(),
             request_project_select_id: Some(project.id),
             bind_session_id: terminal.as_ref().map(|item| item.id.clone()),
-            bind_full_buffer: terminal.is_some(),
+            bind_full_buffer: false,
             flush_terminal_input: terminal.is_some(),
             removed_session_ids: Vec::new(),
         }
@@ -814,7 +814,7 @@ impl RemoteRuntimeModel {
             state_changed: true,
             reset_terminal_buffer: terminal_visible,
             bind_session_id: Some(terminal.id.clone()),
-            bind_full_buffer: terminal_visible,
+            bind_full_buffer: false,
             flush_terminal_input: terminal_visible,
             ..RemoteRuntimePlan::default()
         }
@@ -851,7 +851,7 @@ impl RemoteRuntimeModel {
             reset_terminal_input: true,
             reset_terminal_buffer: true,
             bind_session_id: Some(terminal.id),
-            bind_full_buffer: true,
+            bind_full_buffer: false,
             ..RemoteRuntimePlan::default()
         }
     }
@@ -966,7 +966,7 @@ impl RemoteRuntimeModel {
             reset_terminal_input: created_should_bind,
             reset_terminal_buffer: created_should_bind,
             bind_session_id: created_should_bind.then_some(terminal.id),
-            bind_full_buffer: created_should_bind,
+            bind_full_buffer: false,
             ..RemoteRuntimePlan::default()
         }
     }

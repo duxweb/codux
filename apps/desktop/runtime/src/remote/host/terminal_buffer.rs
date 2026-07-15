@@ -54,6 +54,7 @@ impl RemoteHostRuntime {
                     screen_wrapped_rows: None,
                     offset: 0,
                     total_characters: 0,
+                    buffer_end: tail.then_some(0),
                     truncated: false,
                     output_seq: Some(output_seq),
                     request_id: fallback_request_id,
@@ -86,7 +87,7 @@ impl RemoteHostRuntime {
             return false;
         };
         let owner = terminal_viewport_remote_owner(device_id);
-        let Ok(state) = self.terminals.viewport_state(session_id) else {
+        let Ok(state) = self.terminals.claim_viewport_auto(session_id, &owner) else {
             return false;
         };
         if state.owner != owner {
@@ -146,77 +147,36 @@ impl RemoteHostRuntime {
     ) -> Result<RemoteTerminalBufferWindow, anyhow::Error> {
         let max_chars = options.max_chars.max(1);
         if options.tail {
-            // ROOT FIX for the stale remote screen (e.g. Claude's classic-mode
-            // input box frozen at its old row while "working").
-            //
-            // The per-frame sequence the viewer uses to order/dedup output is the
-            // host's flush counter (one ++ per forwarded batch), but the screen
-            // and history advance continuously as the PTY is processed. So at any
-            // instant the screen/history already reflect a pending un-flushed
-            // batch, while the sequence still reads the previous flushed frame —
-            // a baseline built from "current screen + current sequence" is
-            // therefore inconsistent (its screen is ahead of its label). The
-            // viewer then either drops the in-between frames (stale, what was
-            // reported) or re-appends them (double).
-            //
-            // Flush the pending batch FIRST so its data is assigned a sequence
-            // and forwarded before the baseline. Read the resulting sequence and
-            // release the process-wide sequence map lock before snapshotting the
-            // PTY history: snapshot_tail competes with the live PTY writer for the
-            // per-session history lock, and holding the global sequence lock while
-            // waiting on that would let one busy terminal block unrelated sessions.
-            // The consumer-side sequence guard already tolerates the tiny
-            // seq/history skew that can happen after releasing the map lock.
-            self.flush_terminal_output_batch(session_id);
-            let output_seq = self
-                .terminal_output_seq_by_session
-                .lock()
-                .as_ref()
-                .ok()
-                .and_then(|sequences| sequences.get(session_id).copied())
-                .unwrap_or(0);
-            let (data, start_offset) = self.terminals.snapshot_tail(session_id, max_chars)?;
-            let total_characters = self
-                .terminals
-                .buffer_characters(session_id)
-                .unwrap_or_else(|_| start_offset + data.chars().count());
-            // Every tail baseline ships a screen keyframe. Raw history replay
-            // alone cannot reconstruct the screen of a primary-buffer TUI that
-            // redraws in place (codex spinner): the tail starts mid-stream, its
-            // cursor-up/erase frames replay against the wrong rows, and the
-            // viewer shows stacked garbage lines. The keyframe opens with a
-            // home+2J wipe, so it authoritatively replaces whatever the tail
-            // replay left on the visible screen; since the single-owner grid
-            // model (2985838) viewers render the owner's grid 1:1, so a
-            // host-grid keyframe can no longer land at reflowed rows (the old
-            // ghost-prompt reason to omit it). When the requester owns the
-            // viewport the keyframe is rendered at the just-reflowed target grid.
-            let screen_snapshot = if options.viewport.is_some() {
-                let max_lines = options
-                    .viewport
-                    .map(|viewport| viewport.rows.max(8) as usize)
-                    .unwrap_or(0);
+            // Read the sequence before the snapshot so the baseline never claims
+            // to include a later live frame. The absolute history watermark then
+            // removes any prefix that the atomic snapshot already covered.
+            let output_seq = self.current_terminal_output_seq(session_id);
+            let viewport_max_lines = options
+                .viewport
+                .map(|viewport| viewport.rows.max(8) as usize);
+            let baseline =
                 self.terminals
-                    .remote_viewport_snapshot(session_id, 0, 0, max_lines)
-                    .ok()
-            } else {
-                self.terminals.screen_snapshot(session_id).ok()
-            };
-            let (screen_data, screen_wrapped_rows) = screen_snapshot
-                .filter(|snapshot| !snapshot.data.is_empty())
-                .map(|snapshot| (Some(snapshot.data), Some(snapshot.wrapped_rows)))
+                    .baseline_snapshot(session_id, max_chars, viewport_max_lines)?;
+            let (screen_data, screen_wrapped_rows) = (!baseline.screen.data.is_empty())
+                .then(|| {
+                    (
+                        Some(baseline.screen.data),
+                        Some(baseline.screen.wrapped_rows),
+                    )
+                })
                 .unwrap_or_default();
             return Ok(RemoteTerminalBufferWindow {
-                data,
+                data: baseline.data,
                 screen_data,
                 screen_wrapped_rows,
-                offset: start_offset,
-                total_characters,
+                offset: baseline.offset,
+                total_characters: baseline.buffer_length,
+                buffer_end: Some(baseline.buffer_end),
                 truncated: false,
                 output_seq: Some(output_seq),
                 request_id: options.request_id,
                 tail: true,
-                has_previous: start_offset > 0,
+                has_previous: baseline.offset > 0,
                 baseline_failed: false,
             });
         }
@@ -259,6 +219,7 @@ impl RemoteHostRuntime {
             screen_wrapped_rows: None,
             offset: clamped,
             total_characters,
+            buffer_end: None,
             truncated,
             output_seq,
             request_id: request_id_for_window,

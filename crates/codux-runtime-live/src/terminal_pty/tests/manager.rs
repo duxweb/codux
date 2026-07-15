@@ -450,6 +450,8 @@ fn keyed_terminal_event_subscribers_replace_stale_sinks() {
             session_id: "session-1".to_string(),
             text: "hello".to_string(),
             bytes: b"hello".to_vec(),
+            buffer_length: 5,
+            buffer_end: 5,
         },
     );
 

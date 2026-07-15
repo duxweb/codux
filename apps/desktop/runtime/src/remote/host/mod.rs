@@ -109,6 +109,7 @@ struct RemoteTerminalLayoutScope {
 pub(crate) struct RemoteTerminalOutputBatch {
     data: String,
     buffer_length: usize,
+    buffer_end: usize,
     viewers: HashSet<String>,
 }
 

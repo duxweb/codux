@@ -244,6 +244,14 @@ impl HeadlessTerminalScreen {
         }
     }
 
+    /// Replace the active visible grid from an authoritative keyframe without
+    /// moving the previous viewport into scrollback.
+    pub fn replace_visible_with_keyframe(&mut self, bytes: &[u8]) {
+        self.pending_scroll_pixels = 0.0;
+        self.engine
+            .send(TerminalScreenCommand::ReplaceVisible(bytes.to_vec()));
+    }
+
     pub(crate) fn restore_visible_wrapped_rows(&mut self, wrapped_rows: &[bool]) {
         self.engine.send(TerminalScreenCommand::RestoreWrappedRows(
             wrapped_rows.to_vec(),
@@ -537,6 +545,7 @@ impl TerminalScreenEngine {
 enum TerminalScreenCommand {
     Process(Vec<u8>),
     ProcessReplay(Vec<u8>),
+    ReplaceVisible(Vec<u8>),
     RestoreWrappedRows(Vec<bool>),
     SetEventSink(TerminalScreenEventSink),
     Resize {
@@ -1005,6 +1014,20 @@ impl TerminalScreenWorker {
             match command {
                 TerminalScreenCommand::Process(bytes) => self.feed(&bytes, true),
                 TerminalScreenCommand::ProcessReplay(bytes) => self.feed(&bytes, false),
+                TerminalScreenCommand::ReplaceVisible(bytes) => {
+                    let targets_alternate_screen = bytes.starts_with(b"\x1b[?1049h");
+                    if self.term.mode().contains(TermMode::ALT_SCREEN) != targets_alternate_screen {
+                        self.term.swap_alt();
+                    }
+                    if let Some(index) = bytes.windows(4).position(|window| window == b"\x1b[2J") {
+                        self.feed(&bytes[..index], false);
+                        self.term.grid_mut().reset_region(..);
+                        self.feed(&bytes[index + 4..], false);
+                    } else {
+                        self.term.grid_mut().reset_region(..);
+                        self.feed(&bytes, false);
+                    }
+                }
                 TerminalScreenCommand::RestoreWrappedRows(wrapped_rows) => {
                     self.restore_visible_wrapped_rows(&wrapped_rows);
                 }
@@ -1462,10 +1485,11 @@ impl TerminalScreenWorker {
 /// and the mouse / cursor-key modes make the viewer forward wheel and arrow
 /// input instead of scrolling its local history.
 fn terminal_keyframe_mode_prefix(mode: &TerminalInputMode) -> String {
-    let mut out = String::new();
-    if mode.alternate_screen {
-        out.push_str("\x1b[?1049h");
-    }
+    let mut out = if mode.alternate_screen {
+        "\x1b[?1049h".to_string()
+    } else {
+        "\x1b[?1049l".to_string()
+    };
     if mode.application_cursor {
         out.push_str("\x1b[?1h");
     }
@@ -1943,7 +1967,13 @@ pub fn stack_scrolled_snapshots(
     }
     let mut cursor = viewport.cursor.clone();
     cursor.row += margin;
-    let data = terminal_snapshot_data(viewport.cols, rows, &cells, &cursor);
+    let mut data = terminal_keyframe_mode_prefix(&viewport.input_mode);
+    data.push_str(&terminal_snapshot_data(
+        viewport.cols,
+        rows,
+        &cells,
+        &cursor,
+    ));
     let wrapped_rows = if above.wrapped_rows.len() >= above.rows
         && viewport.wrapped_rows.len() >= viewport.rows
         && below.is_none_or(|below| below.wrapped_rows.len() >= below.rows)
@@ -2483,6 +2513,36 @@ mod tests {
         let scrolled = screen.snapshot();
         assert_eq!(scrolled.display_offset, 0);
         assert!(!scrolled.data.contains("old one"));
+    }
+
+    #[test]
+    fn visible_keyframe_does_not_add_rows_to_scrollback() {
+        let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
+        screen.process(b"one\r\ntwo\r\nthree\r\nfour\r\nfive\r\nsix");
+        let before = screen.snapshot().total_lines;
+
+        screen.replace_visible_with_keyframe(b"\x1b[?1049l\x1b[H\x1b[2Jcurrent");
+        let after = screen.snapshot();
+
+        assert_eq!(after.total_lines, before);
+        assert!(after.data.contains("current"));
+    }
+
+    #[test]
+    fn visible_keyframe_switches_between_primary_and_alternate_buffers() {
+        let mut screen = HeadlessTerminalScreen::new(20, 4, 100);
+        screen.process(b"primary");
+
+        screen.replace_visible_with_keyframe(b"\x1b[?1049h\x1b[H\x1b[2Jalternate");
+        let alternate = screen.snapshot();
+        assert!(alternate.input_mode.alternate_screen);
+        assert!(alternate.data.contains("alternate"));
+
+        screen.replace_visible_with_keyframe(b"\x1b[?1049l\x1b[H\x1b[2Jprimary fresh");
+        let primary = screen.snapshot();
+        assert!(!primary.input_mode.alternate_screen);
+        assert!(primary.data.contains("primary fresh"));
+        assert!(!primary.data.contains("alternate"));
     }
 
     #[test]

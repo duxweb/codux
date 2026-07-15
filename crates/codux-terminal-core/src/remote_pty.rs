@@ -11,6 +11,7 @@ pub struct RemotePtySession<T> {
     max_cached_chars: usize,
     content: String,
     buffer_length: usize,
+    buffer_end: Option<usize>,
     sequence: TerminalSequence,
     history_screen: HeadlessTerminalScreen,
     awaiting_baseline: bool,
@@ -24,6 +25,7 @@ impl<T> RemotePtySession<T> {
             max_cached_chars,
             content: String::new(),
             buffer_length: 0,
+            buffer_end: None,
             sequence: 0,
             history_screen: HeadlessTerminalScreen::new(80, 24, 2_000),
             awaiting_baseline: false,
@@ -40,6 +42,11 @@ impl<T> RemotePtySession<T> {
         self.buffer_length
     }
 
+    #[cfg(test)]
+    pub(crate) fn buffer_end(&self) -> Option<usize> {
+        self.buffer_end
+    }
+
     pub fn sequence(&self) -> TerminalSequence {
         self.sequence
     }
@@ -49,12 +56,9 @@ impl<T> RemotePtySession<T> {
     }
 
     pub fn screen_snapshot(&self) -> TerminalScreenSnapshot {
-        // The live view renders the raw-byte history screen, which is reflowed
-        // to the consumer's own grid size. The screen `screenData` keyframe is
-        // rendered at the *host's* grid size and, when the host viewport differs
-        // (e.g. the consumer hasn't claimed/resized the host yet), would paint
-        // into only the top rows and leave the rest blank. Rendering the raw
-        // history avoids that and matches what the native emulator did.
+        // One screen owns both the replayed history and authoritative visible
+        // keyframes, so live output, scrolling, and baseline restores cannot
+        // diverge into separate render states.
         self.history_screen.snapshot()
     }
 
@@ -85,6 +89,7 @@ impl<T> RemotePtySession<T> {
         self.held_unsequenced_live.clear();
         if reset_sequence {
             self.sequence = 0;
+            self.buffer_end = None;
         }
     }
 
@@ -120,6 +125,7 @@ impl<T> RemotePtySession<T> {
         screen_data: Option<&str>,
         screen_wrapped_rows: Option<&[bool]>,
         buffer_length: Option<usize>,
+        buffer_end: Option<usize>,
         sequence: Option<TerminalSequence>,
     ) -> Vec<T> {
         // Preserve the user's scroll position across a baseline replace: a
@@ -133,6 +139,7 @@ impl<T> RemotePtySession<T> {
         if let Some(buffer_length) = buffer_length {
             self.buffer_length = buffer_length;
         }
+        self.buffer_end = buffer_end;
         self.history_screen.clear();
         let mut rendered = false;
         if !content.is_empty() {
@@ -140,16 +147,15 @@ impl<T> RemotePtySession<T> {
             rendered = true;
         }
         // Reconstruct the current screen from the host keyframe. An alt-screen
-        // TUI (e.g. Claude) keeps its UI in the alternate buffer, which has no
-        // scrollback and is therefore absent from the raw history above; without
-        // the keyframe a fresh restore renders blank until the host happens to
-        // emit a full repaint. The keyframe carries the active DEC modes and its
-        // \x1b[2J clears only the visible screen (alacritty keeps scrollback),
-        // so the raw history above stays scrollable.
+        // TUI (e.g. Claude) keeps its UI outside raw scrollback, while a normal
+        // screen keyframe may overlap the end of that history. Replace the
+        // visible grid in place so the keyframe never pushes its old viewport
+        // (including blank rows and partial redraws) into scrollback again.
         if let Some(screen_data) = screen_data
             && !screen_data.is_empty()
         {
-            self.history_screen.process_replay(screen_data.as_bytes());
+            self.history_screen
+                .replace_visible_with_keyframe(screen_data.as_bytes());
             if let Some(wrapped_rows) = screen_wrapped_rows {
                 self.history_screen
                     .restore_visible_wrapped_rows(wrapped_rows);
@@ -203,23 +209,56 @@ impl<T> RemotePtySession<T> {
         &mut self,
         data: &str,
         buffer_length: Option<usize>,
+        buffer_end: Option<usize>,
         sequence: Option<TerminalSequence>,
     ) {
-        if !data.is_empty() {
+        let data_chars = data.chars().count();
+        let previous_end = self.buffer_end;
+        let covered_chars = buffer_end
+            .zip(previous_end)
+            .map(|(buffer_end, previous_end)| {
+                let frame_start = buffer_end.saturating_sub(data_chars);
+                previous_end.saturating_sub(frame_start).min(data_chars)
+            })
+            .unwrap_or(0);
+        let uncovered = if covered_chars == 0 {
+            data
+        } else {
+            let start = data
+                .char_indices()
+                .nth(covered_chars)
+                .map(|(index, _)| index)
+                .unwrap_or(data.len());
+            &data[start..]
+        };
+        if !uncovered.is_empty() {
             // The live view is the raw PTY history reflowed to the consumer's
-            // grid; live output only appends bytes. Follow the bottom only if
-            // we were already there, so a user scrolled up into history stays
-            // put instead of snapping down.
+            // grid. A baseline can already include a queued live frame, so use
+            // the host's absolute history watermark to append only the suffix
+            // not covered by that baseline. Follow the bottom only if we were
+            // already there, so a user scrolled up into history stays put.
             let was_at_bottom = self.history_screen.display_offset() == 0;
-            push_cache_buffer(&mut self.content, data, self.max_cached_chars);
-            self.history_screen.process(data.as_bytes());
+            push_cache_buffer(&mut self.content, uncovered, self.max_cached_chars);
+            self.history_screen.process(uncovered.as_bytes());
             if was_at_bottom {
                 self.history_screen.scroll_to_bottom();
             }
         }
-        if let Some(buffer_length) = buffer_length {
-            self.buffer_length = buffer_length;
+        let advances_watermark = match (previous_end, buffer_end) {
+            (Some(previous), Some(current)) => current > previous,
+            _ => true,
+        };
+        if advances_watermark {
+            self.buffer_length = buffer_length.unwrap_or_else(|| {
+                self.buffer_length
+                    .saturating_add(data_chars.saturating_sub(covered_chars))
+            });
         }
+        self.buffer_end = match (previous_end, buffer_end) {
+            (Some(previous), Some(current)) => Some(previous.max(current)),
+            (None, Some(current)) => Some(current),
+            (_, None) => None,
+        };
         if let Some(sequence) = sequence {
             self.sequence = sequence;
         }
@@ -228,6 +267,7 @@ impl<T> RemotePtySession<T> {
     pub fn clear(&mut self) {
         self.content.clear();
         self.buffer_length = 0;
+        self.buffer_end = None;
         self.sequence = 0;
         self.history_screen.clear();
         self.reset_transient(false);

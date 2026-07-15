@@ -467,7 +467,7 @@ impl TerminalSessionHandle for LocalPtySessionHandle {
     }
 
     fn buffer_characters(&self) -> usize {
-        self.0.history.lock().len_chars()
+        self.0.history.lock().retained_chars()
     }
 
     fn clear_history(&self) {
@@ -485,7 +485,8 @@ impl TerminalSessionHandle for LocalPtySessionHandle {
 
 struct RingHistory {
     chunks: VecDeque<String>,
-    len_chars: usize,
+    retained_chars: usize,
+    total_chars: usize,
     max_chars: usize,
 }
 
@@ -493,7 +494,8 @@ impl RingHistory {
     fn new(max_chars: usize) -> Self {
         Self {
             chunks: VecDeque::new(),
-            len_chars: 0,
+            retained_chars: 0,
+            total_chars: 0,
             max_chars,
         }
     }
@@ -502,20 +504,23 @@ impl RingHistory {
         if text.is_empty() {
             return;
         }
-        self.len_chars += text.chars().count();
+        let text_chars = text.chars().count();
+        self.retained_chars += text_chars;
+        self.total_chars += text_chars;
         self.chunks.push_back(text);
-        while self.len_chars > self.max_chars {
+        while self.retained_chars > self.max_chars {
             let Some(front) = self.chunks.pop_front() else {
                 break;
             };
             let front_len = front.chars().count();
-            if self.len_chars.saturating_sub(front_len) >= self.max_chars {
-                self.len_chars = self.len_chars.saturating_sub(front_len);
+            if self.retained_chars.saturating_sub(front_len) >= self.max_chars {
+                self.retained_chars = self.retained_chars.saturating_sub(front_len);
                 continue;
             }
-            let keep = self.max_chars.min(self.len_chars);
-            let trimmed = tail_chars(&front, keep.saturating_sub(self.len_chars - front_len));
-            self.len_chars = self.len_chars.saturating_sub(front_len) + trimmed.chars().count();
+            let keep = self.max_chars.min(self.retained_chars);
+            let trimmed = tail_chars(&front, keep.saturating_sub(self.retained_chars - front_len));
+            self.retained_chars =
+                self.retained_chars.saturating_sub(front_len) + trimmed.chars().count();
             if !trimmed.is_empty() {
                 self.chunks.push_front(trimmed);
             }
@@ -525,11 +530,15 @@ impl RingHistory {
 
     fn clear(&mut self) {
         self.chunks.clear();
-        self.len_chars = 0;
+        self.retained_chars = 0;
     }
 
-    fn len_chars(&self) -> usize {
-        self.len_chars
+    fn total_chars(&self) -> usize {
+        self.total_chars
+    }
+
+    fn retained_chars(&self) -> usize {
+        self.retained_chars
     }
 
     fn to_text(&self) -> String {
@@ -538,11 +547,13 @@ impl RingHistory {
 
     fn tail_text(&self, max_chars: usize) -> (String, usize) {
         let text = self.to_text();
-        let total = text.chars().count();
-        if total <= max_chars {
-            return (text, total);
+        if self.retained_chars <= max_chars {
+            return (text, 0);
         }
-        (tail_chars(&text, max_chars), total)
+        (
+            tail_chars(&text, max_chars),
+            self.retained_chars.saturating_sub(max_chars),
+        )
     }
 }
 
@@ -561,10 +572,16 @@ fn spawn_reader(
                 Ok(n) => {
                     let bytes = buffer[..n].to_vec();
                     let text = String::from_utf8_lossy(&bytes).to_string();
-                    history.lock().push(text.clone());
+                    let (buffer_end, buffer_characters) = {
+                        let mut history = history.lock();
+                        history.push(text.clone());
+                        let buffer_end = history.total_chars();
+                        let buffer_characters = history.retained_chars();
+                        (buffer_end, buffer_characters)
+                    };
                     {
                         let mut info = info.lock();
-                        info.buffer_characters = history.lock().len_chars();
+                        info.buffer_characters = buffer_characters;
                         info.has_buffer = info.buffer_characters > 0;
                         info.last_active_at = unix_timestamp_text();
                     }
@@ -574,6 +591,8 @@ fn spawn_reader(
                             session_id: session_id.clone(),
                             text,
                             bytes,
+                            buffer_length: buffer_characters,
+                            buffer_end,
                         },
                     );
                 }
@@ -880,7 +899,8 @@ mod tests {
         history.push("bc".to_string());
 
         assert_eq!(history.to_text(), "你好bc");
-        assert_eq!(history.len_chars(), 4);
+        assert_eq!(history.retained_chars, 4);
+        assert_eq!(history.total_chars(), 5);
     }
 
     #[test]

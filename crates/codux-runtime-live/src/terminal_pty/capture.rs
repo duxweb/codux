@@ -31,6 +31,7 @@ pub(super) struct CaptureReaderShared {
     pub(super) output_capture: Arc<parking_lot::Mutex<TerminalOutputCapture>>,
     pub(super) history: Arc<parking_lot::Mutex<RingHistory>>,
     pub(super) screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
+    pub(super) output_commit: Arc<parking_lot::Mutex<()>>,
     pub(super) output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
     pub(super) event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
     pub(super) info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
@@ -123,25 +124,37 @@ impl Read for CaptureReader {
                 );
                 capture.offset += read as u64;
             }
-            self.shared.output_capture.lock().push(bytes);
-            self.shared.screen.lock().process(bytes);
+            let (text, buffer_length, buffer_end) = {
+                let _commit = self.shared.output_commit.lock();
+                self.shared.output_capture.lock().push(bytes);
+                self.shared.screen.lock().process(bytes);
+                let text = decode_utf8_output(bytes, &mut self.pending_utf8);
+                let (buffer_length, buffer_end) = if text.is_empty() {
+                    let history = self.shared.history.lock();
+                    (history.retained_chars(), history.total_chars())
+                } else {
+                    let mut history = self.shared.history.lock();
+                    history.push_text(&text);
+                    let buffer_end = history.total_chars();
+                    let buffer_length = history.retained_chars();
+                    drop(history);
+                    let mut info = self.shared.info.lock();
+                    info.last_active_at = rfc3339_now();
+                    info.buffer_characters = buffer_length;
+                    info.has_buffer = buffer_length > 0;
+                    (buffer_length, buffer_end)
+                };
+                (text, buffer_length, buffer_end)
+            };
             self.broadcast_output(bytes);
-            let text = decode_utf8_output(bytes, &mut self.pending_utf8);
-            if !text.is_empty() {
-                let mut history = self.shared.history.lock();
-                history.push_text(&text);
-                let chars = history.len_chars();
-                let mut info = self.shared.info.lock();
-                info.last_active_at = rfc3339_now();
-                info.buffer_characters = chars;
-                info.has_buffer = chars > 0;
-            }
             emit_terminal_event(
                 &self.shared.event_subscribers,
                 TerminalEvent::Output {
                     session_id: self.session_id.clone(),
                     text,
                     bytes: bytes.to_vec(),
+                    buffer_length,
+                    buffer_end,
                 },
             );
         }
@@ -156,15 +169,19 @@ impl CaptureReader {
             return;
         }
         let bytes = text.as_bytes().to_vec();
-        {
+        let (buffer_length, buffer_end) = {
+            let _commit = self.shared.output_commit.lock();
             let mut history = self.shared.history.lock();
             history.push_text(&text);
-            let chars = history.len_chars();
+            let buffer_end = history.total_chars();
+            let buffer_length = history.retained_chars();
+            drop(history);
             let mut info = self.shared.info.lock();
             info.last_active_at = rfc3339_now();
-            info.buffer_characters = chars;
-            info.has_buffer = chars > 0;
-        }
+            info.buffer_characters = buffer_length;
+            info.has_buffer = buffer_length > 0;
+            (buffer_length, buffer_end)
+        };
         self.broadcast_output(&bytes);
         emit_terminal_event(
             &self.shared.event_subscribers,
@@ -172,6 +189,8 @@ impl CaptureReader {
                 session_id: self.session_id.clone(),
                 text,
                 bytes,
+                buffer_length,
+                buffer_end,
             },
         );
     }
@@ -295,7 +314,9 @@ impl TerminalInputCapture {
 pub(super) struct RingHistory {
     max_bytes: usize,
     len_bytes: usize,
-    len_chars: usize,
+    retained_chars: usize,
+    total_chars: usize,
+    retained_starts_at_line_boundary: bool,
     chunks: VecDeque<String>,
 }
 
@@ -304,14 +325,17 @@ impl RingHistory {
         Self {
             max_bytes,
             len_bytes: 0,
-            len_chars: 0,
+            retained_chars: 0,
+            total_chars: 0,
+            retained_starts_at_line_boundary: true,
             chunks: VecDeque::new(),
         }
     }
 
     pub(super) fn clear(&mut self) {
         self.len_bytes = 0;
-        self.len_chars = 0;
+        self.retained_chars = 0;
+        self.retained_starts_at_line_boundary = true;
         self.chunks.clear();
     }
 
@@ -321,13 +345,16 @@ impl RingHistory {
         }
         let chunk = text.to_string();
         self.len_bytes += chunk.len();
-        self.len_chars += chunk.chars().count();
+        let chunk_chars = chunk.chars().count();
+        self.retained_chars += chunk_chars;
+        self.total_chars += chunk_chars;
         self.chunks.push_back(chunk);
 
         while self.len_bytes > self.max_bytes {
             if let Some(chunk) = self.chunks.pop_front() {
                 self.len_bytes = self.len_bytes.saturating_sub(chunk.len());
-                self.len_chars = self.len_chars.saturating_sub(chunk.chars().count());
+                self.retained_chars = self.retained_chars.saturating_sub(chunk.chars().count());
+                self.retained_starts_at_line_boundary = chunk.ends_with('\n');
             } else {
                 break;
             }
@@ -343,19 +370,40 @@ impl RingHistory {
     }
 
     pub(super) fn tail_text(&self, max_chars: usize) -> (String, usize) {
-        if max_chars == 0 || self.len_chars <= max_chars {
+        if max_chars == 0 || self.retained_chars <= max_chars {
             return (self.to_text(), 0);
         }
         let text = self.to_text();
-        let start_chars = self.len_chars.saturating_sub(max_chars);
+        let start_chars = self.retained_chars.saturating_sub(max_chars);
         let start_byte = byte_index_for_char_offset(&text, start_chars);
         let safe_start_byte = ansi_safe_snapshot_start(&text, start_byte);
         let safe_start_chars = text[..safe_start_byte].chars().count();
         (text[safe_start_byte..].to_string(), safe_start_chars)
     }
 
-    pub(super) fn len_chars(&self) -> usize {
-        self.len_chars
+    pub(super) fn total_chars(&self) -> usize {
+        self.total_chars
+    }
+
+    pub(super) fn retained_chars(&self) -> usize {
+        self.retained_chars
+    }
+
+    pub(super) fn snapshot_tail(&self, max_chars: usize) -> (String, usize, usize, usize) {
+        let (mut data, mut offset) = self.tail_text(max_chars);
+        let retained = self.to_text();
+        let starts_at_line_boundary = if offset == 0 {
+            self.retained_starts_at_line_boundary
+        } else {
+            let start_byte = byte_index_for_char_offset(&retained, offset);
+            start_byte > 0 && retained.as_bytes()[start_byte - 1] == b'\n'
+        };
+        if !starts_at_line_boundary && let Some(newline) = data.find('\n') {
+            let removed = data[..=newline].chars().count();
+            data.drain(..=newline);
+            offset += removed;
+        }
+        (data, offset, self.retained_chars, self.total_chars)
     }
 }
 

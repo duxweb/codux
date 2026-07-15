@@ -375,6 +375,17 @@ impl TerminalManager {
         Ok(self.session(session_id)?.snapshot_tail(max_chars))
     }
 
+    pub fn baseline_snapshot(
+        &self,
+        session_id: &str,
+        max_chars: usize,
+        viewport_max_lines: Option<usize>,
+    ) -> Result<TerminalBaselineSnapshot> {
+        Ok(self
+            .session(session_id)?
+            .baseline_snapshot(max_chars, viewport_max_lines))
+    }
+
     pub fn screen_snapshot(&self, session_id: &str) -> Result<TerminalScreenSnapshot> {
         Ok(self.session(session_id)?.screen_snapshot())
     }

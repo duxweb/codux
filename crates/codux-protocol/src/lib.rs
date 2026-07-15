@@ -822,6 +822,7 @@ pub struct RemoteTerminalBufferWindow {
     pub screen_wrapped_rows: Option<Vec<bool>>,
     pub offset: usize,
     pub total_characters: usize,
+    pub buffer_end: Option<usize>,
     pub truncated: bool,
     pub output_seq: Option<i64>,
     pub request_id: Option<String>,
@@ -1126,10 +1127,12 @@ pub fn host_capabilities() -> Value {
             "screenData": true,
             "screenWrappedRows": true,
             "baselineFailed": true,
+            "bufferEnd": true,
         },
         "terminalOutput": {
             "sequence": true,
             "staleOutput": true,
+            "bufferEnd": true,
         },
         "terminalViewport": {
             "ownership": true,
@@ -1202,6 +1205,9 @@ fn terminal_buffer_payload(
         "tail": window.tail,
         "hasPrevious": window.has_previous,
     });
+    if let Some(buffer_end) = window.buffer_end {
+        payload["bufferEnd"] = json!(buffer_end);
+    }
     if window.baseline_failed {
         payload["baselineFailed"] = json!(true);
     }
@@ -1227,10 +1233,16 @@ fn terminal_buffer_payload(
     payload
 }
 
-pub fn terminal_live_output_payload(data: String, buffer_length: usize, output_seq: i64) -> Value {
+pub fn terminal_live_output_payload(
+    data: String,
+    buffer_length: usize,
+    buffer_end: usize,
+    output_seq: i64,
+) -> Value {
     json!({
         "data": data,
         "bufferLength": buffer_length,
+        "bufferEnd": buffer_end,
         "outputSeq": output_seq,
     })
 }
@@ -1266,6 +1278,7 @@ mod tests {
             screen_wrapped_rows: Some(vec![true, false]),
             offset: 10,
             total_characters: 16,
+            buffer_end: Some(24),
             truncated: true,
             output_seq: None,
             request_id: Some("request-1".to_string()),
@@ -1296,6 +1309,7 @@ mod tests {
             assert_eq!(payload["chunkCount"], 3);
             assert_eq!(payload["startOffset"], 10);
             assert_eq!(payload["bufferLength"], 16);
+            assert_eq!(payload["bufferEnd"], 24);
             assert_eq!(payload["outputSeq"], 7);
             assert_eq!(payload["truncated"], true);
             assert_eq!(payload["requestId"], "request-1");
@@ -1406,10 +1420,11 @@ mod tests {
         // Live output is a pure byte stream now — no screen keyframe. The desktop
         // emulator keeps its own scrollback from `data`; replaying a whole-screen
         // keyframe on top of it duplicated the screen (notably on resize bursts).
-        let payload = terminal_live_output_payload("raw".to_string(), 128, 9);
+        let payload = terminal_live_output_payload("raw".to_string(), 64, 128, 9);
 
         assert_eq!(payload["data"], "raw");
-        assert_eq!(payload["bufferLength"], 128);
+        assert_eq!(payload["bufferLength"], 64);
+        assert_eq!(payload["bufferEnd"], 128);
         assert_eq!(payload["outputSeq"], 9);
         assert!(payload.get("screenData").is_none());
         assert!(payload.get("buffer").is_none());

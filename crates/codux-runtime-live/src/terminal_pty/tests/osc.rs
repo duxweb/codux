@@ -38,6 +38,8 @@ fn push_output(watcher: &mut AIRuntimeTerminalOutputWatcher, terminal_id: &str, 
         session_id: terminal_id.to_string(),
         text: String::new(),
         bytes: bytes.to_vec(),
+        buffer_length: bytes.len(),
+        buffer_end: bytes.len(),
     });
 }
 
@@ -396,6 +398,8 @@ fn terminal_output_refreshes_kiro_screen_signal_without_poll() {
         session_id: terminal_id.clone(),
         text: output.to_string(),
         bytes: output.as_bytes().to_vec(),
+        buffer_length: output.chars().count(),
+        buffer_end: output.chars().count(),
     });
 
     wait_for_session_state(&bridge, &terminal_id, "responding", Duration::from_secs(2));

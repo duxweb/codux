@@ -129,6 +129,32 @@ void main() {
     expect(controller.cachedOutput('session-1'), 'old-new');
   });
 
+  test('tail baseline does not replay live output it already covers', () {
+    final controller = RemoteTerminalOutputController(maxBufferChars: 64);
+    controller.bindSession('session-1', requireBaseline: true);
+
+    controller.accept(
+      _liveOutput('overlap', outputSeq: 11).withPayload({
+        'bufferLength': 12,
+        'bufferEnd': 12,
+      }),
+      activeSessionId: 'session-1',
+    );
+    controller.accept(
+      _terminalBuffer(
+        '12345overlap',
+        offset: 0,
+        bufferLength: 12,
+        truncated: false,
+        outputSeq: 10,
+        tail: true,
+      ).withPayload({'bufferEnd': 12}),
+      activeSessionId: 'session-1',
+    );
+
+    expect(controller.cachedOutput('session-1'), '12345overlap');
+  });
+
   test('live sequence gaps render but request a baseline resync', () {
     final controller = RemoteTerminalOutputController(maxBufferChars: 4);
 

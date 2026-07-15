@@ -466,7 +466,12 @@ fn remote_terminal_live_output_is_data_only_without_screen_keyframe() {
     runtime.register_terminal_viewer(&session_id, Some("device-1"));
     transport.take_messages();
 
-    runtime.queue_terminal_output_batch(session_id.clone(), "partial live raw".to_string());
+    runtime.queue_terminal_output_batch(
+        session_id.clone(),
+        "partial live raw".to_string(),
+        "partial live raw".chars().count(),
+        "partial live raw".chars().count(),
+    );
     runtime.flush_terminal_output_batch(&session_id);
 
     let mut live = None;
@@ -485,6 +490,8 @@ fn remote_terminal_live_output_is_data_only_without_screen_keyframe() {
     let live = live.expect("live terminal output");
 
     assert_eq!(live["data"], "partial live raw");
+    assert_eq!(live["bufferLength"], "partial live raw".chars().count());
+    assert_eq!(live["bufferEnd"], "partial live raw".chars().count());
     assert_eq!(live["outputSeq"], 1);
     // Live output is a pure byte stream now — NO screen keyframe. Replaying a
     // whole-screen keyframe on top of the emulator's own scrollback duplicated

@@ -125,12 +125,15 @@ Live output has no `buffer: true`:
   "payload": {
     "data": "...",
     "outputSeq": 123,
-    "bufferLength": 1000
+    "bufferLength": 1000,
+    "bufferEnd": 5000
   }
 }
 ```
 
 - `outputSeq` is a host flush counter. It is not a byte offset.
+- `bufferLength` is the retained-history character count; `bufferEnd` is the
+  monotonic character position for the terminal lifetime.
 - The host emits live output in short batches.
 - Clients ack received frames with `terminal.output.ack { outputSeq,
   bufferLength? }`. Controllers may throttle acks as long as they stay within
@@ -150,6 +153,7 @@ Baseline output has `buffer: true`:
     "offset": 0,
     "startOffset": 0,
     "bufferLength": 1000,
+    "bufferEnd": 5000,
     "truncated": false,
     "tail": true,
     "hasPrevious": false,
@@ -162,6 +166,9 @@ Baseline output has `buffer: true`:
 
 - `data` is raw terminal history for scrollback/native replay.
 - `offset` and `bufferLength` are character positions in retained history.
+- Tail baselines include `bufferEnd`, captured atomically with the history and
+  screen keyframe. New clients use it to remove live output already covered by
+  that baseline; historical offset pages omit it.
 - `startOffset` is the beginning of the retained window. Chunk assembly rewrites
   the assembled `offset` back to this value.
 - `truncated` means the requested offset page has more data after this window.

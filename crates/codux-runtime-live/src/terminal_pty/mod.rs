@@ -56,7 +56,7 @@ pub use events::{
 };
 pub use manager::{DesktopTerminalSessionHandle, TerminalManager};
 pub use platform::default_shell;
-pub use session::{TerminalPtySession, TerminalPtySessionHandle};
+pub use session::{TerminalBaselineSnapshot, TerminalPtySession, TerminalPtySessionHandle};
 
 use capture::*;
 use config::*;

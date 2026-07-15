@@ -6,6 +6,14 @@ type TerminalPtySpawnResult = (
     Box<dyn Read + Send>,
 );
 
+pub struct TerminalBaselineSnapshot {
+    pub data: String,
+    pub offset: usize,
+    pub buffer_length: usize,
+    pub buffer_end: usize,
+    pub screen: TerminalScreenSnapshot,
+}
+
 pub struct TerminalPtySession {
     pub(super) id: String,
     pub(super) stdin_writer: Arc<parking_lot::Mutex<Box<dyn Write + Send>>>,
@@ -13,6 +21,7 @@ pub struct TerminalPtySession {
     pub(super) output_capture: Arc<parking_lot::Mutex<TerminalOutputCapture>>,
     pub(super) history: Arc<parking_lot::Mutex<RingHistory>>,
     pub(super) screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
+    pub(super) output_commit: Arc<parking_lot::Mutex<()>>,
     pub(super) output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
     pub(super) event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
     pub(super) info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
@@ -100,6 +109,7 @@ impl TerminalPtySession {
             rows as usize,
             initial_remote_screen_scrollback,
         )));
+        let output_commit = Arc::new(parking_lot::Mutex::new(()));
         let output_subscribers = Arc::new(parking_lot::Mutex::new(Vec::new()));
         let event_subscribers = Arc::new(parking_lot::Mutex::new(Vec::new()));
         if let Some((event_key, event_sink)) = event_sink {
@@ -222,6 +232,7 @@ impl TerminalPtySession {
                 output_capture: output_capture.clone(),
                 history: history.clone(),
                 screen: screen.clone(),
+                output_commit: output_commit.clone(),
                 output_subscribers: output_subscribers.clone(),
                 event_subscribers: event_subscribers.clone(),
                 info: info.clone(),
@@ -235,6 +246,7 @@ impl TerminalPtySession {
                 output_capture,
                 history,
                 screen,
+                output_commit,
                 output_subscribers,
                 event_subscribers,
                 info,
@@ -363,6 +375,31 @@ impl TerminalPtySession {
         self.history.lock().tail_text(max_chars)
     }
 
+    pub fn baseline_snapshot(
+        &self,
+        max_chars: usize,
+        viewport_max_lines: Option<usize>,
+    ) -> TerminalBaselineSnapshot {
+        let (data, offset, buffer_length, buffer_end, request) = {
+            let _commit = self.output_commit.lock();
+            let (data, offset, buffer_length, buffer_end) =
+                self.history.lock().snapshot_tail(max_chars);
+            let screen = self.screen.lock();
+            let request = match viewport_max_lines {
+                Some(max_lines) => screen.remote_viewport_snapshot_request(0, 0, max_lines),
+                None => screen.snapshot_request(true),
+            };
+            (data, offset, buffer_length, buffer_end, request)
+        };
+        TerminalBaselineSnapshot {
+            data,
+            offset,
+            buffer_length,
+            buffer_end,
+            screen: request.snapshot(),
+        }
+    }
+
     pub fn screen_snapshot(&self) -> TerminalScreenSnapshot {
         // Queue the snapshot under the lock, but wait for the worker reply
         // outside of it: holding the screen mutex across the round-trip
@@ -428,7 +465,7 @@ impl TerminalPtySession {
     }
 
     pub fn buffer_characters(&self) -> usize {
-        self.history.lock().len_chars()
+        self.history.lock().retained_chars()
     }
 
     pub fn set_screen_scrollback(&self, lines: usize) {
@@ -451,6 +488,7 @@ impl TerminalPtySession {
     }
 
     pub fn clear_history(&self) {
+        let _commit = self.output_commit.lock();
         self.history.lock().clear();
         self.screen.lock().clear();
         let mut info = self.info.lock();

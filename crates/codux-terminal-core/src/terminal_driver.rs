@@ -45,6 +45,10 @@ pub enum TerminalEvent {
         text: String,
         #[serde(skip)]
         bytes: Vec<u8>,
+        #[serde(rename = "bufferLength")]
+        buffer_length: usize,
+        #[serde(rename = "bufferEnd")]
+        buffer_end: usize,
     },
     Exit {
         #[serde(rename = "sessionId")]

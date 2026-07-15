@@ -331,7 +331,7 @@ fn restores_baseline_before_replaying_held_live_output() {
     assert!(session.hold_live(Some(11), "stale"));
     assert!(session.hold_live(Some(12), "new"));
 
-    let replay = session.replace_from_baseline("abcd", None, None, Some(8), Some(11));
+    let replay = session.replace_from_baseline("abcd", None, None, Some(8), None, Some(11));
     assert_eq!(session.content(), "abcd");
     assert_eq!(replay, vec!["new"]);
 }
@@ -342,7 +342,7 @@ fn restores_raw_history_screen_from_baseline() {
     session.resize_screen(20, 8);
     let history = scrollable_history("raw history");
 
-    session.replace_from_baseline(&history, None, None, Some(83), Some(7));
+    session.replace_from_baseline(&history, None, None, Some(83), None, Some(7));
 
     // The live view renders the raw history reflowed to the consumer's grid and
     // scrolled to the bottom; the host-sized keyframe is not used for it.
@@ -375,16 +375,14 @@ fn baseline_keyframe_reconstructs_current_screen_over_raw_history() {
     // the scrollback. The baseline must paint it as the current screen while
     // keeping the raw history reachable above.
     let keyframe = "\x1b[H\x1b[2Jtui current screen";
-    session.replace_from_baseline(&history, Some(keyframe), None, Some(50), Some(3));
+    session.replace_from_baseline(&history, Some(keyframe), None, Some(50), None, Some(3));
 
     let screen = session.screen_snapshot();
     assert_eq!(screen.display_offset, 0);
     assert!(screen.data.contains("tui current screen"));
 
-    // The raw history is still reachable by scrolling up. (The keyframe's ED 2
-    // scrolls the previously-visible rows into scrollback rather than erasing
-    // them in place, so the full raw history is preserved above the current
-    // screen; scroll to the top to reach the oldest line.)
+    // The raw history is still reachable by scrolling up. The keyframe replaces
+    // the visible rows in place without adding another copy to scrollback.
     scroll_history_up(&mut session, 100);
     let scrolled = session.screen_snapshot();
     assert!(scrolled.display_offset > 0);
@@ -402,6 +400,7 @@ fn baseline_keyframe_restores_soft_and_hard_line_breaks() {
         Some(keyframe),
         Some(&[true, false, false, false]),
         Some(0),
+        None,
         Some(3),
     );
 
@@ -417,13 +416,20 @@ fn baseline_scroll_restore_falls_back_to_bottom_when_history_shrinks() {
         .map(|index| format!("tall history {index:02}"))
         .collect::<Vec<_>>()
         .join("\r\n");
-    session.replace_from_baseline(&tall, None, None, Some(90), Some(1));
+    session.replace_from_baseline(&tall, None, None, Some(90), None, Some(1));
     scroll_history_up(&mut session, 6);
     assert_eq!(session.screen_snapshot().display_offset, 6);
 
     // Resync with a shorter buffer (max offset 4 < previous 6): the old spot no
     // longer exists, so the view must land at the bottom, not clamp to the top.
-    session.replace_from_baseline(&scrollable_history("short"), None, None, Some(12), Some(2));
+    session.replace_from_baseline(
+        &scrollable_history("short"),
+        None,
+        None,
+        Some(12),
+        None,
+        Some(2),
+    );
     let screen = session.screen_snapshot();
     assert_eq!(screen.display_offset, 0);
     assert!(screen.data.contains("short 12"));
@@ -434,15 +440,22 @@ fn live_output_appends_to_raw_history_screen() {
     let mut session = RemotePtySession::<String>::new(512);
     session.resize_screen(20, 8);
     let history = scrollable_history("cached raw history");
-    session.replace_from_baseline(&history, None, None, Some(18), Some(3));
+    let baseline_end = history.chars().count();
+    session.replace_from_baseline(&history, None, None, Some(baseline_end), None, Some(3));
 
-    session.append_live("partial live raw", Some(32), Some(4));
+    let live = "partial live raw";
+    session.append_live(
+        live,
+        Some(baseline_end + live.chars().count()),
+        None,
+        Some(4),
+    );
 
     // The live view follows the raw history's bottom; the appended live bytes
     // show, the host-sized keyframe ("restored tui") does not.
     let screen = session.screen_snapshot();
     assert_eq!(session.content(), format!("{history}partial live raw"));
-    assert_eq!(session.buffer_length(), 32);
+    assert_eq!(session.buffer_length(), baseline_end + live.chars().count());
     assert_eq!(session.sequence(), 4);
     assert!(screen.data.contains("partial live raw"));
     assert!(!screen.data.contains("restored tui"));
@@ -454,13 +467,84 @@ fn live_output_appends_to_raw_history_screen() {
 }
 
 #[test]
+fn baseline_watermark_skips_fully_covered_delayed_live_output() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.replace_from_baseline("12345overlap", None, None, Some(12), Some(12), Some(10));
+
+    session.append_live("overlap", Some(12), Some(12), Some(11));
+
+    assert_eq!(session.content(), "12345overlap");
+    assert_eq!(session.buffer_length(), 12);
+}
+
+#[test]
+fn baseline_watermark_appends_only_uncovered_live_suffix() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.replace_from_baseline("12345ove", None, None, Some(8), Some(8), Some(10));
+
+    session.append_live("overlap", Some(12), Some(12), Some(11));
+
+    assert_eq!(session.content(), "12345overlap");
+    assert_eq!(session.buffer_length(), 12);
+}
+
+#[test]
+fn covered_live_output_does_not_regress_retained_length() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.replace_from_baseline("12345overlap", None, None, Some(12), Some(20), Some(10));
+
+    session.append_live("overlap", Some(8), Some(20), Some(11));
+
+    assert_eq!(session.content(), "12345overlap");
+    assert_eq!(session.buffer_length(), 12);
+    assert_eq!(session.buffer_end(), Some(20));
+}
+
+#[test]
+fn live_output_without_watermark_is_appended_without_guessing() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.replace_from_baseline("prefix", None, None, Some(6), None, Some(10));
+
+    session.append_live("prefix", Some(12), None, Some(11));
+
+    assert_eq!(session.content(), "prefixprefix");
+    assert_eq!(session.buffer_length(), 12);
+    assert_eq!(session.buffer_end(), None);
+}
+
+#[test]
+fn baseline_resets_watermark_for_a_new_terminal_lifetime() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.replace_from_baseline("old", None, None, Some(3), Some(100), Some(10));
+
+    session.replace_from_baseline("new", None, None, Some(3), Some(3), Some(1));
+    session.append_live(" output", Some(10), Some(10), Some(2));
+
+    assert_eq!(session.content(), "new output");
+    assert_eq!(session.buffer_length(), 10);
+    assert_eq!(session.buffer_end(), Some(10));
+}
+
+#[test]
+fn sequence_reset_discards_the_previous_lifetime_watermark() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.replace_from_baseline("old", None, None, Some(3), Some(100), Some(10));
+
+    session.reset_transient(true);
+    session.append_live("new", Some(3), Some(3), Some(1));
+
+    assert_eq!(session.content(), "oldnew");
+    assert_eq!(session.buffer_end(), Some(3));
+}
+
+#[test]
 fn live_screen_keyframe_replaces_current_screen_without_polluting_history() {
     let mut session = RemotePtySession::<String>::new(512);
     session.resize_screen(20, 8);
     let history = scrollable_history("history");
-    session.replace_from_baseline(&history, None, None, Some(50), Some(3));
+    session.replace_from_baseline(&history, None, None, Some(50), None, Some(3));
 
-    session.append_live("live raw", Some(58), Some(4));
+    session.append_live("live raw", Some(58), None, Some(4));
 
     // The live view and the native render content are both the raw history
     // stream reflowed to the consumer's grid; the host-sized keyframe ("new
@@ -490,9 +574,9 @@ fn empty_live_screen_keyframe_leaves_live_view_unchanged() {
     let mut session = RemotePtySession::<String>::new(512);
     session.resize_screen(20, 8);
     let history = scrollable_history("history");
-    session.replace_from_baseline(&history, None, None, Some(50), Some(3));
+    session.replace_from_baseline(&history, None, None, Some(50), None, Some(3));
 
-    session.append_live("", Some(50), Some(4));
+    session.append_live("", Some(50), None, Some(4));
 
     // A keyframe with no live bytes carries nothing for the raw history screen
     // to advance on, so both the content and the live view are unchanged; the
@@ -511,7 +595,7 @@ fn empty_live_screen_keyframe_leaves_live_view_unchanged() {
 fn trims_cache_on_character_boundaries() {
     let mut session = RemotePtySession::<String>::new(4);
 
-    session.append_live("a你好bcd", Some(7), Some(2));
+    session.append_live("a你好bcd", Some(7), None, Some(2));
 
     assert_eq!(session.content(), "好bcd");
     assert_eq!(session.buffer_length(), 7);
@@ -527,7 +611,7 @@ fn caches_only_the_trailing_line_budget() {
     for index in 0..800 {
         output.push_str(&format!("line {index}\n"));
     }
-    session.append_live(&output, Some(output.len()), Some(1));
+    session.append_live(&output, Some(output.len()), None, Some(1));
 
     let content = session.content();
     // Oldest lines fall off the front; only the trailing window is retained.
@@ -861,7 +945,7 @@ fn runtime_model_selects_terminal_created_by_local_request() {
     assert!(plan.clear_terminal);
     assert!(plan.reset_terminal_input);
     assert!(plan.reset_terminal_buffer);
-    assert!(plan.bind_full_buffer);
+    assert!(!plan.bind_full_buffer);
     assert!(!plan.flush_terminal_input);
     assert_eq!(
         runtime.snapshot().active_session_id.as_deref(),
@@ -1405,6 +1489,7 @@ fn runtime_model_remembers_last_terminal_per_project() {
     let select = runtime.user_select_project(projects()[1].clone(), true);
 
     assert_eq!(select.bind_session_id.as_deref(), Some("session-3"));
+    assert!(!select.bind_full_buffer);
 }
 
 #[test]
@@ -1555,6 +1640,7 @@ fn runtime_model_binds_selected_worktree_active_terminal_without_project_select(
     );
 
     assert_eq!(back.bind_session_id.as_deref(), Some("worktree-tab"));
+    assert!(!back.bind_full_buffer);
     assert_eq!(
         runtime.snapshot().active_session_id.as_deref(),
         Some("worktree-tab")

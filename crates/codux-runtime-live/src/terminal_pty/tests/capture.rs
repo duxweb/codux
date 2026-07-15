@@ -33,6 +33,39 @@ fn terminal_history_tail_returns_recent_window_and_offset() {
 }
 
 #[test]
+fn terminal_history_watermark_survives_retained_window_trimming() {
+    let mut history = RingHistory::new(5);
+    history.push_text("abcd");
+    history.push_text("efgh");
+
+    assert_eq!(history.to_text(), "efgh");
+    assert_eq!(history.total_chars(), 8);
+    assert_eq!(history.tail_text(20), ("efgh".to_string(), 0));
+}
+
+#[test]
+fn terminal_history_snapshot_keeps_a_retained_full_leading_line() {
+    let mut history = RingHistory::new(5);
+    history.push_text("old\n");
+    history.push_text("new\n");
+
+    assert_eq!(history.snapshot_tail(20), ("new\n".to_string(), 0, 4, 8));
+}
+
+#[test]
+fn terminal_history_clear_keeps_the_lifetime_watermark() {
+    let mut history = RingHistory::new(1024);
+    history.push_text("before");
+    history.clear();
+    history.push_text("after");
+
+    assert_eq!(history.to_text(), "after");
+    assert_eq!(history.retained_chars(), 5);
+    assert_eq!(history.total_chars(), 11);
+    assert_eq!(history.snapshot_tail(20), ("after".to_string(), 0, 5, 11));
+}
+
+#[test]
 fn terminal_history_tail_starts_after_partial_csi_sequence() {
     let mut history = RingHistory::new(1024);
     history.push_text("line 1\n");
@@ -54,6 +87,22 @@ fn terminal_history_tail_starts_after_partial_osc_sequence() {
 
     assert_eq!(tail, "prompt");
     assert_eq!(offset, "line 1\n\x1b]0;Codux\x07".chars().count());
+}
+
+#[test]
+fn terminal_history_tail_drops_a_partial_leading_line() {
+    let mut history = RingHistory::new(1024);
+    history.push_text("first line\nsecond line\nthird line");
+
+    let (tail, offset, buffer_length, buffer_end) = history.snapshot_tail(18);
+
+    assert_eq!(tail, "third line");
+    assert_eq!(offset, "first line\nsecond line\n".chars().count());
+    assert_eq!(
+        buffer_length,
+        "first line\nsecond line\nthird line".chars().count()
+    );
+    assert_eq!(buffer_end, buffer_length);
 }
 
 #[test]

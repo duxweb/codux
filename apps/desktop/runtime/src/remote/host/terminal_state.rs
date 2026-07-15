@@ -758,9 +758,13 @@ impl RemoteHostRuntime {
     pub(super) fn handle_terminal_event(self: &Arc<Self>, event: TerminalEvent) {
         match event {
             TerminalEvent::Output {
-                session_id, text, ..
+                session_id,
+                text,
+                buffer_length,
+                buffer_end,
+                ..
             } => {
-                self.queue_terminal_output_batch(session_id, text);
+                self.queue_terminal_output_batch(session_id, text, buffer_length, buffer_end);
             }
             TerminalEvent::Exit { session_id, .. } => {
                 let viewers = self.terminal_output_viewers(&session_id);
@@ -820,7 +824,13 @@ impl RemoteHostRuntime {
         }
     }
 
-    pub(super) fn queue_terminal_output_batch(self: &Arc<Self>, session_id: String, text: String) {
+    pub(super) fn queue_terminal_output_batch(
+        self: &Arc<Self>,
+        session_id: String,
+        text: String,
+        buffer_length: usize,
+        buffer_end: usize,
+    ) {
         if text.is_empty() {
             return;
         }
@@ -828,7 +838,6 @@ impl RemoteHostRuntime {
         if viewers.is_empty() {
             return;
         }
-        let buffer_length = self.terminals.buffer_characters(&session_id).unwrap_or(0);
         let should_spawn = {
             let Ok(mut batches) = self.terminal_output_batches.lock() else {
                 return;
@@ -839,11 +848,13 @@ impl RemoteHostRuntime {
                     .or_insert_with(|| RemoteTerminalOutputBatch {
                         data: String::new(),
                         buffer_length,
+                        buffer_end,
                         viewers: HashSet::new(),
                     });
             let was_empty = batch.data.is_empty();
             batch.data.push_str(&text);
             batch.buffer_length = buffer_length;
+            batch.buffer_end = batch.buffer_end.max(buffer_end);
             batch.viewers.extend(viewers);
             was_empty
         };
@@ -877,7 +888,12 @@ impl RemoteHostRuntime {
             return;
         }
         let output_seq = self.next_terminal_output_seq(session_id);
-        let payload = terminal_live_output_payload(batch.data, batch.buffer_length, output_seq);
+        let payload = terminal_live_output_payload(
+            batch.data,
+            batch.buffer_length,
+            batch.buffer_end,
+            output_seq,
+        );
         // Serialize the payload once and fan it out raw, so N subscribers of the
         // same terminal don't each clone + re-serialize the whole batch. Falls
         // back to the per-device path if the payload can't be pre-serialized.

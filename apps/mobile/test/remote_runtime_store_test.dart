@@ -410,7 +410,7 @@ void main() {
     expect(select.requestProjectSelectId, 'project-2');
     expect(select.clearTerminal, isTrue);
     expect(select.bindSessionId, 'session-2');
-    expect(select.bindFullBuffer, isTrue);
+    expect(select.bindFullBuffer, isFalse);
     expect(beforeHost.requestProjectSelectId, isNull);
     expect(beforeHost.bindSessionId, isNull);
     expect(store.activeSessionId, 'session-2');

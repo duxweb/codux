@@ -149,6 +149,7 @@ struct DecodedPayload {
     screen_wrapped_rows: Option<Vec<bool>>,
     offset: Option<i64>,
     buffer_length: Option<i64>,
+    buffer_end: Option<i64>,
     tail: bool,
     baseline_failed: bool,
 }
@@ -383,6 +384,9 @@ impl RemoteTerminalOutputRouter {
         self.assembler.reset();
         self.active_buffer_request_by_session.clear();
         self.restore_buffer_request_ids.clear();
+        for session in self.sessions.values_mut() {
+            session.reset_transient(false);
+        }
     }
 
     pub fn reset_session_transient(&mut self, session_id: &str, reset_sequence: bool) {
@@ -605,6 +609,7 @@ impl RemoteTerminalOutputRouter {
                     decoded.screen_data.as_deref(),
                     decoded.screen_wrapped_rows.as_deref(),
                     decoded.buffer_length,
+                    decoded.buffer_end,
                     output_seq,
                 );
                 if decoded.screen_data.is_some() {
@@ -738,6 +743,7 @@ impl RemoteTerminalOutputRouter {
                     decoded.screen_data.as_deref(),
                     decoded.screen_wrapped_rows.as_deref(),
                     decoded.buffer_length,
+                    decoded.buffer_end,
                     output_seq,
                 );
             }
@@ -750,6 +756,7 @@ impl RemoteTerminalOutputRouter {
                         decoded.screen_data.as_deref(),
                         decoded.screen_wrapped_rows.as_deref(),
                         decoded.buffer_length,
+                        decoded.buffer_end,
                         output_seq,
                     );
                 }
@@ -772,6 +779,7 @@ impl RemoteTerminalOutputRouter {
                     decoded.screen_data.as_deref(),
                     decoded.screen_wrapped_rows.as_deref(),
                     decoded.buffer_length,
+                    decoded.buffer_end,
                     output_seq,
                 );
                 self.active_buffer_request_by_session.remove(session_id);
@@ -802,6 +810,7 @@ impl RemoteTerminalOutputRouter {
                 decoded.screen_data.as_deref(),
                 decoded.screen_wrapped_rows.as_deref(),
                 decoded.buffer_length,
+                decoded.buffer_end,
                 output_seq,
             );
             if decoded.screen_data.is_some() {
@@ -854,6 +863,7 @@ impl RemoteTerminalOutputRouter {
         screen_data: Option<&str>,
         screen_wrapped_rows: Option<&[bool]>,
         buffer_length: Option<i64>,
+        buffer_end: Option<i64>,
         output_seq: Option<TerminalSequence>,
     ) -> Vec<String> {
         self.gap_sessions.remove(session_id);
@@ -862,6 +872,7 @@ impl RemoteTerminalOutputRouter {
             screen_data,
             screen_wrapped_rows,
             buffer_length.and_then(|value| usize::try_from(value).ok()),
+            buffer_end.and_then(|value| usize::try_from(value).ok()),
             output_seq,
         );
         self.bump_render(session_id);
@@ -886,6 +897,7 @@ impl RemoteTerminalOutputRouter {
         screen_data: Option<&str>,
         screen_wrapped_rows: Option<&[bool]>,
         buffer_length: Option<i64>,
+        buffer_end: Option<i64>,
         output_seq: Option<TerminalSequence>,
     ) -> Vec<String> {
         let buffer_len = buffer_length.and_then(|value| usize::try_from(value).ok());
@@ -912,13 +924,18 @@ impl RemoteTerminalOutputRouter {
                 screen_data,
                 screen_wrapped_rows,
                 buffer_len,
+                buffer_end.and_then(|value| usize::try_from(value).ok()),
                 output_seq,
             );
             self.bump_render(session_id);
             return replay;
         }
-        self.session(session_id)
-            .append_live(data, buffer_len, output_seq);
+        self.session(session_id).append_live(
+            data,
+            buffer_len,
+            buffer_end.and_then(|value| usize::try_from(value).ok()),
+            output_seq,
+        );
         self.bump_render(session_id);
         Vec::new()
     }
@@ -959,6 +976,7 @@ fn decode_terminal_output_payload(payload: &Value) -> DecodedPayload {
         screen_wrapped_rows: payload_bool_array(payload, "screenWrappedRows"),
         offset: payload_int(payload, "offset"),
         buffer_length: payload_int(payload, "bufferLength"),
+        buffer_end: payload_int(payload, "bufferEnd"),
         tail: payload.get("tail").and_then(Value::as_bool) == Some(true),
         baseline_failed: payload.get("baselineFailed").and_then(Value::as_bool) == Some(true),
     }
@@ -1067,6 +1085,19 @@ mod tests {
         })
     }
 
+    fn live_with_watermark(session: &str, data: &str, buffer_end: i64, output_seq: i64) -> Value {
+        json!({
+            "type": "terminal.output",
+            "sessionId": session,
+            "payload": {
+                "data": data,
+                "bufferLength": buffer_end,
+                "bufferEnd": buffer_end,
+                "outputSeq": output_seq,
+            },
+        })
+    }
+
     fn buffer_with_screen_data(
         session: &str,
         data: &str,
@@ -1128,6 +1159,53 @@ mod tests {
             ]
         );
         assert_eq!(router.content("session-1"), Some("old-new"));
+    }
+
+    #[test]
+    fn held_live_already_covered_by_baseline_is_not_duplicated() {
+        let mut router = RemoteTerminalOutputRouter::new(64, 65536);
+        router.bind_session("session-1", true);
+        router.accept(
+            &live_with_watermark("session-1", "overlap", 12, 11),
+            Some("session-1"),
+        );
+
+        let mut baseline = buffer_with_tail(
+            "session-1",
+            "12345overlap",
+            0,
+            12,
+            BufferFlags {
+                truncated: false,
+                tail: true,
+            },
+            10,
+            None,
+        );
+        baseline["payload"]["bufferEnd"] = json!(12);
+        router.accept(&baseline, Some("session-1"));
+
+        assert_eq!(router.content("session-1"), Some("12345overlap"));
+        assert_eq!(router.buffer_offset("session-1"), 12);
+    }
+
+    #[test]
+    fn reset_transient_releases_sessions_waiting_for_baseline() {
+        let mut router = RemoteTerminalOutputRouter::new(64, 65536);
+        router.bind_session("session-1", true);
+        assert!(
+            router
+                .session_ref("session-1")
+                .is_some_and(RemotePtySession::is_restoring_baseline)
+        );
+
+        router.reset_transient();
+
+        assert!(
+            router
+                .session_ref("session-1")
+                .is_some_and(|session| !session.is_restoring_baseline())
+        );
     }
 
     #[test]

@@ -4,7 +4,8 @@
 //!
 //! Multi-client: several devices can watch the same terminal at once. The
 //! viewer set, baseline catch-up, and viewport lease all reuse the shared crate
-//! pieces (`RemoteTerminalSubscriptions`, `snapshot_tail` + `terminal_buffer_payloads`,
+//! pieces (`RemoteTerminalSubscriptions`, atomic baseline snapshots +
+//! `terminal_buffer_payloads`,
 //! the `TerminalManager` lease + viewport-owner resolver) rather than a private
 //! copy of the desktop host's batching/baseline machinery.
 
@@ -348,7 +349,7 @@ fn apply_baseline_viewport(
         return false;
     };
     let owner = terminal_viewport_remote_owner(device_id);
-    let Ok(state) = driver.viewport_state(session_id) else {
+    let Ok(state) = driver.claim_viewport_auto(session_id, &owner) else {
         return false;
     };
     if state.owner != owner {
@@ -398,15 +399,20 @@ fn handle_agent_terminal_event(
     }
     match event {
         TerminalEvent::Output {
-            session_id, bytes, ..
+            session_id,
+            text,
+            buffer_length,
+            buffer_end,
+            ..
         } => {
-            let data = String::from_utf8_lossy(&bytes).to_string();
+            if text.is_empty() {
+                return true;
+            }
             let next = fanout_state.next_seq(&session_id);
-            let buffer_len = driver.buffer_characters(&session_id).ok().unwrap_or(0);
             let envelope = json!({
                 "type": REMOTE_TERMINAL_OUTPUT,
                 "sessionId": session_id,
-                "payload": terminal_live_output_payload(data, buffer_len, next),
+                "payload": terminal_live_output_payload(text, buffer_length, buffer_end, next),
             });
             fanout(
                 transport,
@@ -524,39 +530,43 @@ fn send_terminal_baseline(
         .map(str::to_string);
     let viewport = baseline_viewport(payload);
     let use_viewport = apply_baseline_viewport(driver, session_id, device_id, viewport);
-    let (data, offset, baseline_failed) = match driver.snapshot_tail(session_id, max_chars) {
-        Ok((data, offset)) => (data, offset, false),
-        Err(_) => (String::new(), 0, true),
-    };
-    let total_characters = driver
-        .buffer_characters(session_id)
-        .unwrap_or_else(|_| offset + data.chars().count());
-    let screen_snapshot = if baseline_failed {
-        None
-    } else if use_viewport {
-        let max_lines = viewport
-            .map(|viewport| viewport.rows.max(8) as usize)
-            .unwrap_or(8);
-        driver
-            .remote_viewport_snapshot(session_id, 0, 0, max_lines)
-            .ok()
-    } else {
-        driver
-            .screen_snapshot(session_id)
-            .ok()
-            .filter(|snapshot| snapshot.input_mode.alternate_screen)
-    };
-    let (screen_data, screen_wrapped_rows) = screen_snapshot
-        .filter(|snapshot| !snapshot.data.is_empty())
-        .map(|snapshot| (Some(snapshot.data), Some(snapshot.wrapped_rows)))
-        .unwrap_or_default();
     let output_seq = fanout_state.current_seq(session_id);
+    let viewport_max_lines = use_viewport.then(|| {
+        viewport
+            .map(|viewport| viewport.rows.max(8) as usize)
+            .unwrap_or(8)
+    });
+    let baseline = driver
+        .baseline_snapshot(session_id, max_chars, viewport_max_lines)
+        .ok();
+    let baseline_failed = baseline.is_none();
+    let (data, offset, buffer_length, buffer_end, screen_data, screen_wrapped_rows) = baseline
+        .map(|baseline| {
+            let (screen_data, screen_wrapped_rows) = (!baseline.screen.data.is_empty())
+                .then(|| {
+                    (
+                        Some(baseline.screen.data),
+                        Some(baseline.screen.wrapped_rows),
+                    )
+                })
+                .unwrap_or_default();
+            (
+                baseline.data,
+                baseline.offset,
+                baseline.buffer_length,
+                baseline.buffer_end,
+                screen_data,
+                screen_wrapped_rows,
+            )
+        })
+        .unwrap_or_default();
     let window = RemoteTerminalBufferWindow {
         data,
         screen_data,
         screen_wrapped_rows,
         offset,
-        total_characters,
+        total_characters: buffer_length,
+        buffer_end: Some(buffer_end),
         truncated: false,
         output_seq: Some(output_seq),
         request_id,
@@ -1369,11 +1379,40 @@ mod tests {
                 session_id: "session-1".to_string(),
                 text: "private".to_string(),
                 bytes: b"private".to_vec(),
+                buffer_length: 7,
+                buffer_end: 7,
             },
         ));
 
         assert!(message_types(&received, "phone-a").is_empty());
         assert!(message_types(&received, "phone-b").is_empty());
+    }
+
+    #[test]
+    fn live_output_uses_the_event_history_watermark() {
+        let (transport, received) = test_transport(&["phone-a"]);
+        let fanout = TerminalFanout::new();
+        fanout.add_viewer("session-1", "phone-a");
+
+        assert!(handle_agent_terminal_event(
+            &TerminalManager::new(),
+            &transport,
+            &fanout,
+            Some("project-1"),
+            TerminalEvent::Output {
+                session_id: "session-1".to_string(),
+                text: "output".to_string(),
+                bytes: b"output".to_vec(),
+                buffer_length: 7,
+                buffer_end: 42,
+            },
+        ));
+
+        let messages = received.lock().unwrap();
+        let output = messages.get("phone-a").unwrap().first().unwrap();
+        assert_eq!(output["payload"]["data"], "output");
+        assert_eq!(output["payload"]["bufferLength"], 7);
+        assert_eq!(output["payload"]["bufferEnd"], 42);
     }
 
     #[test]
