@@ -1083,29 +1083,37 @@ impl CoduxApp {
     }
 
     pub(super) fn set_memory_manager_tab(&mut self, tab: MemoryManagerTab, cx: &mut Context<Self>) {
-        self.memory_manager_tab = tab;
         self.status_message = format!("memory manager tab: {}", tab.as_str());
-        self.reload_memory_manager_snapshot_async(cx);
+        self.load_memory_manager_selection_async(
+            self.memory_manager_scope.clone(),
+            self.memory_manager_project_id.clone(),
+            tab,
+            cx,
+        );
     }
 
     pub(super) fn select_memory_manager_queue(&mut self, cx: &mut Context<Self>) {
-        self.memory_manager_scope = "user".to_string();
-        self.memory_manager_project_id = None;
-        self.memory_manager_tab = MemoryManagerTab::Queue;
         self.selected_memory_entry_id = None;
         self.selected_memory_summary_id = None;
         self.status_message = "memory manager tab: queue".to_string();
-        self.reload_memory_manager_snapshot_async(cx);
+        self.load_memory_manager_selection_async(
+            "user".to_string(),
+            None,
+            MemoryManagerTab::Queue,
+            cx,
+        );
     }
 
     pub(super) fn select_memory_manager_failed_records(&mut self, cx: &mut Context<Self>) {
-        self.memory_manager_scope = "user".to_string();
-        self.memory_manager_project_id = None;
-        self.memory_manager_tab = MemoryManagerTab::Failed;
         self.selected_memory_entry_id = None;
         self.selected_memory_summary_id = None;
         self.status_message = "memory manager tab: failed".to_string();
-        self.reload_memory_manager_snapshot_async(cx);
+        self.load_memory_manager_selection_async(
+            "user".to_string(),
+            None,
+            MemoryManagerTab::Failed,
+            cx,
+        );
     }
 
     pub(super) fn select_memory_manager_target(
@@ -1114,24 +1122,22 @@ impl CoduxApp {
         project_id: Option<String>,
         cx: &mut Context<Self>,
     ) {
-        self.memory_manager_scope = if scope == "user" {
+        let scope = if scope == "user" {
             "user".to_string()
         } else {
             "project".to_string()
         };
-        self.memory_manager_project_id = if self.memory_manager_scope == "project" {
-            project_id
-        } else {
-            None
-        };
+        let project_id = if scope == "project" { project_id } else { None };
         self.selected_memory_entry_id = None;
         self.selected_memory_summary_id = None;
-        if self.memory_manager_tab == MemoryManagerTab::Queue
+        let tab = if self.memory_manager_tab == MemoryManagerTab::Queue
             || self.memory_manager_tab == MemoryManagerTab::Failed
         {
-            self.memory_manager_tab = MemoryManagerTab::Summary;
-        }
-        self.reload_memory_manager_snapshot_async(cx);
+            MemoryManagerTab::Summary
+        } else {
+            self.memory_manager_tab
+        };
+        self.load_memory_manager_selection_async(scope, project_id, tab, cx);
     }
 
     fn show_memory_alert(
@@ -1258,18 +1264,38 @@ impl CoduxApp {
     }
 
     pub(super) fn reload_memory_manager_snapshot_async(&mut self, cx: &mut Context<Self>) {
+        self.load_memory_manager_selection_async(
+            self.memory_manager_scope.clone(),
+            self.memory_manager_project_id.clone(),
+            self.memory_manager_tab,
+            cx,
+        );
+    }
+
+    fn load_memory_manager_selection_async(
+        &mut self,
+        scope: String,
+        project_id: Option<String>,
+        tab: MemoryManagerTab,
+        cx: &mut Context<Self>,
+    ) {
         self.memory_manager_refresh_generation =
             self.memory_manager_refresh_generation.wrapping_add(1);
         let generation = self.memory_manager_refresh_generation;
         self.memory_manager_refreshing = true;
         let service = self.runtime_service.clone();
         let projects = self.state.projects.clone();
-        let scope = self.memory_manager_scope.clone();
-        let project_id = self.memory_manager_project_id.clone();
-        let tab = self.memory_manager_tab.as_str().to_string();
+        let request_scope = scope.clone();
+        let request_project_id = project_id.clone();
+        let request_tab = tab.as_str().to_string();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let snapshot = codux_runtime::async_runtime::spawn_blocking(move || {
-                service.reload_memory_manager(&projects, &scope, project_id.as_deref(), &tab)
+                service.reload_memory_manager(
+                    &projects,
+                    &request_scope,
+                    request_project_id.as_deref(),
+                    &request_tab,
+                )
             })
             .await
             .map_err(|error| error.to_string());
@@ -1281,6 +1307,9 @@ impl CoduxApp {
                 app.memory_manager_refreshing = false;
                 match snapshot {
                     Ok(snapshot) => {
+                        app.memory_manager_scope = scope;
+                        app.memory_manager_project_id = project_id;
+                        app.memory_manager_tab = tab;
                         app.state.memory_manager = snapshot;
                         app.normalize_memory_status_seen_failures();
                         app.normalize_selected_memory_entry();

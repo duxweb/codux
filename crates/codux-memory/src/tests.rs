@@ -743,6 +743,8 @@ fn manager_snapshot_includes_targets_profile_entries_and_summaries() {
 
     let summaries =
         service.manager_snapshot(&projects, "project", Some("project-a"), "summary", 50);
+    assert_eq!(summaries.current_overview.profile_count, 1);
+    assert!(summaries.project_profile.is_some());
     assert!(
         summaries
             .summaries
