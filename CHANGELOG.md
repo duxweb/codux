@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- WSL Settings now shows the installed Codux Runtime version and stdio protocol, including the protocol required by the current desktop build when an update is needed.
+
+### Fixed
+
+- Fixed memory extraction failures after upgrading an existing database that predates the `memory_entries.module_key` column.
+
 ## [2.0.1] - 2026-07-15
 
 ### Changed

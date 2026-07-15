@@ -109,6 +109,18 @@ impl MemoryService {
                 ON memory_entries(status, project_id, tier, updated_at);
             CREATE INDEX IF NOT EXISTS idx_memory_entries_scope
                 ON memory_entries(scope, project_id, tier, status);
+            "#,
+        )
+        .map_err(|error| error.to_string())?;
+        ensure_column(&conn, "memory_entries", "module_key", "TEXT")?;
+        ensure_column(
+            &conn,
+            "memory_extraction_queue",
+            "workspace_path",
+            "TEXT",
+        )?;
+        conn.execute_batch(
+            r#"
             CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
                 content,
                 rationale,
@@ -132,20 +144,36 @@ impl MemoryService {
                 VALUES (new.rowid, new.content, COALESCE(new.rationale, ''), COALESCE(new.module_key, ''));
             END;
             INSERT INTO memory_fts(memory_fts) VALUES('rebuild');
-            ALTER TABLE memory_extraction_queue ADD COLUMN workspace_path TEXT;
             "#,
         )
-        .or_else(|error| {
-            if error.to_string().contains("duplicate column name") {
-                Ok(())
-            } else {
-                Err(error)
-            }
-        })
         .map_err(|error| error.to_string())?;
         if let Ok(mut ensured) = schema_ensured_paths().lock() {
             ensured.insert(self.database_path.clone());
         }
         Ok(())
     }
+}
+
+fn ensure_column(
+    conn: &rusqlite::Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), String> {
+    let mut statement = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|error| error.to_string())?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let exists = columns.iter().any(|name| name == column);
+    if !exists {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        ))
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }

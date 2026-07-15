@@ -195,6 +195,92 @@ fn create_memory_db(support_dir: &std::path::Path) {
         .unwrap();
 }
 
+#[test]
+fn queue_schema_migrates_legacy_entries_before_building_fts() {
+    let support_dir = temp_support_dir();
+    let database_path = support_dir.join("memory.sqlite3");
+    let conn = Connection::open(&database_path).unwrap();
+    conn.execute_batch(
+        r#"
+        CREATE TABLE memory_entries (
+            id TEXT PRIMARY KEY,
+            scope TEXT NOT NULL,
+            project_id TEXT,
+            tool_id TEXT,
+            tier TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            content TEXT NOT NULL,
+            rationale TEXT,
+            source_tool TEXT,
+            source_session_id TEXT,
+            source_fingerprint TEXT,
+            normalized_hash TEXT NOT NULL DEFAULT '',
+            superseded_by TEXT,
+            status TEXT NOT NULL DEFAULT 'active',
+            merged_summary_id TEXT,
+            merged_at REAL,
+            archived_at REAL,
+            access_count INTEGER NOT NULL DEFAULT 0,
+            last_accessed_at REAL,
+            created_at REAL NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL DEFAULT 0
+        );
+        CREATE TABLE memory_extraction_queue (
+            id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            tool TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            transcript_path TEXT NOT NULL,
+            source_fingerprint TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            enqueued_at REAL NOT NULL
+        );
+        INSERT INTO memory_entries (
+            id, scope, project_id, tier, kind, content, normalized_hash,
+            status, created_at, updated_at
+        ) VALUES (
+            'legacy-entry', 'project', 'project-a', 'working', 'fact',
+            'legacy searchable content', 'legacy-entry', 'active', 1, 1
+        );
+        "#,
+    )
+    .unwrap();
+    drop(conn);
+
+    let service = MemoryService::new(support_dir.clone());
+    service.ensure_queue_schema().unwrap();
+    let conn = service.open_connection().unwrap();
+    let entry_columns = conn
+        .prepare("PRAGMA table_info(memory_entries)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let queue_columns = conn
+        .prepare("PRAGMA table_info(memory_extraction_queue)")
+        .unwrap()
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(entry_columns.iter().any(|column| column == "module_key"));
+    assert!(queue_columns.iter().any(|column| column == "workspace_path"));
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM memory_fts WHERE memory_fts MATCH 'legacy'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap(),
+        1
+    );
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
 fn insert_test_memory(
     conn: &Connection,
     id: &str,

@@ -17,7 +17,9 @@ fn command() -> std::process::Command {
 pub use client::WslRuntimeClient;
 pub use discovery::{WslDistribution, WslOnlineDistribution};
 pub use install::{WslInstallOperation, WslInstallProgress};
-pub use manager::{WslDistributionCatalog, WslDistributionStatus, WslRuntimeManager};
+pub use manager::{
+    WslDistributionCatalog, WslDistributionStatus, WslRuntimeInfo, WslRuntimeManager,
+};
 
 pub const WSL_RUNTIME_NOT_INSTALLED_ERROR: &str = "wsl_runtime_not_installed";
 pub const WSL_RUNTIME_PROTOCOL_MISMATCH_ERROR: &str = "wsl_runtime_protocol_mismatch";

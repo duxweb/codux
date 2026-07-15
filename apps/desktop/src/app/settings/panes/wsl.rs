@@ -190,19 +190,11 @@ fn wsl_installed_distribution_row(
     let distribution = status.distribution.clone();
     let current_progress = progress.filter(|progress| progress.distribution == distribution);
     let busy = progress.is_some();
-    let description = settings_text(
-        language,
-        if status.runtime_installed {
-            "settings.wsl.runtime.ready"
-        } else {
-            "settings.wsl.runtime.missing"
-        },
-        if status.runtime_installed {
-            "Codux Runtime is installed and compatible."
-        } else {
-            "Install Codux Runtime to use this distribution in Codux."
-        },
-    );
+    let runtime_compatible = status
+        .runtime
+        .as_ref()
+        .is_some_and(codux_runtime::wsl::WslRuntimeInfo::is_compatible);
+    let description = wsl_runtime_description(language, status);
     div()
         .min_h(px(76.0))
         .py(px(12.0))
@@ -243,18 +235,22 @@ fn wsl_installed_distribution_row(
         .child(div().flex_none().child(settings_status_tag(
             settings_text(
                 language,
-                if status.runtime_installed {
+                if runtime_compatible {
                     "settings.wsl.status.ready"
+                } else if status.runtime.is_some() {
+                    "settings.wsl.status.runtime_incompatible"
                 } else {
                     "settings.wsl.status.runtime_missing"
                 },
-                if status.runtime_installed {
+                if runtime_compatible {
                     "Ready"
+                } else if status.runtime.is_some() {
+                    "Update Required"
                 } else {
                     "Runtime Missing"
                 },
             ),
-            if status.runtime_installed {
+            if runtime_compatible {
                 theme::GREEN
             } else {
                 theme::ORANGE
@@ -264,12 +260,12 @@ fn wsl_installed_distribution_row(
             format!("settings-wsl-runtime-{}", status.distribution),
             settings_text(
                 language,
-                if status.runtime_installed {
+                if status.runtime.is_some() {
                     "settings.wsl.runtime.update"
                 } else {
                     "settings.wsl.runtime.install"
                 },
-                if status.runtime_installed {
+                if status.runtime.is_some() {
                     "Update Runtime"
                 } else {
                     "Install Runtime"
@@ -283,6 +279,50 @@ fn wsl_installed_distribution_row(
             },
         )))
         .into_any_element()
+}
+
+fn wsl_runtime_description(
+    language: &str,
+    status: &codux_runtime::wsl::WslDistributionStatus,
+) -> String {
+    let Some(runtime) = status.runtime.as_ref() else {
+        return settings_text(
+            language,
+            "settings.wsl.runtime.missing",
+            "Install Codux Runtime to use this distribution in Codux.",
+        );
+    };
+    let version = runtime.version.clone().unwrap_or_else(|| {
+        settings_text(
+            language,
+            "settings.wsl.runtime.version.unknown",
+            "Unknown version",
+        )
+    });
+    let protocol = runtime
+        .protocol_version
+        .map(|version| version.to_string())
+        .unwrap_or_else(|| {
+            settings_text(language, "settings.wsl.runtime.protocol.unknown", "Unknown")
+        });
+    if runtime.is_compatible() {
+        settings_text(
+            language,
+            "settings.wsl.runtime.details",
+            "Runtime %@ · Protocol %@",
+        )
+        .replacen("%@", &version, 1)
+        .replacen("%@", &protocol, 1)
+    } else {
+        settings_text(
+            language,
+            "settings.wsl.runtime.details.incompatible",
+            "Runtime %@ · Protocol %@ · Required %@",
+        )
+        .replacen("%@", &version, 1)
+        .replacen("%@", &protocol, 1)
+        .replacen("%@", &runtime.required_protocol_version.to_string(), 1)
+    }
 }
 
 fn wsl_distribution_installer(
@@ -476,6 +516,30 @@ fn wsl_message(message: String, loading: bool, _cx: &mut Context<CoduxApp>) -> A
         .when(loading, |this| this.child(Spinner::new().small()))
         .child(message)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_description_shows_installed_and_required_protocols() {
+        let status = codux_runtime::wsl::WslDistributionStatus {
+            distribution: "Ubuntu".to_string(),
+            display_name: "Ubuntu".to_string(),
+            distribution_installed: true,
+            runtime: Some(codux_runtime::wsl::WslRuntimeInfo {
+                version: Some("2.0.0".to_string()),
+                protocol_version: Some(2),
+                required_protocol_version: 3,
+            }),
+        };
+
+        assert_eq!(
+            wsl_runtime_description("english", &status),
+            "Runtime 2.0.0 · Protocol 2 · Required 3"
+        );
+    }
 }
 
 fn wsl_error_notice(error: &str, _cx: &mut Context<CoduxApp>) -> AnyElement {

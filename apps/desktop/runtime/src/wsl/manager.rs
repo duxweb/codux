@@ -13,7 +13,20 @@ pub struct WslDistributionStatus {
     pub distribution: String,
     pub display_name: String,
     pub distribution_installed: bool,
-    pub runtime_installed: bool,
+    pub runtime: Option<WslRuntimeInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WslRuntimeInfo {
+    pub version: Option<String>,
+    pub protocol_version: Option<u32>,
+    pub required_protocol_version: u32,
+}
+
+impl WslRuntimeInfo {
+    pub fn is_compatible(&self) -> bool {
+        self.protocol_version == Some(self.required_protocol_version)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -119,7 +132,7 @@ impl WslRuntimeManager {
         }
         Ok(WslDistributionCatalog {
             distributions: build_distribution_statuses(installed, online, |distribution| {
-                wsl_sidecar_is_compatible(distribution)
+                inspect_wsl_sidecar(distribution)
             })?,
             installed_error,
             online_error,
@@ -211,7 +224,7 @@ fn validate_release_version(version: &str) -> Result<&str, String> {
 fn build_distribution_statuses(
     installed: Vec<super::WslDistribution>,
     online: Vec<super::WslOnlineDistribution>,
-    runtime_installed: impl Fn(&str) -> Result<bool, String>,
+    runtime: impl Fn(&str) -> Result<Option<WslRuntimeInfo>, String>,
 ) -> Result<Vec<WslDistributionStatus>, String> {
     let mut statuses = Vec::new();
     for distribution in &installed {
@@ -224,7 +237,7 @@ fn build_distribution_statuses(
             distribution: distribution.name.clone(),
             display_name,
             distribution_installed: true,
-            runtime_installed: runtime_installed(&distribution.name)?,
+            runtime: runtime(&distribution.name)?,
         });
     }
     for distribution in online {
@@ -238,15 +251,15 @@ fn build_distribution_statuses(
             distribution: distribution.name,
             display_name: distribution.display_name,
             distribution_installed: false,
-            runtime_installed: false,
+            runtime: None,
         });
     }
     Ok(statuses)
 }
 
 #[cfg(target_os = "windows")]
-fn wsl_sidecar_is_compatible(distribution: &str) -> Result<bool, String> {
-    let status = super::command()
+fn inspect_wsl_sidecar(distribution: &str) -> Result<Option<WslRuntimeInfo>, String> {
+    let output = super::command()
         .args([
             "--distribution",
             distribution,
@@ -255,21 +268,23 @@ fn wsl_sidecar_is_compatible(distribution: &str) -> Result<bool, String> {
             "-lc",
             &sidecar_probe_script(),
         ])
-        .status()
+        .output()
         .map_err(|error| format!("Unable to inspect WSL runtime: {error}"))?;
-    Ok(status.success())
+    Ok(parse_sidecar_version_output(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn wsl_sidecar_is_compatible(_distribution: &str) -> Result<bool, String> {
-    Ok(false)
+fn inspect_wsl_sidecar(_distribution: &str) -> Result<Option<WslRuntimeInfo>, String> {
+    Ok(None)
 }
 
 fn require_wsl_sidecar(distribution: &str) -> Result<(), String> {
-    if wsl_sidecar_is_compatible(distribution)? {
-        Ok(())
-    } else {
-        Err(super::WSL_RUNTIME_NOT_INSTALLED_ERROR.to_string())
+    match inspect_wsl_sidecar(distribution)? {
+        Some(runtime) if runtime.is_compatible() => Ok(()),
+        Some(_) => Err(super::WSL_RUNTIME_PROTOCOL_MISMATCH_ERROR.to_string()),
+        None => Err(super::WSL_RUNTIME_NOT_INSTALLED_ERROR.to_string()),
     }
 }
 
@@ -284,10 +299,31 @@ fn install_wsl_sidecar(
 
 #[cfg(any(target_os = "windows", test))]
 fn sidecar_probe_script() -> String {
-    format!(
-        "runtime=/usr/local/bin/codux; test -x \"$runtime\" && version=\"$(\"$runtime\" version 2>/dev/null)\" && printf '%s\\n' \"$version\" | grep -Fxq 'runtime-stdio {}'",
-        codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION
-    )
+    "runtime=/usr/local/bin/codux; test -e \"$runtime\" || exit 0; printf '__CODUX_RUNTIME_PRESENT__\\n'; \"$runtime\" version 2>/dev/null || true"
+        .to_string()
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn parse_sidecar_version_output(output: &str) -> Option<WslRuntimeInfo> {
+    output
+        .lines()
+        .any(|line| line.trim() == "__CODUX_RUNTIME_PRESENT__")
+        .then(|| WslRuntimeInfo {
+            version: output.lines().find_map(|line| {
+                line.trim()
+                    .strip_prefix("codux ")
+                    .map(str::trim)
+                    .filter(|version| !version.is_empty())
+                    .map(str::to_string)
+            }),
+            protocol_version: output.lines().find_map(|line| {
+                line.trim()
+                    .strip_prefix("runtime-stdio ")
+                    .and_then(|version| version.trim().parse().ok())
+            }),
+            required_protocol_version:
+                codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION,
+        })
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -343,11 +379,29 @@ mod tests {
     #[test]
     fn sidecar_probe_requires_stdio_protocol() {
         let script = sidecar_probe_script();
-        assert!(!script.contains("codux 2.0.0-rc.10"));
-        assert!(script.contains(&format!(
-            "runtime-stdio {}",
+        assert!(script.contains("__CODUX_RUNTIME_PRESENT__"));
+        assert!(script.contains("\"$runtime\" version"));
+        assert!(!script.contains("grep"));
+    }
+
+    #[test]
+    fn sidecar_version_output_reports_version_and_protocol_compatibility() {
+        let current = parse_sidecar_version_output(&format!(
+            "__CODUX_RUNTIME_PRESENT__\ncodux 2.0.1\nprotocol v3.2\nruntime-stdio {}\n",
             codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION
-        )));
+        ))
+        .expect("installed runtime");
+        assert_eq!(current.version.as_deref(), Some("2.0.1"));
+        assert!(current.is_compatible());
+
+        let old = parse_sidecar_version_output(
+            "__CODUX_RUNTIME_PRESENT__\ncodux 2.0.0\nprotocol v3.2\nruntime-stdio 2\n",
+        )
+        .expect("old runtime");
+        assert_eq!(old.protocol_version, Some(2));
+        assert!(!old.is_compatible());
+
+        assert_eq!(parse_sidecar_version_output(""), None);
     }
 
     #[test]
@@ -377,13 +431,27 @@ mod tests {
                     display_name: "Debian GNU/Linux".to_string(),
                 },
             ],
-            |distribution| Ok(distribution == "Ubuntu"),
+            |distribution| {
+                Ok((distribution == "Ubuntu").then_some(WslRuntimeInfo {
+                    version: Some("2.0.1".to_string()),
+                    protocol_version: Some(
+                        codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION,
+                    ),
+                    required_protocol_version:
+                        codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION,
+                }))
+            },
         )
         .unwrap();
 
         assert_eq!(statuses.len(), 2);
         assert!(statuses[0].distribution_installed);
-        assert!(statuses[0].runtime_installed);
+        assert!(
+            statuses[0]
+                .runtime
+                .as_ref()
+                .is_some_and(WslRuntimeInfo::is_compatible)
+        );
         assert_eq!(statuses[1].display_name, "Debian GNU/Linux");
         assert!(!statuses[1].distribution_installed);
     }
