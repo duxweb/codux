@@ -1,4 +1,4 @@
-use crate::{home_dir, normalized_string};
+use crate::home_dir;
 use serde_json::Value;
 use std::{
     fs,
@@ -83,17 +83,7 @@ pub(super) fn file_modified_millis(path: &Path) -> Option<u128> {
         .map(|duration| duration.as_millis())
 }
 
-pub(crate) fn paths_equivalent(left: Option<&str>, right: &str) -> bool {
-    let Some(left) = normalized_string(left) else {
-        return false;
-    };
-    let Some(right) = normalized_string(Some(right)) else {
-        return false;
-    };
-    let left = left.trim_end_matches('/');
-    let right = right.trim_end_matches('/');
-    left == right
-}
+pub(crate) use codux_runtime_core::path::optional_local_path_equals as paths_equivalent;
 
 fn codex_file_belongs_to_project(path: &Path, project_path: &str) -> bool {
     let Ok(file) = fs::File::open(path) else {

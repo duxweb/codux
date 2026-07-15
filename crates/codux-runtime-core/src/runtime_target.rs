@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Clone, Debug, Default, Hash, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -39,5 +40,31 @@ impl RuntimeTarget {
             Self::Wsl { distribution } => Some(format!("wsl:{distribution}")),
             Self::Remote { device_id } => Some(format!("remote:{device_id}")),
         }
+    }
+
+    pub fn paths_equal(&self, left: &str, right: &str) -> bool {
+        match self {
+            Self::Local => crate::path::local_paths_equal(Path::new(left), Path::new(right)),
+            Self::Wsl { .. } | Self::Remote { .. } => crate::path::paths_equal(left, right),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_targets_compare_the_path_platform() {
+        let target = RuntimeTarget::Remote {
+            device_id: "windows-host".to_string(),
+        };
+        assert!(target.paths_equal(r"\\?\F:\Projects\Codux", "f:/projects/codux"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_targets_follow_the_current_filesystem() {
+        assert!(!RuntimeTarget::Local.paths_equal(r"/repo/project\name", "/repo/project/name"));
     }
 }

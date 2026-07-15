@@ -336,7 +336,7 @@ impl RuntimeService {
     }
 
     pub fn cancel_project_git(&self, project_path: &str) -> Result<(), String> {
-        let key = git_cancel_key(project_path);
+        let key = git::repository_path_key(project_path);
         let Some(token) = self
             .git_cancels
             .lock()
@@ -703,14 +703,14 @@ impl RuntimeService {
     fn create_git_cancel_token(&self, project_path: &str) -> git::GitCancelToken {
         let token = Arc::new(std::sync::atomic::AtomicBool::new(false));
         if let Ok(mut cancels) = self.git_cancels.lock() {
-            cancels.insert(git_cancel_key(project_path), Arc::clone(&token));
+            cancels.insert(git::repository_path_key(project_path), Arc::clone(&token));
         }
         token
     }
 
     fn clear_git_cancel_token(&self, project_path: &str, token: &git::GitCancelToken) {
         if let Ok(mut cancels) = self.git_cancels.lock() {
-            let key = git_cancel_key(project_path);
+            let key = git::repository_path_key(project_path);
             if cancels
                 .get(&key)
                 .is_some_and(|current| Arc::ptr_eq(current, token))
@@ -719,21 +719,6 @@ impl RuntimeService {
             }
         }
     }
-}
-
-fn git_cancel_key(project_path: &str) -> String {
-    let normalized = Path::new(project_path.trim())
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(project_path.trim()));
-    let mut key = normalized.to_string_lossy().replace('\\', "/");
-    while key.len() > 1 && key.ends_with('/') {
-        key.pop();
-    }
-    #[cfg(windows)]
-    {
-        key = key.to_ascii_lowercase();
-    }
-    key
 }
 
 #[cfg(test)]
@@ -758,9 +743,9 @@ mod git_cancel_tests {
     }
 
     #[test]
-    fn git_cancel_key_matches_tauri_normalization() {
+    fn git_cancel_storage_uses_repository_path_key() {
         assert_eq!(
-            git_cancel_key("/tmp/codux-project///"),
+            git::repository_path_key("/tmp/codux-project///"),
             "/tmp/codux-project"
         );
     }

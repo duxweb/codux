@@ -142,7 +142,7 @@ pub(super) fn normalize_terminal_cwd(cwd: Option<String>) -> Option<String> {
         if trimmed.is_empty() {
             None
         } else {
-            Some(normalize_terminal_path(trimmed))
+            Some(codux_runtime_core::path::display_path(trimmed))
         }
     })
 }
@@ -165,4 +165,21 @@ pub(super) fn requested_terminal_cwd(
             })
             .or_else(|| context.map(|context| context.project_path.display().to_string())),
     )
+}
+
+#[cfg(test)]
+mod cwd_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_cwd_preserves_host_path_text() {
+        assert_eq!(
+            normalize_terminal_cwd(Some("/var/folders/project".to_string())).as_deref(),
+            Some("/var/folders/project")
+        );
+        assert_eq!(
+            normalize_terminal_cwd(Some(r"\\?\F:\Projects\Codux".to_string())).as_deref(),
+            Some(r"F:\Projects\Codux")
+        );
+    }
 }

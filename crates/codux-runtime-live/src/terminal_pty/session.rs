@@ -477,7 +477,10 @@ impl TerminalPtySession {
     pub(super) fn matches_requested_identity(&self, requested: &RequestedTerminalIdentity) -> bool {
         let info = self.info();
         if let Some(cwd) = requested.cwd.as_deref()
-            && normalize_terminal_path(&info.cwd) != cwd
+            && !codux_runtime_core::path::local_paths_equal(
+                std::path::Path::new(&info.cwd),
+                std::path::Path::new(cwd),
+            )
         {
             return false;
         }

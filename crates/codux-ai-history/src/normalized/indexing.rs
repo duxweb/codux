@@ -71,7 +71,7 @@ fn collect_source_fingerprints(
 }
 
 fn normalized_source_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    codux_runtime_core::path::local_path_identity_key(path).unwrap_or_default()
 }
 
 fn sqlite_database_fingerprint_paths(path: &Path) -> Vec<PathBuf> {

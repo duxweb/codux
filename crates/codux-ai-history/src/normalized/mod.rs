@@ -2,6 +2,7 @@ use crate::paths::home_dir;
 use crate::usage_store::AIUsageStore;
 use anyhow::Result;
 use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
+use codux_runtime_core::path::optional_local_path_equals as paths_equivalent;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

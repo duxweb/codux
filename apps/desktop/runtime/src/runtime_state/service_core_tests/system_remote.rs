@@ -167,7 +167,10 @@ fn ai_history_global_scope_includes_project_roots_and_worktrees() {
 
     let requests = service.ai_history_workspace_requests();
 
+    #[cfg(windows)]
     assert_eq!(requests.len(), 4);
+    #[cfg(not(windows))]
+    assert_eq!(requests.len(), 5);
     assert!(requests.iter().any(|request| request.id == "project-a"));
     assert!(requests.iter().any(|request| request.id == "project-b"));
     assert!(requests.iter().any(|request| request.id == "worktree-a"));
@@ -177,11 +180,14 @@ fn ai_history_global_scope_includes_project_roots_and_worktrees() {
     assert!(!requests.iter().any(|request| request.id == "project-remote"));
     assert!(!requests.iter().any(|request| request.id == "worktree-remote"));
     assert!(!requests.iter().any(|request| request.id == "duplicate-root"));
-    assert!(
-        !requests
-            .iter()
-            .any(|request| request.id == "duplicate-windows-root")
-    );
+    #[cfg(windows)]
+    assert!(!requests
+        .iter()
+        .any(|request| request.id == "duplicate-windows-root"));
+    #[cfg(not(windows))]
+    assert!(requests
+        .iter()
+        .any(|request| request.id == "duplicate-windows-root"));
     let _ = fs::remove_dir_all(support_dir);
 }
 

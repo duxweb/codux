@@ -35,20 +35,24 @@ impl CoduxApp {
         }
         let full_paths = paths
             .iter()
-            .map(|path| {
-                Path::new(&project_path)
-                    .join(path)
-                    .to_string_lossy()
-                    .to_string()
-            })
+            .map(|path| codux_runtime::path::join_path(&project_path, path))
             .collect::<Vec<_>>();
-        let external_paths = full_paths.iter().map(PathBuf::from).collect::<Vec<_>>();
-        cx.write_to_clipboard(ClipboardItem {
-            entries: vec![
+        let mut entries = vec![gpui::ClipboardEntry::String(gpui::ClipboardString::new(
+            full_paths.join("\n"),
+        ))];
+        if self
+            .state
+            .selected_project
+            .as_ref()
+            .is_some_and(|project| project.runtime_target.is_local())
+        {
+            let external_paths = full_paths.iter().map(PathBuf::from).collect::<Vec<_>>();
+            entries.insert(
+                0,
                 gpui::ClipboardEntry::ExternalPaths(gpui::ExternalPaths(external_paths.into())),
-                gpui::ClipboardEntry::String(gpui::ClipboardString::new(full_paths.join("\n"))),
-            ],
-        });
+            );
+        }
+        cx.write_to_clipboard(ClipboardItem { entries });
         self.status_message = format!("copied {} file path{}", paths.len(), plural(paths.len()));
         self.invalidate_file_panel(cx);
         true
@@ -76,18 +80,24 @@ impl CoduxApp {
             self.invalidate_file_panel(cx);
             return true;
         };
-        let full_path = Path::new(&project_path)
-            .join(&path)
-            .to_string_lossy()
-            .to_string();
-        cx.write_to_clipboard(ClipboardItem {
-            entries: vec![
+        let full_path = codux_runtime::path::join_path(&project_path, &path);
+        let mut entries = vec![gpui::ClipboardEntry::String(gpui::ClipboardString::new(
+            full_path.clone(),
+        ))];
+        if self
+            .state
+            .selected_project
+            .as_ref()
+            .is_some_and(|project| project.runtime_target.is_local())
+        {
+            entries.insert(
+                0,
                 gpui::ClipboardEntry::ExternalPaths(gpui::ExternalPaths(
-                    vec![PathBuf::from(&full_path)].into(),
+                    vec![PathBuf::from(full_path)].into(),
                 )),
-                gpui::ClipboardEntry::String(gpui::ClipboardString::new(full_path)),
-            ],
-        });
+            );
+        }
+        cx.write_to_clipboard(ClipboardItem { entries });
         self.status_message = format!("copied file path: {path}");
         self.invalidate_file_panel(cx);
         true

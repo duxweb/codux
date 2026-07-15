@@ -193,22 +193,5 @@ fn push_event(events: &Arc<Mutex<VecDeque<ProjectActivityEvent>>>, event: Projec
 }
 
 fn git_job_key(kind: &str, path: &str) -> String {
-    format!("{kind}:{}", coalesced_refresh_key(path))
-}
-
-fn coalesced_refresh_key(path: &str) -> String {
-    let path = Path::new(path.trim());
-    if path.as_os_str().is_empty() {
-        return String::new();
-    }
-    let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let mut key = normalized.to_string_lossy().replace('\\', "/");
-    while key.len() > 1 && key.ends_with('/') {
-        key.pop();
-    }
-    #[cfg(windows)]
-    {
-        key = key.to_ascii_lowercase();
-    }
-    key
+    format!("{kind}:{}", crate::git::repository_path_key(path))
 }

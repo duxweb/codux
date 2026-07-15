@@ -13,6 +13,18 @@ enum RemoteRelayChange {
 
 const AGENT_GIT_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
+fn runtime_path_matches(
+    runtime_target: Option<&ProjectRuntimeTarget>,
+    selected_path: Option<&str>,
+    event_path: &str,
+) -> bool {
+    runtime_target
+        .zip(selected_path)
+        .is_some_and(|(runtime_target, selected_path)| {
+            runtime_target.paths_equal(selected_path, event_path)
+        })
+}
+
 fn next_agent_git_refresh(
     completed_now: bool,
     working_now: bool,
@@ -1659,6 +1671,9 @@ impl CoduxApp {
         let selected_path = selected_project
             .as_ref()
             .map(|project| project.path.as_str());
+        let selected_runtime_target = selected_project
+            .as_ref()
+            .map(|project| &project.runtime_target);
         let selected_worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
         let selected_history_id = selected_worktree
             .as_ref()
@@ -1682,7 +1697,11 @@ impl CoduxApp {
             match event {
                 AIHistoryEvent::ProjectState { state }
                     if selected_history_id == Some(state.project_id.as_str())
-                        || selected_history_path == Some(state.project_path.as_str()) =>
+                        || runtime_path_matches(
+                            selected_runtime_target,
+                            selected_history_path,
+                            &state.project_path,
+                        ) =>
                 {
                     let is_loading = state.is_loading || state.queued;
                     let summary =
@@ -1764,6 +1783,9 @@ impl CoduxApp {
         let selected_path = selected_project
             .as_ref()
             .map(|project| project.path.as_str());
+        let selected_runtime_target = selected_project
+            .as_ref()
+            .map(|project| &project.runtime_target);
         let selected_id = selected_project.as_ref().map(|project| project.id.as_str());
         let selected_worktree = super::ai_runtime_status::selected_worktree_info(&self.state);
         let selected_git_path = selected_worktree
@@ -1788,8 +1810,11 @@ impl CoduxApp {
                     snapshot,
                     review,
                     ..
-                } if selected_git_path == Some(project_path.as_str())
-                    || selected_path == Some(project_path.as_str()) =>
+                } if runtime_path_matches(
+                    selected_runtime_target,
+                    selected_git_path,
+                    &project_path,
+                ) =>
                 {
                     self.state.git = snapshot;
                     self.git_review = review;
@@ -1803,13 +1828,21 @@ impl CoduxApp {
                     project_path,
                     snapshot,
                 } if selected_id == Some(project_id.as_str())
-                    || selected_path == Some(project_path.as_str()) =>
+                    || runtime_path_matches(
+                        selected_runtime_target,
+                        selected_path,
+                        &project_path,
+                    ) =>
                 {
                     self.merge_selected_project_worktrees(snapshot);
                     applied += 1;
                 }
                 ProjectActivityEvent::GitChanged { project_path, .. }
-                    if selected_path == Some(project_path.as_str()) =>
+                    if runtime_path_matches(
+                        selected_runtime_target,
+                        selected_path,
+                        &project_path,
+                    ) =>
                 {
                     self.refresh_file_tree_state();
                     applied += 1;
@@ -1820,7 +1853,11 @@ impl CoduxApp {
                     snapshot,
                     ..
                 } if selected_history_id == Some(project_id.as_str())
-                    || selected_history_path == Some(project_path.as_str()) =>
+                    || runtime_path_matches(
+                        selected_runtime_target,
+                        selected_history_path,
+                        &project_path,
+                    ) =>
                 {
                     let summary = normalized_ai_history_snapshot_to_summary(snapshot);
                     if let Some(key) = selected_worktree_key.clone() {
@@ -1855,9 +1892,20 @@ impl CoduxApp {
             .selected_project
             .as_ref()
             .map(|project| project.path.clone());
+        let selected_runtime_target = self
+            .state
+            .selected_project
+            .as_ref()
+            .map(|project| &project.runtime_target);
         let applied = events
             .iter()
-            .filter(|event| selected_path.as_deref() == Some(event.project_path.as_str()))
+            .filter(|event| {
+                runtime_path_matches(
+                    selected_runtime_target,
+                    selected_path.as_deref(),
+                    &event.project_path,
+                )
+            })
             .count();
 
         if applied > 0 {
@@ -1914,5 +1962,26 @@ mod tests {
 
         assert!(!refresh_now);
         assert_eq!(refresh_after, None);
+    }
+
+    #[test]
+    fn activity_only_matches_the_selected_workspace() {
+        assert!(runtime_path_matches(
+            Some(&ProjectRuntimeTarget::Local),
+            Some("/repo/.codux/worktrees/task"),
+            "/repo/.codux/worktrees/task"
+        ));
+        assert!(!runtime_path_matches(
+            Some(&ProjectRuntimeTarget::Local),
+            Some("/repo/.codux/worktrees/task"),
+            "/repo"
+        ));
+        assert!(runtime_path_matches(
+            Some(&ProjectRuntimeTarget::Remote {
+                device_id: "windows-host".to_string(),
+            }),
+            Some(r"F:\Projects\Codux"),
+            "f:/projects/codux"
+        ));
     }
 }

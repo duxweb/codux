@@ -2,7 +2,7 @@ use super::{
     AppSnapshot, ProjectListSnapshot, ProjectRecord, ProjectStore, ProjectSummary,
     ProjectWorkspaceRecord,
 };
-use crate::project_store::helpers::{normalize_path, project_summary, worktree_summary};
+use crate::project_store::helpers::{project_summary, workspace_paths_equal, worktree_summary};
 use codux_runtime_core::worktree::{RuntimeWorktreeItem, selected_runtime_worktree_id};
 use serde_json::Value;
 
@@ -34,9 +34,14 @@ impl ProjectStore {
     ) -> Result<super::ProjectRuntimeTarget, String> {
         let snapshot = self.snapshot();
         let project_for_path = |project: &ProjectRecord| {
-            project.path == workspace_path
+            workspace_paths_equal(&project.path, workspace_path, &project.runtime_target)
                 || snapshot.worktrees.iter().any(|worktree| {
-                    worktree.project_id == project.id && worktree.path == workspace_path
+                    worktree.project_id == project.id
+                        && workspace_paths_equal(
+                            &worktree.path,
+                            workspace_path,
+                            &project.runtime_target,
+                        )
                 })
         };
         if let Some(selected) = snapshot
@@ -138,12 +143,19 @@ impl ProjectStore {
     }
 
     pub fn workspace_summary_by_path(&self, path: &str) -> Option<ProjectSummary> {
-        let normalized = normalize_path(path);
         let snapshot = self.snapshot();
         snapshot
             .worktrees
             .iter()
-            .find(|worktree| normalize_path(&worktree.path) == normalized)
+            .find(|worktree| {
+                snapshot
+                    .projects
+                    .iter()
+                    .find(|project| project.id == worktree.project_id)
+                    .is_some_and(|project| {
+                        workspace_paths_equal(&worktree.path, path, &project.runtime_target)
+                    })
+            })
             .and_then(|worktree| {
                 let project = snapshot
                     .projects
@@ -155,7 +167,9 @@ impl ProjectStore {
                 snapshot
                     .projects
                     .iter()
-                    .find(|project| normalize_path(&project.path) == normalized)
+                    .find(|project| {
+                        workspace_paths_equal(&project.path, path, &project.runtime_target)
+                    })
                     .map(project_summary)
             })
     }

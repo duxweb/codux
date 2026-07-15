@@ -108,17 +108,17 @@ impl CoduxApp {
     }
 
     fn recover_project_drive(&mut self, worktree_path: String, cx: &mut Context<Self>) {
-        let (git_path, runtime_target) = self
+        let runtime_target = self
             .state
             .selected_project
             .as_ref()
-            .map(|project| (project.path.clone(), project.runtime_target.clone()))
-            .unwrap_or_else(|| (worktree_path.clone(), ProjectRuntimeTarget::Local));
+            .map(|project| project.runtime_target.clone())
+            .unwrap_or(ProjectRuntimeTarget::Local);
         self.status_message = "project drive reconnected — reloading files and git".to_string();
         // Re-arm the file + git watchers: the originals attached to the now-dead
         // inode and won't recover on their own.
         self.runtime_service
-            .watch_project_background(worktree_path, git_path, runtime_target);
+            .watch_project_background(worktree_path, runtime_target);
         self.reload_project_files_async(cx);
         self.refresh_git_panel_state_async(cx);
         self.invalidate_status_bar(cx);

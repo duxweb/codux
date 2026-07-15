@@ -889,7 +889,12 @@ fn git_project_target(payload: &Value) -> (String, String) {
         return (item.id.clone(), item.path.clone());
     }
     if !project_path.is_empty()
-        && let Some(item) = items.iter().find(|item| item.path == project_path)
+        && let Some(item) = items.iter().find(|item| {
+            codux_runtime_core::path::local_paths_equal(
+                std::path::Path::new(&item.path),
+                std::path::Path::new(project_path),
+            )
+        })
     {
         return (item.id.clone(), item.path.clone());
     }

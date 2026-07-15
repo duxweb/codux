@@ -53,7 +53,9 @@ fn host_project_id(support_dir: &Path, payload: &Value) -> Option<String> {
         && let Some(project) = ProjectStore::new(support_dir.to_path_buf())
             .projects_snapshot()
             .into_iter()
-            .find(|project| project.path == path)
+            .find(|project| {
+                crate::path::local_paths_equal(Path::new(&project.path), Path::new(path))
+            })
     {
         return Some(project.id);
     }

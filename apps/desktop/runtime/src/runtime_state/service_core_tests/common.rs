@@ -1,13 +1,23 @@
-fn wait_for_active_watch_path(service: &RuntimeService, expected: &str) {
+fn wait_for_active_workspace_watch_path(service: &RuntimeService, expected: &str) {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
-        let current = service
+        let (file_path, git_path) = service
             .active_project_watches
             .lock()
-            .expect("active file watch")
-            .file_path
-            .clone();
-        if current.as_deref() == Some(expected) {
+            .map(|watches| (watches.file_path.clone(), watches.git_path.clone()))
+            .expect("active workspace watches");
+        if file_path
+            .as_deref()
+            .is_some_and(|path| {
+                crate::git::repository_path_key(path) == crate::git::repository_path_key(expected)
+            })
+            && git_path
+                .as_deref()
+                .is_some_and(|path| {
+                    crate::git::repository_path_key(path)
+                        == crate::git::repository_path_key(expected)
+                })
+        {
             return;
         }
         if std::time::Instant::now() >= deadline {
@@ -15,14 +25,25 @@ fn wait_for_active_watch_path(service: &RuntimeService, expected: &str) {
         }
         thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(
-        service
-            .active_project_watches
-            .lock()
-            .expect("active file watch")
+    let watches = service
+        .active_project_watches
+        .lock()
+        .expect("active workspace watches");
+    assert!(
+        watches
             .file_path
-            .as_deref(),
-        Some(expected)
+            .as_deref()
+            .is_some_and(|path| {
+                crate::git::repository_path_key(path) == crate::git::repository_path_key(expected)
+            })
+    );
+    assert!(
+        watches
+            .git_path
+            .as_deref()
+            .is_some_and(|path| {
+                crate::git::repository_path_key(path) == crate::git::repository_path_key(expected)
+            })
     );
 }
 

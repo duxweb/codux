@@ -179,10 +179,7 @@ fn same_timestamp(left: f64, right: f64) -> bool {
 }
 
 fn normalized_path(path: &Path) -> String {
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_string()
+    codux_runtime_core::path::normalize_local_path(path)
 }
 
 fn modified_seconds(metadata: &fs::Metadata) -> f64 {

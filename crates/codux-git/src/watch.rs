@@ -279,23 +279,11 @@ fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
 }
 
 fn normalized_path_key(path: &Path) -> String {
-    let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let mut key = normalized_path.to_string_lossy().replace('\\', "/");
-    while key.len() > 1 && key.ends_with('/') {
-        key.pop();
-    }
-    #[cfg(windows)]
-    {
-        key = key.to_ascii_lowercase();
-    }
-    key
+    repository_path_key(&path.to_string_lossy())
 }
 
 fn normalized_path_display(path: &Path) -> String {
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_string()
+    normalize_repository_path(&path.to_string_lossy())
 }
 
 fn should_forward_git_watch_path(

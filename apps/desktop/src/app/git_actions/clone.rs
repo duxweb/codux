@@ -198,7 +198,10 @@ impl CoduxApp {
             Ok(message) => {
                 let selected_matches =
                     self.state.selected_project.as_ref().is_some_and(|project| {
-                        project.id == project_id && project.path == project_path
+                        project.id == project_id
+                            && project
+                                .runtime_target
+                                .paths_equal(&project.path, &project_path)
                     });
                 self.runtime_trace(
                     "git",
@@ -543,11 +546,12 @@ impl CoduxApp {
                 if action == "clone" {
                     self.clear_git_credentials_state();
                 }
-                let selected_matches = self
-                    .state
-                    .selected_project
-                    .as_ref()
-                    .is_some_and(|project| project.path == project_path);
+                let selected_matches =
+                    self.state.selected_project.as_ref().is_some_and(|project| {
+                        project
+                            .runtime_target
+                            .paths_equal(&project.path, &project_path)
+                    });
                 if selected_matches {
                     self.state.git = summary;
                     self.refresh_git_review_for_project(&project_path);

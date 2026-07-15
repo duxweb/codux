@@ -422,12 +422,10 @@ impl CoduxApp {
 
     fn file_editor_preview_path(&self, relative_path: &str) -> Option<String> {
         let worktree_path = self.selected_worktree_path()?;
-        Some(
-            Path::new(&worktree_path)
-                .join(relative_path)
-                .to_string_lossy()
-                .to_string(),
-        )
+        Some(codux_runtime::path::join_path(
+            &worktree_path,
+            relative_path,
+        ))
     }
 
     pub(in crate::app) fn file_editor_workspace_snapshot(&self) -> FileEditorWorkspaceSnapshot {

@@ -42,7 +42,7 @@ fn app_runtime_ready_marks_selected_project_active_and_returns_startup_snapshots
 }
 
 #[test]
-fn project_update_marks_updated_project_active_and_rewatches_files() {
+fn project_update_marks_updated_project_active_and_rewatches_workspace() {
     let support_dir =
         std::env::temp_dir().join(format!("codux-project-update-{}", uuid::Uuid::new_v4()));
     let old_project_dir = support_dir.join("old-project");
@@ -81,12 +81,11 @@ fn project_update_marks_updated_project_active_and_rewatches_files() {
         )
         .expect("update project");
 
-    let expected_watch_path = new_project_dir
-        .canonicalize()
+    let expected_watch_path = dunce::canonicalize(&new_project_dir)
         .unwrap()
         .to_string_lossy()
         .replace('\\', "/");
-    wait_for_active_watch_path(&service, &expected_watch_path);
+    wait_for_active_workspace_watch_path(&service, &expected_watch_path);
     assert_eq!(
         service
             .project_activity_snapshot()
@@ -99,7 +98,7 @@ fn project_update_marks_updated_project_active_and_rewatches_files() {
 }
 
 #[test]
-fn project_select_worktree_marks_root_project_active_and_watches_worktree_files() {
+fn project_select_worktree_marks_root_project_active_and_watches_worktree_workspace() {
     let support_dir = std::env::temp_dir().join(format!(
         "codux-project-select-worktree-{}",
         uuid::Uuid::new_v4()
@@ -145,12 +144,11 @@ fn project_select_worktree_marks_root_project_active_and_watches_worktree_files(
         })
         .expect("select worktree");
 
-    let expected_watch_path = worktree_dir
-        .canonicalize()
+    let expected_watch_path = dunce::canonicalize(&worktree_dir)
         .unwrap()
         .to_string_lossy()
         .replace('\\', "/");
-    wait_for_active_watch_path(&service, &expected_watch_path);
+    wait_for_active_workspace_watch_path(&service, &expected_watch_path);
     assert_eq!(
         service
             .project_activity_snapshot()

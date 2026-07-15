@@ -76,7 +76,9 @@ impl RemoteHostRuntime {
             return Some((project.id.clone(), project.path.clone()));
         }
         if !project_path.is_empty()
-            && let Some(project) = projects.iter().find(|project| project.path == project_path)
+            && let Some(project) = projects.iter().find(|project| {
+                crate::path::local_paths_equal(Path::new(&project.path), Path::new(project_path))
+            })
         {
             return Some((project.id.clone(), project.path.clone()));
         }

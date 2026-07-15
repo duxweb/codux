@@ -99,11 +99,7 @@ pub(crate) fn normalized_runtime_project_name(
 }
 
 fn project_name_from_path(path: &str) -> Option<String> {
-    let path = normalized_string(Some(path))?;
-    path.replace('\\', "/")
-        .trim_end_matches('/')
-        .rsplit('/')
-        .find_map(|segment| normalized_string(Some(segment)))
+    codux_runtime_core::path::file_name(path).and_then(|name| normalized_string(Some(&name)))
 }
 
 pub fn scan_runtime_bindings(

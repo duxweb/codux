@@ -207,8 +207,10 @@ impl RemoteHostRuntime {
             .map(|session| {
                 let info = session.info();
                 info.project_id == scope.worktree_id
-                    && normalize_remote_path(&info.cwd)
-                        == normalize_remote_path(&scope.project_path)
+                    && crate::path::local_paths_equal(
+                        Path::new(&info.cwd),
+                        Path::new(&scope.project_path),
+                    )
             })
             .unwrap_or(false)
     }
@@ -972,30 +974,4 @@ pub(super) fn remote_terminal_pty_config(
 
 pub(super) fn remote_terminal_id_for_scope(scope: &RemoteProjectScope) -> String {
     format!("gpui-term-{}-{}", scope.worktree_id, uuid::Uuid::new_v4())
-}
-
-#[cfg(windows)]
-pub(super) fn normalize_remote_path(path: &str) -> String {
-    let path = path.trim();
-    let path = if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{rest}")
-    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
-        rest.to_string()
-    } else {
-        path.to_string()
-    };
-    trim_remote_path_tail(&path)
-}
-
-#[cfg(not(windows))]
-pub(super) fn normalize_remote_path(path: &str) -> String {
-    trim_remote_path_tail(path.trim())
-}
-
-pub(super) fn trim_remote_path_tail(path: &str) -> String {
-    if path == "/" {
-        path.to_string()
-    } else {
-        path.trim_end_matches(['/', '\\']).to_string()
-    }
 }

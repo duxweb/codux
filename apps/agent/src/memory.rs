@@ -96,10 +96,12 @@ fn memory_projects() -> Vec<MemoryProjectInfo> {
 fn host_project_id(payload: &Value) -> Option<String> {
     let project_path = payload.get("projectPath").and_then(Value::as_str);
     if let Some(path) = project_path.filter(|value| !value.is_empty())
-        && let Some(project) = AgentProjectStore::new()
-            .list()
-            .into_iter()
-            .find(|project| project.path == path)
+        && let Some(project) = AgentProjectStore::new().list().into_iter().find(|project| {
+            codux_runtime_core::path::local_paths_equal(
+                std::path::Path::new(&project.path),
+                std::path::Path::new(path),
+            )
+        })
     {
         return Some(project.id);
     }

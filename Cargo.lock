@@ -1361,6 +1361,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "codux-runtime-core",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1408,6 +1409,7 @@ dependencies = [
  "chrono",
  "codux-ai-history",
  "codux-llm",
+ "codux-runtime-core",
  "llm-json-repair",
  "rusqlite",
  "serde",

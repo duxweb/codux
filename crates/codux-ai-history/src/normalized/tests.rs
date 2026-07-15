@@ -951,6 +951,7 @@ runtime launch context
 
     #[test]
     fn matches_windows_extended_paths_without_matching_project_children() {
+        #[cfg(windows)]
         assert!(paths_equivalent(
             Some(r"\\?\F:\codux-tauri"),
             r"F:\codux-tauri"
@@ -962,6 +963,15 @@ runtime launch context
         assert!(!paths_equivalent(
             Some(r"F:\codux-tauri\.codux\worktrees\task-a"),
             r"F:\codux-tauri"
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_matching_preserves_posix_backslashes() {
+        assert!(!paths_equivalent(
+            Some(r"/repo/project\name"),
+            "/repo/project/name"
         ));
     }
 

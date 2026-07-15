@@ -355,17 +355,7 @@ fn native_save_dialog(request: LocalizedSaveDialogRequest) -> Result<Option<Stri
 
 #[cfg(target_os = "windows")]
 fn native_path_string(path: std::path::PathBuf) -> String {
-    let value = path.to_string_lossy().into_owned();
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
-            return format!(r"\\{rest}");
-        }
-        if let Some(rest) = value.strip_prefix(r"\\?\") {
-            return rest.to_string();
-        }
-    }
-    value
+    codux_runtime_core::path::display_path(&path.to_string_lossy())
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]

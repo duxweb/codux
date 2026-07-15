@@ -53,7 +53,6 @@ impl RuntimeService {
             self.project_activity.mark_project_active(project.clone());
             self.watch_project_background(
                 active_workspace_path,
-                project.path,
                 project.runtime_target,
             );
             self.refresh_active_ai_history_background();

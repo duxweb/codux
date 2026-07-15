@@ -545,17 +545,7 @@ pub(super) fn file_modified_after_start(path: &Path, started_at: Option<f64>) ->
     modified_millis as f64 + 1_000.0 >= started_at * 1000.0
 }
 
-pub(crate) fn paths_equivalent(left: Option<&str>, right: &str) -> bool {
-    let Some(left) = normalized_string(left) else {
-        return false;
-    };
-    let Some(right) = normalized_string(Some(right)) else {
-        return false;
-    };
-    let left = left.trim_end_matches('/');
-    let right = right.trim_end_matches('/');
-    left == right
-}
+pub(crate) use codux_runtime_core::path::optional_local_path_equals as paths_equivalent;
 
 fn codex_file_belongs_to_project_since(
     path: &Path,
@@ -695,6 +685,19 @@ mod tests {
             codex_session_id_from_rollout(&path).as_deref(),
             Some("019f0c1b-f835-7c33-a4f4-3e737d2fbf90")
         );
+    }
+
+    #[test]
+    fn runtime_probe_matches_windows_path_forms() {
+        #[cfg(windows)]
+        assert!(paths_equivalent(
+            Some(r"\\?\C:\Users\Dux\project\"),
+            "c:/users/dux/project"
+        ));
+        assert!(!paths_equivalent(
+            Some(r"C:\Users\Dux\project-child"),
+            r"C:\Users\Dux\project"
+        ));
     }
 
     #[test]

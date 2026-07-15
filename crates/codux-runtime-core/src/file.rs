@@ -264,34 +264,6 @@ fn unique_destination(directory: &Path, name: &str) -> PathBuf {
     directory.join(name)
 }
 
-fn same_file_path(left: &Path, right: &Path) -> bool {
-    if same_file_metadata(left, right) {
-        return true;
-    }
-    match (left.canonicalize(), right.canonicalize()) {
-        (Ok(left), Ok(right)) => left == right,
-        _ => false,
-    }
-}
-
-#[cfg(unix)]
-fn same_file_metadata(left: &Path, right: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-
-    let Ok(left_metadata) = fs::metadata(left) else {
-        return false;
-    };
-    let Ok(right_metadata) = fs::metadata(right) else {
-        return false;
-    };
-    left_metadata.dev() == right_metadata.dev() && left_metadata.ino() == right_metadata.ino()
-}
-
-#[cfg(not(unix))]
-fn same_file_metadata(_left: &Path, _right: &Path) -> bool {
-    false
-}
-
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|error| error.to_string())?;
     for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
@@ -313,7 +285,7 @@ pub fn file_rename(path: &str, new_path: &str) -> Result<(), String> {
     if source.parent() != destination.parent() {
         return Err("Rename must stay in the same directory.".to_string());
     }
-    if destination.exists() && !same_file_path(&source, &destination) {
+    if destination.exists() && !crate::path::local_paths_equal(&source, &destination) {
         return Err("A file with this name already exists.".to_string());
     }
     fs::rename(source, destination).map_err(|error| error.to_string())

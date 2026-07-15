@@ -1,6 +1,6 @@
 use super::{AppSnapshot, ProjectRecord, ProjectSummary, ProjectWorktreeRecord};
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use uuid::Uuid;
 
 pub(super) fn project_summary(project: &ProjectRecord) -> ProjectSummary {
@@ -131,7 +131,7 @@ fn badge_segments(name: &str) -> Option<Vec<String>> {
 }
 
 pub(super) fn normalized_existing_path(path: &str) -> Result<String, String> {
-    let normalized = normalize_path(path);
+    let normalized = codux_runtime_core::path::normalize_local_path(Path::new(path.trim()));
     if normalized.trim().is_empty() {
         return Err("Project path cannot be empty.".to_string());
     }
@@ -152,32 +152,35 @@ pub(super) fn normalized_project_path(path: &str, is_hosted: bool) -> Result<Str
     if !is_hosted {
         return normalized_existing_path(path);
     }
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
+    let path = path.trim();
+    if path.is_empty() {
         return Err("Project path cannot be empty.".to_string());
     }
-    Ok(trimmed.to_string())
+    Ok(path.to_string())
 }
 
-pub(super) fn normalize_path(path: &str) -> String {
-    PathBuf::from(path)
-        .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from(path))
-        .to_string_lossy()
-        .trim()
-        .to_string()
+pub(super) fn workspace_paths_equal(
+    left: &str,
+    right: &str,
+    runtime_target: &super::ProjectRuntimeTarget,
+) -> bool {
+    runtime_target.paths_equal(left, right)
 }
 
-pub(super) fn normalized_project_name(name: &str, path: &str) -> String {
+pub(super) fn normalized_project_name(name: &str, path: &str, is_hosted: bool) -> String {
     let trimmed = name.trim();
     if !trimmed.is_empty() {
         return trimmed.to_string();
     }
-    Path::new(path)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("Project")
-        .to_string()
+    if is_hosted {
+        codux_runtime_core::path::file_name(path).unwrap_or_else(|| "Project".to_string())
+    } else {
+        Path::new(path)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("Project")
+            .to_string()
+    }
 }
 
 pub(super) fn project_uuid(name: &str, path: &str, target_identity: Option<&str>) -> String {

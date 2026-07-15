@@ -8,7 +8,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     fs,
     hash::{Hash, Hasher},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 /// The agent's persistent data directory (projects list, AI usage cache, …).
@@ -43,25 +43,27 @@ impl AgentProjectStore {
     }
 
     pub fn add(&self, path: &str, name: Option<&str>) -> Result<Vec<ProjectListItem>, String> {
-        let path = path.trim();
-        if path.is_empty() {
+        let raw_path = path.trim();
+        if raw_path.is_empty() {
             return Err("Project path is required.".to_string());
         }
-        let id = project_id_for_path(path);
+        let path = raw_path.to_string();
         let name = name
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| default_project_name(path));
+            .unwrap_or_else(|| default_project_name(&path));
         let mut items = self.list();
-        if let Some(existing) = items.iter_mut().find(|item| item.id == id) {
+        if let Some(existing) = items.iter_mut().find(|item| {
+            codux_runtime_core::path::local_paths_equal(Path::new(&item.path), Path::new(&path))
+        }) {
             existing.name = name;
-            existing.path = path.to_string();
+            existing.path = path;
         } else {
             items.push(ProjectListItem {
-                id,
+                id: project_id_for_path(&path),
                 name,
-                path: path.to_string(),
+                path,
             });
         }
         self.save(&items)?;
@@ -86,15 +88,40 @@ impl AgentProjectStore {
 
 fn project_id_for_path(path: &str) -> String {
     let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
+    codux_runtime_core::path::local_path_identity_key(Path::new(path))
+        .unwrap_or_default()
+        .hash(&mut hasher);
     format!("p-{:016x}", hasher.finish())
 }
 
 fn default_project_name(path: &str) -> String {
-    PathBuf::from(path)
+    Path::new(path)
         .file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .unwrap_or("Project")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_ids_and_names_follow_target_path_syntax() {
+        #[cfg(windows)]
+        assert_eq!(
+            project_id_for_path(r"C:\Users\Dux\Project"),
+            project_id_for_path("c:/users/dux/project/")
+        );
+        #[cfg(windows)]
+        assert_eq!(default_project_name(r"C:\Users\Dux\Project"), "Project");
+        #[cfg(not(windows))]
+        assert_eq!(default_project_name("/home/dux/Project"), "Project");
+        #[cfg(not(windows))]
+        assert_ne!(
+            project_id_for_path("/repo/Project"),
+            project_id_for_path("/repo/project")
+        );
+    }
 }

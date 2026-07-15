@@ -241,7 +241,7 @@ impl RuntimeService {
         crate::project_store::ProjectStore::new(self.support_dir.clone())
             .projects_snapshot()
             .into_iter()
-            .find(|project| project.path == project_path)
+            .find(|project| crate::path::paths_equal(&project.path, project_path))
             .and_then(|project| {
                 project
                     .runtime_target

@@ -86,11 +86,12 @@ impl CoduxApp {
 
         match result {
             Ok(summary) => {
-                let selected_matches = self
-                    .state
-                    .selected_project
-                    .as_ref()
-                    .is_some_and(|project| project.path == project_path);
+                let selected_matches =
+                    self.state.selected_project.as_ref().is_some_and(|project| {
+                        project
+                            .runtime_target
+                            .paths_equal(&project.path, &project_path)
+                    });
                 if selected_matches {
                     if completion.reload_state {
                         self.state = self.runtime_service.reload_state();

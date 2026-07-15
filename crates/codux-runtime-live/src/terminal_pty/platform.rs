@@ -161,22 +161,6 @@ pub(super) fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-#[cfg(windows)]
-pub(super) fn normalize_terminal_path(path: &str) -> String {
-    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
-        return format!(r"\\{rest}");
-    }
-    if let Some(rest) = path.strip_prefix(r"\\?\") {
-        return rest.to_string();
-    }
-    path.to_string()
-}
-
-#[cfg(not(windows))]
-pub(super) fn normalize_terminal_path(path: &str) -> String {
-    path.to_string()
-}
-
 pub fn default_shell() -> String {
     if cfg!(target_os = "windows") {
         windows_default_shell()

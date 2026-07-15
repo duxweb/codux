@@ -101,13 +101,19 @@ pub(super) fn relative_path(root: &Path, path: &Path) -> String {
 }
 
 pub(super) fn normalized_path_display(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let path = codux_runtime_core::path::normalize_local_path(path);
+    #[cfg(windows)]
+    {
+        path.replace('\\', "/")
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
 }
 
 pub(super) fn normalized_path_key(path: &Path) -> String {
-    normalized_path_display(path)
-        .trim_end_matches('/')
-        .to_lowercase()
+    codux_runtime_core::path::local_path_identity_key(path).unwrap_or_default()
 }
 
 pub(super) fn should_forward_file_watch_path(root_key: &str, path_key: &str) -> bool {

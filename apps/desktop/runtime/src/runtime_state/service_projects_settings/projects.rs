@@ -166,10 +166,9 @@ impl RuntimeService {
         relative_path: &str,
     ) -> Result<(String, bool), String> {
         if let Some(runtime) = self.hosted_runtime_for_project_path(project_path) {
-            let absolute = format!(
-                "{}/{}",
-                project_path.trim_end_matches('/'),
-                relative_path.trim_start_matches('/')
+            let absolute = crate::path::join_path(
+                project_path,
+                relative_path.trim_start_matches(['/', '\\']),
             );
             return match runtime.and_then(|runtime| runtime.read_file(&absolute)) {
                 Ok(payload) => Ok((

@@ -113,38 +113,37 @@ pub(super) fn changed_file_event_relative_paths(
     events: &[FileChangeEvent],
     worktree_path: &str,
 ) -> HashSet<String> {
-    let worktree = normalize_file_watch_path(worktree_path);
     events
         .iter()
         .flat_map(|event| event.changed_paths.iter())
-        .filter_map(|path| relative_file_watch_path(&worktree, path))
+        .filter_map(|path| relative_file_watch_path(worktree_path, path))
         .collect()
 }
 
 fn relative_file_watch_path(worktree: &str, changed_path: &str) -> Option<String> {
-    let changed = normalize_file_watch_path(changed_path);
-    if changed == worktree || changed.is_empty() {
-        return None;
-    }
-    let prefix = format!("{worktree}/");
-    changed
-        .strip_prefix(&prefix)
+    codux_runtime::path::relative_path(worktree, changed_path)
         .filter(|relative| !relative.is_empty())
-        .map(str::to_string)
+        .map(file_watch_relative_path_display)
 }
 
-fn normalize_file_watch_path(path: &str) -> String {
-    path.trim()
-        .replace('\\', "/")
-        .trim_end_matches('/')
-        .to_string()
+fn file_watch_relative_path_display(path: String) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('\\', "/")
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(windows))]
+    use super::relative_file_watch_path;
     use super::{
         FilePreviewKind, changed_file_event_relative_paths, file_language_for_path,
-        file_preview_kind_for_path, relative_file_watch_path,
+        file_preview_kind_for_path, file_watch_relative_path_display,
     };
     use codux_runtime::files::FileChangeEvent;
 
@@ -218,9 +217,21 @@ mod tests {
 
     #[test]
     fn file_watch_paths_normalize_windows_separators() {
+        let relative =
+            codux_runtime::path::relative_path("C:/Work/App", "c:\\work\\app\\src\\README.md")
+                .expect("relative Windows path");
+        #[cfg(windows)]
+        assert_eq!(file_watch_relative_path_display(relative), "src/README.md");
+        #[cfg(not(windows))]
+        assert_eq!(file_watch_relative_path_display(relative), r"src\README.md");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn file_watch_paths_preserve_posix_backslashes() {
         assert_eq!(
-            relative_file_watch_path("C:/work/app", "C:\\work\\app\\README.md"),
-            Some("README.md".to_string())
+            relative_file_watch_path("/repo", r"/repo/file\name"),
+            Some(r"file\name".to_string())
         );
     }
 }

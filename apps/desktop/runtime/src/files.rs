@@ -268,7 +268,9 @@ impl FilesService {
         if source.as_os_str().is_empty() || destination.as_os_str().is_empty() {
             return Err("Path is empty.".to_string());
         }
-        if destination.exists() && !same_file_path(&source, &destination) {
+        if destination.exists()
+            && !codux_runtime_core::path::local_paths_equal(&source, &destination)
+        {
             return Err("A file with this name already exists.".to_string());
         }
         fs::rename(&source, &destination).map_err(|error| error.to_string())
@@ -282,7 +284,9 @@ impl FilesService {
             .ok_or_else(|| "Cannot rename project root.".to_string())?
             .join(clean_child_name(new_name)?);
         ensure_within_root(&root, &destination)?;
-        if destination.exists() && !same_file_path(&source, &destination) {
+        if destination.exists()
+            && !codux_runtime_core::path::local_paths_equal(&source, &destination)
+        {
             return Err("A file with this name already exists.".to_string());
         }
         fs::rename(&source, &destination).map_err(|error| error.to_string())?;
@@ -387,32 +391,4 @@ impl FilesService {
         let target = resolve_existing_path(&root, path)?;
         open_path(&target)
     }
-}
-
-fn same_file_path(left: &Path, right: &Path) -> bool {
-    if same_file_metadata(left, right) {
-        return true;
-    }
-    match (left.canonicalize(), right.canonicalize()) {
-        (Ok(left), Ok(right)) => left == right,
-        _ => false,
-    }
-}
-
-#[cfg(unix)]
-fn same_file_metadata(left: &Path, right: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-
-    let Ok(left_metadata) = fs::metadata(left) else {
-        return false;
-    };
-    let Ok(right_metadata) = fs::metadata(right) else {
-        return false;
-    };
-    left_metadata.dev() == right_metadata.dev() && left_metadata.ino() == right_metadata.ino()
-}
-
-#[cfg(not(unix))]
-fn same_file_metadata(_left: &Path, _right: &Path) -> bool {
-    false
 }

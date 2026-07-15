@@ -97,42 +97,8 @@ fn path_with_suffix(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(format!("{}{}", path.display(), suffix))
 }
 
-fn paths_equivalent(left: Option<&str>, right: &str) -> bool {
-    let Some(left) = left.and_then(normalized_history_path) else {
-        return false;
-    };
-    let Some(right) = normalized_history_path(right) else {
-        return false;
-    };
-    left == right
-}
-
 pub fn normalized_history_path(value: &str) -> Option<String> {
-    let mut value = value.trim();
-    if value.is_empty() {
-        return None;
-    }
-    value = value
-        .strip_prefix(r"\\?\")
-        .or_else(|| value.strip_prefix(r"//?/"))
-        .unwrap_or(value);
-    let mut normalized = value.replace('\\', "/");
-    while normalized.ends_with('/') && !is_path_root(&normalized) {
-        normalized.pop();
-    }
-    if has_windows_drive_prefix(&normalized) {
-        normalized = normalized.to_ascii_lowercase();
-    }
-    Some(normalized)
-}
-
-fn has_windows_drive_prefix(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic()
-}
-
-fn is_path_root(value: &str) -> bool {
-    value == "/" || (value.len() == 3 && has_windows_drive_prefix(value) && value.ends_with('/'))
+    codux_runtime_core::path::local_path_identity_key(Path::new(value))
 }
 
 fn normalized_string(value: &str) -> Option<String> {

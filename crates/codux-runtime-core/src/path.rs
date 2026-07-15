@@ -9,6 +9,9 @@
 //! need OS-independent parsing of either flavour — exactly what `typed-path`'s
 //! `Utf8TypedPath::derive` (sniff the flavour from the string) provides.
 
+#[cfg(unix)]
+use std::fs;
+use std::path::Path;
 use typed_path::{Utf8Component, Utf8TypedPath, Utf8UnixComponent, Utf8WindowsComponent};
 
 /// Synthetic path that asks `file_list_payload` for the list of volumes/drives
@@ -18,8 +21,8 @@ use typed_path::{Utf8Component, Utf8TypedPath, Utf8UnixComponent, Utf8WindowsCom
 /// with a real absolute path.
 pub const FILE_LIST_DRIVES_SENTINEL: &str = ":drives:";
 
-/// Whether `path` uses Windows conventions (drive-letter root or back-slashes),
-/// decided by `typed-path`'s content sniffing independent of the host OS.
+/// Whether `path` uses Windows conventions (a drive/UNC prefix or leading
+/// backslash), decided by `typed-path` independent of the host OS.
 pub fn is_windows_path(path: &str) -> bool {
     matches!(Utf8TypedPath::derive(path), Utf8TypedPath::Windows(_))
 }
@@ -47,18 +50,145 @@ pub fn file_name(path: &str) -> Option<String> {
     Utf8TypedPath::derive(path).file_name().map(str::to_string)
 }
 
+/// Normalize either Windows or POSIX syntax without consulting the local
+/// filesystem. This is the canonical representation boundary for paths carried
+/// over the controller/runtime protocols.
+pub fn normalize_path_syntax(path: &str) -> Option<String> {
+    let path = display_path(path.trim());
+    if path.is_empty() {
+        return None;
+    }
+    Some(Utf8TypedPath::derive(&path).normalize().into_string())
+}
+
+/// Stable equality key for a path whose platform is encoded in the path text.
+/// Windows paths compare case-insensitively; POSIX paths preserve case.
+pub fn path_identity_key(path: &str) -> Option<String> {
+    let normalized = normalize_path_syntax(path)?;
+    if is_windows_path(&normalized) {
+        Some(normalized.replace('\\', "/").to_ascii_lowercase())
+    } else {
+        Some(normalized)
+    }
+}
+
+pub fn paths_equal(left: &str, right: &str) -> bool {
+    match (path_identity_key(left), path_identity_key(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
+/// Normalize a path that belongs to this process' filesystem. Existing paths
+/// resolve symlinks first; missing paths still receive host-native syntax
+/// normalization.
+pub fn normalize_local_path(path: &Path) -> String {
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let normalized = resolved.components().collect::<std::path::PathBuf>();
+    #[cfg(windows)]
+    {
+        display_path(&normalized.to_string_lossy())
+    }
+    #[cfg(not(windows))]
+    {
+        normalized.to_string_lossy().to_string()
+    }
+}
+
+pub fn local_path_identity_key(path: &Path) -> Option<String> {
+    let path = normalize_local_path(path);
+    if path.is_empty() {
+        return None;
+    }
+    #[cfg(windows)]
+    {
+        return Some(path.replace('\\', "/").to_ascii_lowercase());
+    }
+    #[cfg(not(windows))]
+    {
+        Some(path)
+    }
+}
+
+/// Compare two paths on this process' filesystem, including hard-link identity
+/// on Unix and case-insensitive path identity on Windows.
+pub fn local_paths_equal(left: &Path, right: &Path) -> bool {
+    if same_file_metadata(left, right) {
+        return true;
+    }
+    match (
+        local_path_identity_key(left),
+        local_path_identity_key(right),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
+pub fn optional_local_path_equals(left: Option<&str>, right: &str) -> bool {
+    left.is_some_and(|left| local_paths_equal(Path::new(left), Path::new(right)))
+}
+
+#[cfg(unix)]
+fn same_file_metadata(left: &Path, right: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    let Ok(left_metadata) = fs::metadata(left) else {
+        return false;
+    };
+    let Ok(right_metadata) = fs::metadata(right) else {
+        return false;
+    };
+    left_metadata.dev() == right_metadata.dev() && left_metadata.ino() == right_metadata.ino()
+}
+
+#[cfg(not(unix))]
+fn same_file_metadata(_left: &Path, _right: &Path) -> bool {
+    false
+}
+
 /// Return `path` relative to `root` while preserving the path's separator
 /// style. Both paths are parsed using the target path's conventions.
 pub fn relative_path(root: &str, path: &str) -> Option<String> {
-    Utf8TypedPath::derive(path)
-        .strip_prefix(root)
-        .ok()
-        .map(|relative| {
-            relative
-                .as_str()
-                .trim_start_matches(['/', '\\'])
-                .to_string()
+    let root = normalize_path_syntax(root)?;
+    let path = normalize_path_syntax(path)?;
+    match (Utf8TypedPath::derive(&root), Utf8TypedPath::derive(&path)) {
+        (Utf8TypedPath::Windows(root), Utf8TypedPath::Windows(path)) => relative_components(
+            root.components().map(|component| component.as_str()),
+            path.components().map(|component| component.as_str()),
+            true,
+            "\\",
+        ),
+        (Utf8TypedPath::Unix(root), Utf8TypedPath::Unix(path)) => relative_components(
+            root.components().map(|component| component.as_str()),
+            path.components().map(|component| component.as_str()),
+            false,
+            "/",
+        ),
+        _ => None,
+    }
+}
+
+fn relative_components<'a>(
+    root: impl Iterator<Item = &'a str>,
+    path: impl Iterator<Item = &'a str>,
+    case_insensitive: bool,
+    separator: &str,
+) -> Option<String> {
+    let root = root.collect::<Vec<_>>();
+    let path = path.collect::<Vec<_>>();
+    if root.len() > path.len()
+        || !root.iter().zip(&path).all(|(left, right)| {
+            if case_insensitive {
+                left.eq_ignore_ascii_case(right)
+            } else {
+                left == right
+            }
         })
+    {
+        return None;
+    }
+    Some(path[root.len()..].join(separator))
 }
 
 /// Strip Windows extended-length prefixes (`\\?\` and `\\?\UNC\`) so paths render
@@ -69,7 +199,13 @@ pub fn display_path(path: &str) -> String {
     if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
         return format!(r"\\{rest}");
     }
-    path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+    if let Some(rest) = path.strip_prefix("//?/UNC/") {
+        return format!("//{rest}");
+    }
+    path.strip_prefix(r"\\?\")
+        .or_else(|| path.strip_prefix("//?/"))
+        .unwrap_or(path)
+        .to_string()
 }
 
 /// Step-up target from a volume root: the drive list on Windows so other volumes
@@ -182,6 +318,41 @@ mod tests {
     }
 
     #[test]
+    fn identity_keys_follow_the_paths_platform() {
+        assert!(paths_equal(
+            r"\\?\C:\Users\Dux\project\",
+            "c:/users/dux/project"
+        ));
+        assert!(paths_equal(
+            r"\\?\UNC\server\share\project",
+            "//SERVER/share/project"
+        ));
+        assert!(!paths_equal("/repo/Project", "/repo/project"));
+        assert!(!paths_equal("/repo/project", "/repo/project-child"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_identity_preserves_posix_backslashes() {
+        assert!(!local_paths_equal(
+            Path::new(r"/repo/project\name"),
+            Path::new("/repo/project/name")
+        ));
+    }
+
+    #[test]
+    fn syntax_normalization_resolves_dot_segments() {
+        assert_eq!(
+            normalize_path_syntax(r"C:\Users\Dux\..\Project").as_deref(),
+            Some(r"C:\Users\Project")
+        );
+        assert_eq!(
+            normalize_path_syntax("/repo/./src/../README.md").as_deref(),
+            Some("/repo/README.md")
+        );
+    }
+
+    #[test]
     fn strips_roots_for_both_platforms() {
         assert_eq!(
             relative_path(r"C:\Users\dux", r"C:\Users\dux\src\main.rs").as_deref(),
@@ -192,6 +363,11 @@ mod tests {
             Some("src/main.rs")
         );
         assert_eq!(relative_path(r"C:\Users\dux", r"D:\src\main.rs"), None);
+        assert_eq!(
+            relative_path(r"C:\Users\Dux", r"c:/users/dux/Src/Main.rs").as_deref(),
+            Some(r"Src\Main.rs")
+        );
+        assert_eq!(relative_path("/repo/App", "/repo/app/main.rs"), None);
     }
 
     #[test]
@@ -200,6 +376,8 @@ mod tests {
         assert_eq!(display_path(r"\\?\UNC\server\share"), r"\\server\share");
         assert_eq!(display_path("/Users/dux"), "/Users/dux");
         assert_eq!(display_path(r"C:\Users\dux"), r"C:\Users\dux");
+        assert_eq!(display_path("//?/C:/Users/dux"), "C:/Users/dux");
+        assert_eq!(display_path("//?/UNC/server/share"), "//server/share");
     }
 
     #[test]

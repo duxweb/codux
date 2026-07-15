@@ -504,9 +504,10 @@ fn project_contains_workspace(
     project: &crate::project_store::ProjectRecord,
     workspace_path: &str,
 ) -> bool {
-    project.path == workspace_path
+    crate::path::paths_equal(&project.path, workspace_path)
         || snapshot.worktrees.iter().any(|worktree| {
-            worktree.project_id == project.id && worktree.path == workspace_path
+            worktree.project_id == project.id
+                && crate::path::paths_equal(&worktree.path, workspace_path)
         })
 }
 

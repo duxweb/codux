@@ -86,11 +86,8 @@ impl MemoryService {
                 (metadata.len() as i64, modified_at)
             })
             .unwrap_or_else(|| (transcript.len() as i64, 0.0));
-        let canonical_path = Path::new(transcript_path)
-            .canonicalize()
-            .ok()
-            .and_then(|path| path.to_str().map(ToString::to_string))
-            .unwrap_or_else(|| transcript_path.to_string());
+        let canonical_path =
+            codux_runtime_core::path::normalize_local_path(Path::new(transcript_path));
         let (line_count, prefix_hash, prefix_lines) =
             transcript_file_stats(transcript_path).unwrap_or_else(|| {
                 (

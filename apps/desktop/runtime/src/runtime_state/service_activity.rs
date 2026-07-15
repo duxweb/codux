@@ -28,7 +28,6 @@ impl RuntimeService {
         self.project_activity.mark_project_active(project.clone());
         self.watch_project_background(
             active_workspace_path,
-            project.path,
             project.runtime_target,
         );
         self.refresh_active_ai_history_background();
@@ -91,8 +90,7 @@ impl RuntimeService {
 
     pub fn watch_project_background(
         &self,
-        file_watch_path: String,
-        git_watch_path: String,
+        workspace_path: String,
         runtime_target: ProjectRuntimeTarget,
     ) {
         let Ok(generation) = self.begin_project_watch_switch() else {
@@ -108,7 +106,9 @@ impl RuntimeService {
             if hosted || !service.project_watch_generation_is_current(generation) {
                 return;
             }
-            if let Err(error) = service.watch_active_project_files(file_watch_path, generation) {
+            if let Err(error) =
+                service.watch_active_project_files(workspace_path.clone(), generation)
+            {
                 crate::runtime_trace::runtime_trace(
                     "files",
                     &format!("failed to watch active project: {error}"),
@@ -118,7 +118,7 @@ impl RuntimeService {
             if !service.project_watch_generation_is_current(generation) {
                 return;
             }
-            if let Err(error) = service.watch_active_project_git(git_watch_path, generation) {
+            if let Err(error) = service.watch_active_project_git(workspace_path, generation) {
                 crate::runtime_trace::runtime_trace(
                     "git",
                     &format!("failed to watch active project: {error}"),

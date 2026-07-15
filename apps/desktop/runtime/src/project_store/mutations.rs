@@ -5,8 +5,8 @@ use super::{
     WorktreeTaskRecord,
 };
 use crate::project_store::helpers::{
-    normalize_path, normalized_existing_path, normalized_project_name, normalized_project_path,
-    optional_string_value, project_uuid,
+    normalized_existing_path, normalized_project_name, normalized_project_path,
+    optional_string_value, project_uuid, workspace_paths_equal,
 };
 use crate::project_store::raw_state::{
     ensure_array, project_index, project_record, prune_project_state, select_project_after_removal,
@@ -170,7 +170,8 @@ impl ProjectStore {
     ) -> Result<ProjectListSnapshot, String> {
         let runtime_target = normalized_runtime_target(request.runtime_target)?;
         let project_path = normalized_project_path(&request.path, runtime_target.is_hosted())?;
-        let project_name = normalized_project_name(&request.name, &project_path);
+        let project_name =
+            normalized_project_name(&request.name, &project_path, runtime_target.is_hosted());
         let mut raw = self.raw_snapshot();
         {
             let projects = ensure_array(&mut raw, "projects")?;
@@ -354,13 +355,13 @@ impl ProjectStore {
         runtime_target: &ProjectRuntimeTarget,
     ) -> Result<String, String> {
         let project_path = normalized_project_path(path, runtime_target.is_hosted())?;
-        let project_name = normalized_project_name(name, &project_path);
+        let project_name = normalized_project_name(name, &project_path, runtime_target.is_hosted());
         let mut raw = self.raw_snapshot();
         let projects = ensure_array(&mut raw, "projects")?;
 
         if let Some(existing_id) = projects.iter().find_map(|project| {
             let project = serde_json::from_value::<ProjectRecord>(project.clone()).ok()?;
-            (normalize_path(&project.path) == project_path
+            (workspace_paths_equal(&project.path, &project_path, &project.runtime_target)
                 && project.runtime_target == *runtime_target)
                 .then_some(project.id)
         }) {
@@ -452,7 +453,7 @@ impl ProjectStore {
 
     pub fn update_project(&self, project_id: &str, name: &str, path: &str) -> Result<(), String> {
         let project_path = normalized_existing_path(path)?;
-        let project_name = normalized_project_name(name, &project_path);
+        let project_name = normalized_project_name(name, &project_path, false);
         let mut raw = self.raw_snapshot();
         {
             let projects = ensure_array(&mut raw, "projects")?;

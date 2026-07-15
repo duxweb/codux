@@ -199,6 +199,41 @@ fn create_remote_project_keeps_host_path_without_local_existence_check() {
 }
 
 #[test]
+fn remote_windows_workspace_routes_equivalent_path_forms() {
+    let dir = temp_dir("project-store-remote-windows-path");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&support_dir).unwrap();
+    let store = ProjectStore::new(support_dir.clone());
+    store
+        .create_project(ProjectCreateRequest {
+            name: String::new(),
+            path: r"F:\Projects\Codux\".to_string(),
+            badge_text: None,
+            badge_symbol: None,
+            badge_color_hex: None,
+            runtime_target: ProjectRuntimeTarget::Remote {
+                device_id: "device-win".to_string(),
+            },
+        })
+        .unwrap();
+
+    assert_eq!(
+        store
+            .runtime_target_for_workspace_path(r"\\?\f:\projects\codux")
+            .unwrap(),
+        ProjectRuntimeTarget::Remote {
+            device_id: "device-win".to_string()
+        }
+    );
+    let summary = store
+        .workspace_summary_by_path("f:/PROJECTS/codux")
+        .expect("equivalent remote workspace");
+    assert_eq!(summary.name, "Codux");
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
 fn same_wsl_path_in_different_distributions_creates_distinct_projects() {
     let dir = temp_dir("project-store-wsl-identity");
     let support_dir = dir.join("support");

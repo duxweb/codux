@@ -289,6 +289,16 @@ fn resolve_existing_paths_for_system_actions_stay_inside_root() {
     fs::remove_dir_all(root).ok();
 }
 
+#[test]
+fn file_watch_path_keys_follow_local_path_case_rules() {
+    let upper = normalized_path_key(std::path::Path::new("/tmp/Codux-Project"));
+    let lower = normalized_path_key(std::path::Path::new("/tmp/codux-project"));
+    #[cfg(windows)]
+    assert_eq!(upper, lower);
+    #[cfg(not(windows))]
+    assert_ne!(upper, lower);
+}
+
 fn temp_dir(label: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

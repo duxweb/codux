@@ -140,7 +140,12 @@ fn source_sample_priority(path: &str) -> (usize, String) {
 fn path_relative_to(root: &Path, path: &Path) -> Option<String> {
     path.strip_prefix(root)
         .ok()
-        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .map(|path| {
+            path.components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
 }
 
 fn extract_source_signals(text: &str) -> Vec<String> {

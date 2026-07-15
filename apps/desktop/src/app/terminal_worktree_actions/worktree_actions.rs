@@ -387,7 +387,10 @@ impl CoduxApp {
                             app.state.worktrees.selected_worktree_id.clone();
                         let selected_matches =
                             app.state.selected_project.as_ref().is_some_and(|project| {
-                                project.id == project_id && project.path == project_path
+                                project.id == project_id
+                                    && project
+                                        .runtime_target
+                                        .paths_equal(&project.path, &project_path)
                             });
                         if selected_matches {
                             app.state.worktrees = summary;
@@ -818,7 +821,10 @@ impl CoduxApp {
                     let _ = this.update(cx, |app, cx| {
                         let selected_matches =
                             app.state.selected_project.as_ref().is_some_and(|project| {
-                                project.id == project_id && project.path == project_path
+                                project.id == project_id
+                                    && project
+                                        .runtime_target
+                                        .paths_equal(&project.path, &project_path)
                             });
                         if selected_matches {
                             app.state.worktrees = summary;
