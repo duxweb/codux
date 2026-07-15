@@ -51,6 +51,7 @@ impl RemoteHostRuntime {
                 let fallback = RemoteTerminalBufferWindow {
                     data: String::new(),
                     screen_data: None,
+                    screen_wrapped_rows: None,
                     offset: 0,
                     total_characters: 0,
                     truncated: false,
@@ -190,7 +191,7 @@ impl RemoteHostRuntime {
             // host-grid keyframe can no longer land at reflowed rows (the old
             // ghost-prompt reason to omit it). When the requester owns the
             // viewport the keyframe is rendered at the just-reflowed target grid.
-            let screen_data = if options.viewport.is_some() {
+            let screen_snapshot = if options.viewport.is_some() {
                 let max_lines = options
                     .viewport
                     .map(|viewport| viewport.rows.max(8) as usize)
@@ -198,17 +199,17 @@ impl RemoteHostRuntime {
                 self.terminals
                     .remote_viewport_snapshot(session_id, 0, 0, max_lines)
                     .ok()
-                    .map(|snapshot| snapshot.data)
             } else {
-                self.terminals
-                    .screen_snapshot(session_id)
-                    .ok()
-                    .map(|snapshot| snapshot.data)
-            }
-            .filter(|data| !data.is_empty());
+                self.terminals.screen_snapshot(session_id).ok()
+            };
+            let (screen_data, screen_wrapped_rows) = screen_snapshot
+                .filter(|snapshot| !snapshot.data.is_empty())
+                .map(|snapshot| (Some(snapshot.data), Some(snapshot.wrapped_rows)))
+                .unwrap_or_default();
             return Ok(RemoteTerminalBufferWindow {
                 data,
                 screen_data,
+                screen_wrapped_rows,
                 offset: start_offset,
                 total_characters,
                 truncated: false,
@@ -255,6 +256,7 @@ impl RemoteHostRuntime {
         Ok(RemoteTerminalBufferWindow {
             data: chunk,
             screen_data: None,
+            screen_wrapped_rows: None,
             offset: clamped,
             total_characters,
             truncated,

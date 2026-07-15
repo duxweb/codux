@@ -146,6 +146,7 @@ struct DecodedPayload {
     data: String,
     is_buffer: bool,
     screen_data: Option<String>,
+    screen_wrapped_rows: Option<Vec<bool>>,
     offset: Option<i64>,
     buffer_length: Option<i64>,
     tail: bool,
@@ -602,6 +603,7 @@ impl RemoteTerminalOutputRouter {
                     session_id,
                     &raw,
                     decoded.screen_data.as_deref(),
+                    decoded.screen_wrapped_rows.as_deref(),
                     decoded.buffer_length,
                     output_seq,
                 );
@@ -734,6 +736,7 @@ impl RemoteTerminalOutputRouter {
                     session_id,
                     &raw,
                     decoded.screen_data.as_deref(),
+                    decoded.screen_wrapped_rows.as_deref(),
                     decoded.buffer_length,
                     output_seq,
                 );
@@ -745,6 +748,7 @@ impl RemoteTerminalOutputRouter {
                         session_id,
                         &raw,
                         decoded.screen_data.as_deref(),
+                        decoded.screen_wrapped_rows.as_deref(),
                         decoded.buffer_length,
                         output_seq,
                     );
@@ -766,6 +770,7 @@ impl RemoteTerminalOutputRouter {
                     session_id,
                     &raw,
                     decoded.screen_data.as_deref(),
+                    decoded.screen_wrapped_rows.as_deref(),
                     decoded.buffer_length,
                     output_seq,
                 );
@@ -795,6 +800,7 @@ impl RemoteTerminalOutputRouter {
                 session_id,
                 &raw,
                 decoded.screen_data.as_deref(),
+                decoded.screen_wrapped_rows.as_deref(),
                 decoded.buffer_length,
                 output_seq,
             );
@@ -846,6 +852,7 @@ impl RemoteTerminalOutputRouter {
         session_id: &str,
         data: &str,
         screen_data: Option<&str>,
+        screen_wrapped_rows: Option<&[bool]>,
         buffer_length: Option<i64>,
         output_seq: Option<TerminalSequence>,
     ) -> Vec<String> {
@@ -853,6 +860,7 @@ impl RemoteTerminalOutputRouter {
         let replay = self.session(session_id).replace_from_baseline(
             data,
             screen_data,
+            screen_wrapped_rows,
             buffer_length.and_then(|value| usize::try_from(value).ok()),
             output_seq,
         );
@@ -876,6 +884,7 @@ impl RemoteTerminalOutputRouter {
         session_id: &str,
         data: &str,
         screen_data: Option<&str>,
+        screen_wrapped_rows: Option<&[bool]>,
         buffer_length: Option<i64>,
         output_seq: Option<TerminalSequence>,
     ) -> Vec<String> {
@@ -901,6 +910,7 @@ impl RemoteTerminalOutputRouter {
             let replay = self.session(session_id).replace_from_baseline(
                 &combined,
                 screen_data,
+                screen_wrapped_rows,
                 buffer_len,
                 output_seq,
             );
@@ -946,11 +956,21 @@ fn decode_terminal_output_payload(payload: &Value) -> DecodedPayload {
         data: decode_data(payload),
         is_buffer: payload.get("buffer").and_then(Value::as_bool) == Some(true),
         screen_data: payload_string(payload, "screenData"),
+        screen_wrapped_rows: payload_bool_array(payload, "screenWrappedRows"),
         offset: payload_int(payload, "offset"),
         buffer_length: payload_int(payload, "bufferLength"),
         tail: payload.get("tail").and_then(Value::as_bool) == Some(true),
         baseline_failed: payload.get("baselineFailed").and_then(Value::as_bool) == Some(true),
     }
+}
+
+fn payload_bool_array(payload: &Value, key: &str) -> Option<Vec<bool>> {
+    payload
+        .get(key)?
+        .as_array()?
+        .iter()
+        .map(Value::as_bool)
+        .collect()
 }
 
 fn decode_data(payload: &Value) -> String {
@@ -1165,6 +1185,39 @@ mod tests {
             router.content("session-1"),
             Some("raw-history\nlive\nworking")
         );
+    }
+
+    #[test]
+    fn baseline_restores_structured_soft_wrap_metadata() {
+        let mut router = RemoteTerminalOutputRouter::new(65536, 65536);
+        router.bind_session("session-1", true);
+        router.resize_screen("session-1", 10, 4);
+
+        router.accept(
+            &json!({
+                "type": "terminal.output",
+                "sessionId": "session-1",
+                "payload": {
+                    "data": "",
+                    "screenData": "\x1b[H\x1b[2Jabcdefghij\x1b[2;1Hklmno\x1b[3;1Hsecond",
+                    "screenWrappedRows": [true, false, false, false],
+                    "buffer": true,
+                    "offset": 0,
+                    "bufferLength": 0,
+                    "tail": true,
+                    "outputSeq": 10,
+                },
+            }),
+            Some("session-1"),
+        );
+
+        let snapshot: Value = serde_json::from_str(
+            &router
+                .screen_snapshot_json("session-1")
+                .expect("screen snapshot"),
+        )
+        .expect("snapshot json");
+        assert_eq!(snapshot["wrappedRows"], json!([true, false, false, false]));
     }
 
     #[test]

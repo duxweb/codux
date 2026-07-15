@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Fixed terminal, worktree, and project agent indicators remaining stuck in a working state after an AI CLI was interrupted, exited unexpectedly, or returned to the shell without a closing progress event.
+- Fixed copied terminal text gaining newlines at visual soft wraps while preserving real line breaks, including remote terminals.
 - Fixed Windows window controls and WSL project switching, including delayed first activation and stale terminal bindings after runtime changes.
 - Fixed external project-directory recovery, terminal text contrast, status animation load, and the terminal collapse tooltip localization.
 

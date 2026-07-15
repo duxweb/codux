@@ -83,6 +83,20 @@ fn wrapped_line_copies_without_seam_newline() {
     );
 }
 #[test]
+fn wrapped_and_hard_lines_copy_with_only_real_newline() {
+    let mut state = TerminalModel::new_for_test(10, 4, 100);
+    state.process_bytes(b"abcdefghijklmno\r\nsecond");
+    state.handle.publish_snapshot();
+
+    assert_eq!(
+        state.handle.selected_text_for_range(SelectionRange {
+            start: TerminalSelectionPoint { line: 0, col: 0 },
+            end: TerminalSelectionPoint { line: 2, col: 6 },
+        }),
+        "abcdefghijklmno\nsecond"
+    );
+}
+#[test]
 fn double_click_selects_word_under_cell() {
     let mut state = TerminalModel::new_for_test(20, 4, 100);
     state.process_bytes(b"foo bar baz");

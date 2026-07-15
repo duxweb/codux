@@ -331,7 +331,7 @@ fn restores_baseline_before_replaying_held_live_output() {
     assert!(session.hold_live(Some(11), "stale"));
     assert!(session.hold_live(Some(12), "new"));
 
-    let replay = session.replace_from_baseline("abcd", None, Some(8), Some(11));
+    let replay = session.replace_from_baseline("abcd", None, None, Some(8), Some(11));
     assert_eq!(session.content(), "abcd");
     assert_eq!(replay, vec!["new"]);
 }
@@ -342,7 +342,7 @@ fn restores_raw_history_screen_from_baseline() {
     session.resize_screen(20, 8);
     let history = scrollable_history("raw history");
 
-    session.replace_from_baseline(&history, None, Some(83), Some(7));
+    session.replace_from_baseline(&history, None, None, Some(83), Some(7));
 
     // The live view renders the raw history reflowed to the consumer's grid and
     // scrolled to the bottom; the host-sized keyframe is not used for it.
@@ -375,7 +375,7 @@ fn baseline_keyframe_reconstructs_current_screen_over_raw_history() {
     // the scrollback. The baseline must paint it as the current screen while
     // keeping the raw history reachable above.
     let keyframe = "\x1b[H\x1b[2Jtui current screen";
-    session.replace_from_baseline(&history, Some(keyframe), Some(50), Some(3));
+    session.replace_from_baseline(&history, Some(keyframe), None, Some(50), Some(3));
 
     let screen = session.screen_snapshot();
     assert_eq!(screen.display_offset, 0);
@@ -392,6 +392,24 @@ fn baseline_keyframe_reconstructs_current_screen_over_raw_history() {
 }
 
 #[test]
+fn baseline_keyframe_restores_soft_and_hard_line_breaks() {
+    let mut session = RemotePtySession::<String>::new(512);
+    session.resize_screen(10, 4);
+    let keyframe = "\x1b[H\x1b[2Jabcdefghij\x1b[2;1Hklmno\x1b[3;1Hsecond";
+
+    session.replace_from_baseline(
+        "",
+        Some(keyframe),
+        Some(&[true, false, false, false]),
+        Some(0),
+        Some(3),
+    );
+
+    let screen = session.screen_snapshot();
+    assert_eq!(screen.wrapped_rows, vec![true, false, false, false]);
+}
+
+#[test]
 fn baseline_scroll_restore_falls_back_to_bottom_when_history_shrinks() {
     let mut session = RemotePtySession::<String>::new(2048);
     session.resize_screen(20, 8);
@@ -399,13 +417,13 @@ fn baseline_scroll_restore_falls_back_to_bottom_when_history_shrinks() {
         .map(|index| format!("tall history {index:02}"))
         .collect::<Vec<_>>()
         .join("\r\n");
-    session.replace_from_baseline(&tall, None, Some(90), Some(1));
+    session.replace_from_baseline(&tall, None, None, Some(90), Some(1));
     scroll_history_up(&mut session, 6);
     assert_eq!(session.screen_snapshot().display_offset, 6);
 
     // Resync with a shorter buffer (max offset 4 < previous 6): the old spot no
     // longer exists, so the view must land at the bottom, not clamp to the top.
-    session.replace_from_baseline(&scrollable_history("short"), None, Some(12), Some(2));
+    session.replace_from_baseline(&scrollable_history("short"), None, None, Some(12), Some(2));
     let screen = session.screen_snapshot();
     assert_eq!(screen.display_offset, 0);
     assert!(screen.data.contains("short 12"));
@@ -416,7 +434,7 @@ fn live_output_appends_to_raw_history_screen() {
     let mut session = RemotePtySession::<String>::new(512);
     session.resize_screen(20, 8);
     let history = scrollable_history("cached raw history");
-    session.replace_from_baseline(&history, None, Some(18), Some(3));
+    session.replace_from_baseline(&history, None, None, Some(18), Some(3));
 
     session.append_live("partial live raw", Some(32), Some(4));
 
@@ -440,7 +458,7 @@ fn live_screen_keyframe_replaces_current_screen_without_polluting_history() {
     let mut session = RemotePtySession::<String>::new(512);
     session.resize_screen(20, 8);
     let history = scrollable_history("history");
-    session.replace_from_baseline(&history, None, Some(50), Some(3));
+    session.replace_from_baseline(&history, None, None, Some(50), Some(3));
 
     session.append_live("live raw", Some(58), Some(4));
 
@@ -472,7 +490,7 @@ fn empty_live_screen_keyframe_leaves_live_view_unchanged() {
     let mut session = RemotePtySession::<String>::new(512);
     session.resize_screen(20, 8);
     let history = scrollable_history("history");
-    session.replace_from_baseline(&history, None, Some(50), Some(3));
+    session.replace_from_baseline(&history, None, None, Some(50), Some(3));
 
     session.append_live("", Some(50), Some(4));
 
@@ -645,6 +663,10 @@ fn terminal_buffer_assembler_preserves_screen_baseline_metadata() {
     let payload = result.payload.unwrap();
     assert_eq!(payload["data"], "raw-history-tail");
     assert_eq!(payload["screenData"], "\u{1b}[2J\u{1b}[Hvisible screen");
+    assert_eq!(
+        payload["screenWrappedRows"],
+        serde_json::json!([true, false])
+    );
 }
 
 #[test]
@@ -726,6 +748,7 @@ fn chunk_payload(
         "outputSeq": 7,
         "requestId": request_id,
         "screenData": "\u{1b}[2J\u{1b}[Hvisible screen",
+        "screenWrappedRows": [true, false],
     })
 }
 

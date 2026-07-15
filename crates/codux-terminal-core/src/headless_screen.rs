@@ -61,7 +61,7 @@ pub struct TerminalScreenSnapshot {
     pub title: Option<String>,
     /// Per-viewport-row soft-wrap flags: true means the row continues onto the
     /// next without a hard line break, so copy joins them as one line. Empty
-    /// when unknown (older peers, remote overscan snapshots).
+    /// when unknown (for example, when an older peer omits the metadata).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub wrapped_rows: Vec<bool>,
     /// OSC 133;A prompt-start lines in absolute buffer coordinates (0 =
@@ -242,6 +242,12 @@ impl HeadlessTerminalScreen {
                     .send(TerminalScreenCommand::ProcessReplay(chunk.to_vec()));
             }
         }
+    }
+
+    pub(crate) fn restore_visible_wrapped_rows(&mut self, wrapped_rows: &[bool]) {
+        self.engine.send(TerminalScreenCommand::RestoreWrappedRows(
+            wrapped_rows.to_vec(),
+        ));
     }
 
     pub fn replace_with_keyframe(&mut self, bytes: &[u8]) {
@@ -531,6 +537,7 @@ impl TerminalScreenEngine {
 enum TerminalScreenCommand {
     Process(Vec<u8>),
     ProcessReplay(Vec<u8>),
+    RestoreWrappedRows(Vec<bool>),
     SetEventSink(TerminalScreenEventSink),
     Resize {
         cols: usize,
@@ -998,6 +1005,9 @@ impl TerminalScreenWorker {
             match command {
                 TerminalScreenCommand::Process(bytes) => self.feed(&bytes, true),
                 TerminalScreenCommand::ProcessReplay(bytes) => self.feed(&bytes, false),
+                TerminalScreenCommand::RestoreWrappedRows(wrapped_rows) => {
+                    self.restore_visible_wrapped_rows(&wrapped_rows);
+                }
                 TerminalScreenCommand::SetEventSink(sink) => {
                     self.event_sink = Some(sink);
                 }
@@ -1096,6 +1106,28 @@ impl TerminalScreenWorker {
         self.cols = cols;
         self.rows = rows;
         self.term.resize(HeadlessTermSize::new(cols, rows));
+    }
+
+    fn restore_visible_wrapped_rows(&mut self, wrapped_rows: &[bool]) {
+        let cols = self.term.columns();
+        let rows = self.term.screen_lines();
+        if cols == 0 || rows == 0 {
+            return;
+        }
+        let display_offset = self.term.grid().display_offset() as i32;
+        let topmost = self.term.grid().topmost_line();
+        let bottommost = self.term.grid().bottommost_line();
+        let grid = self.term.grid_mut();
+        for row in 0..rows {
+            let line = Line(row as i32 - display_offset);
+            if line < topmost || line > bottommost {
+                continue;
+            }
+            grid[line][Column(cols - 1)].flags.set(
+                Flags::WRAPLINE,
+                wrapped_rows.get(row).copied().unwrap_or(false),
+            );
+        }
     }
 
     fn set_scrollback(&mut self, scrollback: usize) {
@@ -1912,6 +1944,20 @@ pub fn stack_scrolled_snapshots(
     let mut cursor = viewport.cursor.clone();
     cursor.row += margin;
     let data = terminal_snapshot_data(viewport.cols, rows, &cells, &cursor);
+    let wrapped_rows = if above.wrapped_rows.len() >= above.rows
+        && viewport.wrapped_rows.len() >= viewport.rows
+        && below.is_none_or(|below| below.wrapped_rows.len() >= below.rows)
+    {
+        let mut wrapped_rows = above.wrapped_rows[above_skip..above.rows].to_vec();
+        wrapped_rows.extend_from_slice(&viewport.wrapped_rows[..viewport.rows]);
+        if margin_below > 0 {
+            let below = below.expect("margin_below > 0 implies below snapshot");
+            wrapped_rows.extend_from_slice(&below.wrapped_rows[below.rows - margin_below..]);
+        }
+        wrapped_rows
+    } else {
+        Vec::new()
+    };
     TerminalScreenSnapshot {
         data,
         cols: viewport.cols,
@@ -1924,9 +1970,7 @@ pub fn stack_scrolled_snapshots(
         application_cursor: viewport.application_cursor,
         input_mode: viewport.input_mode,
         title: viewport.title.clone(),
-        // Overscan stacking is the remote-scroll path, not local copy; row wrap
-        // flags aren't reconstructed across the stitched viewports.
-        wrapped_rows: Vec::new(),
+        wrapped_rows,
         prompt_marks: viewport.prompt_marks.clone(),
         images: Vec::new(),
         cells,
@@ -2495,6 +2539,17 @@ mod tests {
         assert_eq!(snapshot.display_offset, 0);
         assert!(snapshot.rows >= 4);
         assert!(snapshot.margin_rows > 0);
+    }
+
+    #[test]
+    fn remote_viewport_snapshot_preserves_wrapped_rows_across_overscan() {
+        let mut screen = HeadlessTerminalScreen::new(5, 3, 100);
+        screen.process(b"abcdef\r\none\r\ntwo\r\nthree\r\nfour");
+
+        let snapshot = screen.remote_viewport_snapshot_request(0, 2, 0).snapshot();
+
+        assert_eq!(snapshot.wrapped_rows.len(), snapshot.rows);
+        assert!(snapshot.wrapped_rows.iter().any(|wrapped| *wrapped));
     }
 
     #[test]

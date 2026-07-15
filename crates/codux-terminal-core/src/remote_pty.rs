@@ -118,6 +118,7 @@ impl<T> RemotePtySession<T> {
         &mut self,
         content: &str,
         screen_data: Option<&str>,
+        screen_wrapped_rows: Option<&[bool]>,
         buffer_length: Option<usize>,
         sequence: Option<TerminalSequence>,
     ) -> Vec<T> {
@@ -149,6 +150,10 @@ impl<T> RemotePtySession<T> {
             && !screen_data.is_empty()
         {
             self.history_screen.process_replay(screen_data.as_bytes());
+            if let Some(wrapped_rows) = screen_wrapped_rows {
+                self.history_screen
+                    .restore_visible_wrapped_rows(wrapped_rows);
+            }
             rendered = true;
         }
         if rendered {

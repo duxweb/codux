@@ -143,7 +143,7 @@ impl TerminalBufferAssembly {
         let Some(current) = payload.as_object() else {
             return;
         };
-        for key in ["screenData"] {
+        for key in ["screenData", "screenWrappedRows"] {
             if !base.contains_key(key)
                 && let Some(value) = current.get(key)
             {

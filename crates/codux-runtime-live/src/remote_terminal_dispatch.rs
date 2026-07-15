@@ -342,6 +342,7 @@ pub trait RemoteTerminalDispatch {
             "marginRows": snapshot.margin_rows,
             "marginRowsBelow": snapshot.margin_rows_below,
             "screenData": snapshot.data,
+            "screenWrappedRows": snapshot.wrapped_rows,
         });
         if let Some(request_id) = viewport_request_id {
             payload["viewportRequestId"] = Value::String(request_id);

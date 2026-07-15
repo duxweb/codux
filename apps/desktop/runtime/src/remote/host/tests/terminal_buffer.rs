@@ -318,6 +318,7 @@ fn remote_terminal_buffer_window_tail_includes_target_viewport_keyframe() {
         .as_str()
         .expect("target viewport baseline must ship keyframe");
     assert!(screen_data.contains("mobile keyframe"));
+    assert!(baseline["screenWrappedRows"].is_array());
     let snapshot = terminals
         .screen_snapshot(&session_id)
         .expect("screen snapshot after viewport baseline");

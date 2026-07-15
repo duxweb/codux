@@ -819,6 +819,7 @@ impl RemoteResourceSubscriptionTarget {
 pub struct RemoteTerminalBufferWindow {
     pub data: String,
     pub screen_data: Option<String>,
+    pub screen_wrapped_rows: Option<Vec<bool>>,
     pub offset: usize,
     pub total_characters: usize,
     pub truncated: bool,
@@ -1123,6 +1124,7 @@ pub fn host_capabilities() -> Value {
             "chunkChars": REMOTE_TERMINAL_BUFFER_CHUNK_CHARS,
             "requestId": true,
             "screenData": true,
+            "screenWrappedRows": true,
             "baselineFailed": true,
         },
         "terminalOutput": {
@@ -1212,6 +1214,9 @@ fn terminal_buffer_payload(
         && let Some(screen_data) = window.screen_data.as_deref()
     {
         payload["screenData"] = json!(screen_data);
+        if let Some(wrapped_rows) = window.screen_wrapped_rows.as_deref() {
+            payload["screenWrappedRows"] = json!(wrapped_rows);
+        }
     }
     if let Some((snapshot_id, chunk_index, chunk_count)) = chunk {
         payload["snapshotId"] = json!(snapshot_id);
@@ -1258,6 +1263,7 @@ mod tests {
         let window = RemoteTerminalBufferWindow {
             data: "ab你好cd".to_string(),
             screen_data: Some("\x1b[Hscreen".to_string()),
+            screen_wrapped_rows: Some(vec![true, false]),
             offset: 10,
             total_characters: 16,
             truncated: true,
@@ -1297,8 +1303,11 @@ mod tests {
             assert_eq!(payload["hasPrevious"], true);
         }
         assert_eq!(payloads[0]["screenData"], "\x1b[Hscreen");
+        assert_eq!(payloads[0]["screenWrappedRows"], json!([true, false]));
         assert!(payloads[1].get("screenData").is_none());
+        assert!(payloads[1].get("screenWrappedRows").is_none());
         assert!(payloads[2].get("screenData").is_none());
+        assert!(payloads[2].get("screenWrappedRows").is_none());
     }
 
     #[test]
@@ -1314,6 +1323,7 @@ mod tests {
         assert_eq!(capabilities["terminalBuffer"]["chunking"], true);
         assert_eq!(capabilities["terminalBuffer"]["requestId"], true);
         assert_eq!(capabilities["terminalBuffer"]["screenData"], true);
+        assert_eq!(capabilities["terminalBuffer"]["screenWrappedRows"], true);
         assert_eq!(capabilities["terminalBuffer"]["baselineFailed"], true);
         assert_eq!(capabilities["terminalOutput"]["sequence"], true);
         assert_eq!(capabilities["terminalOutput"]["staleOutput"], true);

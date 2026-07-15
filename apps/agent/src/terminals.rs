@@ -531,7 +531,7 @@ fn send_terminal_baseline(
     let total_characters = driver
         .buffer_characters(session_id)
         .unwrap_or_else(|_| offset + data.chars().count());
-    let screen_data = if baseline_failed {
+    let screen_snapshot = if baseline_failed {
         None
     } else if use_viewport {
         let max_lines = viewport
@@ -540,19 +540,21 @@ fn send_terminal_baseline(
         driver
             .remote_viewport_snapshot(session_id, 0, 0, max_lines)
             .ok()
-            .map(|snapshot| snapshot.data)
     } else {
         driver
             .screen_snapshot(session_id)
             .ok()
             .filter(|snapshot| snapshot.input_mode.alternate_screen)
-            .map(|snapshot| snapshot.data)
-    }
-    .filter(|data| !data.is_empty());
+    };
+    let (screen_data, screen_wrapped_rows) = screen_snapshot
+        .filter(|snapshot| !snapshot.data.is_empty())
+        .map(|snapshot| (Some(snapshot.data), Some(snapshot.wrapped_rows)))
+        .unwrap_or_default();
     let output_seq = fanout_state.current_seq(session_id);
     let window = RemoteTerminalBufferWindow {
         data,
         screen_data,
+        screen_wrapped_rows,
         offset,
         total_characters,
         truncated: false,
