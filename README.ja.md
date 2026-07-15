@@ -53,6 +53,7 @@ AI コーディング CLI は非常に強力ですが、制御を失いやすい
 | 認証情報がプロンプトに入ってしまう | 保存済み・テスト済みの SSH / データベースプロファイルと、agent が使える `codux-ssh` / `codux-db` コマンド。**認証情報をモデルに見せません**。 |
 | 席を離れると作業を監視できない | スマホを P2P / リレーリンクでペアリングし、どこからでも同じセッションを操作。 |
 | コードが別マシンにある | サーバー、予備の Mac、Linux ボックスなどの headless host に接続し、ローカルのようにターミナル、Git、AI を操作。 |
+| Windows プロジェクトが WSL にある | インストール済みの WSL ディストリビューションを Codux のネイティブ実行環境として使い、ファイル、Git、worktree、ターミナル、AI セッションを Linux 内に保ちます。 |
 
 Codux は新しいエディタではありません。AI コーディング CLI を日常的に使う開発者のための制御プレーンであり、複数プロジェクトと長時間 agent 作業を安定して扱うための道具です。
 
@@ -162,6 +163,8 @@ brew install --cask duxweb/tap/codux
 | Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
 
 macOS では `.dmg` を開いて Codux を Applications にドラッグします。Windows ではインストーラをダブルクリックします。その後、プロジェクトを開き、AI CLI を起動すれば使えます。
+
+**Windows + WSL。** **設定 → WSL** で連携を有効にし、ディストリビューションをインストールまたは選択して、Codux Runtime をワンクリックでインストール・更新できます。プロジェクトを追加するときは、その WSL ディストリビューション内のディレクトリを選択してください。以後、ファイル、Git、worktree、ターミナル、AI セッションは WSL 経由で自動的に実行されます。
 
 **モバイルアプリ**
 

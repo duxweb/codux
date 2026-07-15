@@ -53,6 +53,7 @@ AI coding CLIs are incredibly powerful — and incredibly easy to lose control o
 | Credentials end up in prompts | Saved, tested SSH and database profiles, plus `codux-ssh` / `codux-db` commands agents can use **without ever seeing your credentials**. |
 | You walk away mid-run | Pair your phone over P2P / relay links and keep driving the session from anywhere. |
 | The code lives on another machine | Connect a headless host — a server, spare Mac, or Linux box — and drive its terminals, Git, and AI as if they were local. |
+| Your Windows project lives in WSL | Use an installed WSL distribution as a native Codux runtime, keeping files, Git, worktrees, terminals, and AI sessions inside Linux. |
 
 Codux is **not** another editor. It's the control plane for developers who live in AI coding CLIs and need a rock-solid way to run multi-project, long-running agent work.
 
@@ -162,6 +163,8 @@ Or download directly:
 | Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
 
 Open the macOS `.dmg` and drag Codux to Applications; double-click the Windows installer. Then open a project, start your AI CLI, and go.
+
+**Windows + WSL.** Open **Settings → WSL** to enable the integration, install or select a distribution, and install or update Codux Runtime with one click. When adding a project, choose a directory inside that WSL distribution; Codux then routes its files, Git, worktrees, terminals, and AI sessions through WSL automatically.
 
 **Mobile app**
 

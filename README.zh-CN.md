@@ -53,6 +53,7 @@ AI 编程 CLI 很强——也极其容易失控。真正干活时，工作会散
 | 凭证被贴进提示词 | 已保存、已测试的 SSH 与数据库配置，加 `codux-ssh` / `codux-db` 两个 **凭证永不外泄** 的命令给 agent 用。 |
 | 任务跑一半离开电脑 | 用手机通过 P2P / 中继链路配对，随时随地接着控制会话。 |
 | 代码在另一台机器上 | 连上一台 Codux 主机——服务器、闲置的 Mac 或 Linux——像操作本地一样驱动它的终端、Git 和 AI。 |
+| Windows 项目放在 WSL 里 | 将已安装的 WSL 发行版作为 Codux 原生运行环境，文件、Git、worktree、终端和 AI 会话都留在 Linux 内。 |
 
 Codux **不是** 又一个编辑器。它是给重度泡在 AI 编程 CLI 里的开发者的控制台，让多项目、长会话的 agent 工作稳得住。
 
@@ -162,6 +163,8 @@ brew install --cask duxweb/tap/codux
 | Windows 11 · x64 | [⬇ `codux-windows-x86_64-setup.exe`](https://github.com/duxweb/codux/releases/latest/download/codux-windows-x86_64-setup.exe) |
 
 macOS 打开 `.dmg` 拖进「应用程序」；Windows 双击安装。装好后打开一个项目、在终端启动 AI CLI 就行。
+
+**Windows + WSL。** 打开「设置 → WSL」启用集成，可直接安装或选择发行版，并一键安装、更新 Codux Runtime。新建项目时选择该 WSL 发行版内的目录，之后文件、Git、worktree、终端与 AI 会话都会自动通过 WSL 运行。
 
 **移动端**
 

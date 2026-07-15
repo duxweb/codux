@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-07-15
+
+### Changed
+
+- Documented native Windows WSL projects, including distribution setup, one-click Codux Runtime installation and updates, and project selection from WSL directories.
+- Improved AI history and usage accounting across restored sessions, Codex subagents, cache tokens, hosted runtimes, and pet progression while preserving existing levels.
+
+### Fixed
+
+- Fixed terminal, worktree, and project agent indicators remaining stuck in a working state after an AI CLI was interrupted, exited unexpectedly, or returned to the shell without a closing progress event.
+- Fixed Windows window controls and WSL project switching, including delayed first activation and stale terminal bindings after runtime changes.
+- Fixed external project-directory recovery, terminal text contrast, status animation load, and the terminal collapse tooltip localization.
+
 ## [2.0.0] - 2026-07-13
 
 ### Added
