@@ -23,19 +23,58 @@ fn value_to_string(value: &Value) -> Option<String> {
         .or_else(|| value.as_f64().map(|value| value.to_string()))
 }
 
-fn claude_role(row_type: Option<&str>) -> Option<HistoryRole> {
-    match row_type {
-        Some("user") => Some(HistoryRole::User),
-        Some("assistant") | Some("tool_use") | Some("tool_result") => Some(HistoryRole::Assistant),
+fn claude_event_kind(row: &Value) -> Option<HistoryEventKind> {
+    match row.get("type").and_then(|value| value.as_str()) {
+        Some("user") if claude_user_request(row) => Some(HistoryEventKind::Request),
+        Some("user") if !claude_synthetic_user_row(row) => Some(HistoryEventKind::Activity),
+        Some("assistant") | Some("tool_use") | Some("tool_result") => {
+            Some(HistoryEventKind::Activity)
+        }
         _ => None,
     }
 }
 
-fn codex_role(row_type: Option<&str>) -> HistoryRole {
-    if matches!(row_type, Some("turn_context") | Some("session_meta")) {
-        HistoryRole::User
-    } else {
-        HistoryRole::Assistant
+fn claude_user_request(row: &Value) -> bool {
+    if claude_synthetic_user_row(row) {
+        return false;
+    }
+    let content = row
+        .get("message")
+        .and_then(|message| message.get("content"))
+        .unwrap_or(&Value::Null);
+    if content
+        .as_str()
+        .is_some_and(|text| !text.trim().is_empty())
+    {
+        return true;
+    }
+    content.as_array().is_some_and(|items| {
+        items.iter().any(|item| {
+            item.get("type").and_then(|value| value.as_str()) == Some("text")
+                && item
+                    .get("text")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|text| !text.trim().is_empty())
+        })
+    })
+}
+
+fn claude_synthetic_user_row(row: &Value) -> bool {
+    ["isMeta", "isSynthetic", "synthetic"]
+        .into_iter()
+        .any(|key| row.get(key).and_then(Value::as_bool).unwrap_or(false))
+}
+
+fn codex_event_kind(row_type: Option<&str>, payload: &Value) -> Option<HistoryEventKind> {
+    match row_type {
+        Some("turn_context") => Some(HistoryEventKind::Request),
+        Some("event_msg") => match payload.get("type").and_then(Value::as_str) {
+            Some("task_started") => Some(HistoryEventKind::ActivityStart),
+            Some("task_complete" | "turn_aborted") => Some(HistoryEventKind::ActivityEnd),
+            Some("token_count") => Some(HistoryEventKind::Activity),
+            _ => None,
+        },
+        _ => None,
     }
 }
 

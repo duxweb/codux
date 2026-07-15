@@ -90,6 +90,7 @@ pub struct RuntimeService {
     active_project_watches: Arc<Mutex<ActiveProjectWatches>>,
     project_watch_registration: Arc<Mutex<()>>,
     ai_history_activation_keys: Arc<Mutex<HashSet<String>>>,
+    hosted_ai_history_events: Arc<Mutex<VecDeque<AIHistoryEvent>>>,
     git_cancels: Arc<Mutex<HashMap<String, git::GitCancelToken>>>,
     power_manager: Arc<PowerManager>,
     remote_host: Arc<RemoteHostRuntime>,

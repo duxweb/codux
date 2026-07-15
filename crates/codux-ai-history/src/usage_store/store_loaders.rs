@@ -42,7 +42,7 @@ impl AIUsageStore {
         let mut statement = conn.prepare(
             r#"
             SELECT session_key, model, bucket_start, bucket_end, input_tokens, output_tokens,
-                   total_tokens, cached_input_tokens, request_count
+                   total_tokens, cached_input_tokens, request_count, active_duration_seconds
             FROM ai_history_file_usage_bucket
             WHERE source = ?1 AND file_path = ?2 AND project_path = ?3
             ORDER BY bucket_start ASC, session_key ASC, model ASC;
@@ -61,6 +61,7 @@ impl AIUsageStore {
                     total_tokens: row.get(6)?,
                     cached_input_tokens: row.get(7)?,
                     request_count: row.get(8)?,
+                    active_duration_seconds: row.get(9)?,
                     usage_amounts: Vec::new(),
                 })
             })?
@@ -89,7 +90,7 @@ impl AIUsageStore {
                     cached_input_tokens: row.cached_input_tokens,
                     usage_amounts: usage_amounts.get(&amount_key).cloned().unwrap_or_default(),
                     request_count: row.request_count,
-                    active_duration_seconds: session.active_duration_seconds,
+                    active_duration_seconds: row.active_duration_seconds,
                     first_seen_at: session.first_seen_at,
                     last_seen_at: session.last_seen_at,
                 })
@@ -217,7 +218,7 @@ impl AIUsageStore {
         let mut statement = conn.prepare(
             r#"
             SELECT source, session_key, model, bucket_start, bucket_end, input_tokens, output_tokens,
-                   total_tokens, cached_input_tokens, request_count
+                   total_tokens, cached_input_tokens, request_count, active_duration_seconds
             FROM ai_history_file_usage_bucket
             WHERE project_path = ?1
             ORDER BY bucket_start ASC, source ASC, session_key ASC, model ASC;
@@ -236,6 +237,7 @@ impl AIUsageStore {
                     total_tokens: row.get(7)?,
                     cached_input_tokens: row.get(8)?,
                     request_count: row.get(9)?,
+                    active_duration_seconds: row.get(10)?,
                     usage_amounts: Vec::new(),
                 })
             })?

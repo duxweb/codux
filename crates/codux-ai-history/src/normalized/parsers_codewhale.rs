@@ -54,7 +54,7 @@ fn parse_codewhale_history_file(
             source: "codewhale".to_string(),
             session_id: session_id.clone(),
             timestamp,
-            role: codewhale_role(message),
+            kind: codewhale_event_kind(message),
         });
     }
 
@@ -152,10 +152,10 @@ fn codewhale_session_title(value: &Value) -> Option<String> {
         .map(|value| truncate_title(&value))
 }
 
-fn codewhale_role(message: &Value) -> HistoryRole {
+fn codewhale_event_kind(message: &Value) -> HistoryEventKind {
     if message.get("role").and_then(|value| value.as_str()) == Some("user") {
-        HistoryRole::User
+        HistoryEventKind::Request
     } else {
-        HistoryRole::Assistant
+        HistoryEventKind::Activity
     }
 }

@@ -141,9 +141,10 @@ fn write_usage_bucket(
         r#"
             INSERT INTO ai_history_file_usage_bucket (
                 source, file_path, project_path, session_key, model, bucket_start, bucket_end,
-                input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count
+                input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count,
+                active_duration_seconds
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
         rusqlite::params![
             "codex",
@@ -157,7 +158,8 @@ fn write_usage_bucket(
             total_tokens - (total_tokens / 2),
             total_tokens,
             0_i64,
-            1_i64
+            1_i64,
+            60_i64
         ],
     )
     .expect("insert usage bucket");

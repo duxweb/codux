@@ -1,14 +1,14 @@
 use crate::normalized::{
     AIGlobalHistoryRangeSummary, AIHeatmapDay, AIHistoryProjectRequest, AIHistorySnapshot,
     AIProjectUsageSummary, AIProjectUsageTotal, AISessionSummary, AITimeBucket, AIUsageAmount,
-    AIUsageBreakdownItem, HistoryEntry, HistoryEvent, HistoryRole, JSONLParseSnapshot,
-    ParsedHistory, deterministic_uuid, half_hour_bucket_start, history_key,
-    local_day_start_seconds, now_seconds,
+    AIUsageBreakdownItem, HistoryEntry, HistoryEvent, HistoryEventKind, JSONLParseSnapshot,
+    ParsedHistory, active_duration_by_session_id, deterministic_uuid, half_hour_bucket_start,
+    history_key, local_day_start_seconds, normalized_history_path, now_seconds,
 };
 use crate::paths::app_support_dir;
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;

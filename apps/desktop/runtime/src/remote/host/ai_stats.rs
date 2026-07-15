@@ -28,6 +28,16 @@ impl RemoteHostRuntime {
             name: project.name.clone(),
             path: project.path.clone(),
         };
+        if envelope
+            .payload
+            .get("refresh")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            && let Err(error) = self.ai_history.refresh_project(request.clone())
+        {
+            self.send_error(envelope, &error);
+            return;
+        }
         match self.ai_history.project_state(request) {
             Ok(state) => {
                 // Register the requesting device as a watcher of this project so
@@ -274,7 +284,25 @@ impl RemoteHostRuntime {
             })
             .unwrap_or_default();
         let service = codux_ai_sessions::AIHistoryService::new(self.support_dir.clone());
-        match codux_ai_sessions::session_op_result(&service, &project_path, payload) {
+        let project = AIHistoryProjectRequest {
+            id: payload
+                .get("projectId")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            name: payload
+                .get("projectName")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            path: project_path,
+        };
+        match codux_ai_sessions::session_op_result_with_indexer(
+            &service,
+            &self.ai_history,
+            project,
+            payload,
+        ) {
             Ok(result) => self.reply(
                 envelope,
                 REMOTE_AI_SESSION_RESULT,

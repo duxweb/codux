@@ -4,7 +4,7 @@ use chrono::{Datelike as _, TimeZone as _, Timelike as _};
 use codux_runtime::i18n::translate;
 use gpui::Rems;
 use gpui_component::{
-    Selectable, Size,
+    Size,
     button::{Button, ButtonVariants},
     progress::Progress,
     scroll::ScrollableElement,

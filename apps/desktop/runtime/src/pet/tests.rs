@@ -132,6 +132,50 @@ fn sanitize_state_keeps_pet_xp_and_baseline_without_version_bump() {
 }
 
 #[test]
+fn history_correction_rebuilds_pet_watermarks_without_resetting_xp() {
+    let mut snapshot = PetSnapshot {
+        state_version: STATE_VERSION - 1,
+        claimed_at: Some(10),
+        current_experience_tokens: 42_000,
+        daily_experience_tokens: 120,
+        global_normalized_total_watermark: Some(99_000),
+        total_normalized_tokens: 99_000,
+        ..PetSnapshot::default()
+    };
+    snapshot
+        .project_normalized_token_watermarks
+        .insert("project-a".to_string(), 99_000);
+
+    let mut sanitized = sanitize_state(snapshot);
+
+    assert_eq!(sanitized.current_experience_tokens, 42_000);
+    assert_eq!(sanitized.daily_experience_tokens, 120);
+    assert_eq!(sanitized.progress.total_xp, 42_000);
+    assert_eq!(sanitized.current_stats, PetStats::default());
+    assert_eq!(sanitized.stats_updated_day, None);
+    assert_eq!(sanitized.global_normalized_total_watermark, None);
+    assert!(sanitized.project_normalized_token_watermarks.is_empty());
+    refresh_state(
+        &mut sanitized,
+        PetRefreshInput {
+            project_totals: vec![PetProjectTokenTotal {
+                project_id: "project-a".to_string(),
+                total_tokens: 1_000,
+            }],
+            fallback_total_tokens: 1_000,
+            computed_stats: PetStats::default(),
+        },
+    );
+    assert_eq!(sanitized.current_experience_tokens, 42_000);
+    assert_eq!(
+        sanitized
+            .project_normalized_token_watermarks
+            .get("project-a"),
+        Some(&1_000)
+    );
+}
+
+#[test]
 fn falls_back_to_plain_json_pet_state() {
     let support_dir = temp_support_dir();
     let snapshot = PetSnapshot {
@@ -239,13 +283,9 @@ fn local_pet_state_reads_legacy_hatch_tokens_as_xp() {
     assert_eq!(snapshot.current_experience_tokens, 42_000_000);
     assert_eq!(snapshot.progress.total_xp, 42_000_000);
     assert!(snapshot.progress.level > 1);
-    assert_eq!(snapshot.global_normalized_total_watermark, Some(99_000_000));
-    assert_eq!(
-        snapshot
-            .project_normalized_token_watermarks
-            .get("project-a"),
-        Some(&99_000_000)
-    );
+    assert_eq!(snapshot.global_normalized_total_watermark, None);
+    assert!(snapshot.project_normalized_token_watermarks.is_empty());
+    assert_eq!(snapshot.total_normalized_tokens, 0);
 
     fs::remove_dir_all(support_dir).unwrap();
 }
@@ -458,6 +498,35 @@ fn pet_stats_use_session_shape_without_flat_placeholder_values() {
         ],
         [100, 100, 100, 100, 100]
     );
+}
+
+#[test]
+fn pet_stats_ignore_unmeasured_wall_clock_gaps() {
+    let stats = pet_stats_from_sessions(&[crate::ai_history_normalized::AISessionSummary {
+        session_id: "session-1".to_string(),
+        external_session_id: Some("restored-session".to_string()),
+        project_id: "project-a".to_string(),
+        project_name: "Project".to_string(),
+        project_path: "/tmp/project".to_string(),
+        session_title: "Restored session".to_string(),
+        first_seen_at: 1_700_000_000.0,
+        last_seen_at: 1_700_604_800.0,
+        last_tool: Some("codex".to_string()),
+        last_model: Some("model".to_string()),
+        request_count: 10,
+        total_input_tokens: 8_000,
+        total_output_tokens: 2_000,
+        total_tokens: 10_000,
+        cached_input_tokens: 0,
+        usage_amounts: Vec::new(),
+        active_duration_seconds: 0,
+        today_tokens: 0,
+        today_cached_input_tokens: 0,
+        today_usage_amounts: Vec::new(),
+    }]);
+
+    assert_eq!(stats.chaos, 0);
+    assert_eq!(stats.stamina, 0);
 }
 
 #[test]

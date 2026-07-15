@@ -6,8 +6,8 @@ use crate::{
     },
     ai_history_indexer::{AIHistoryEvent, AIHistoryIndexer, AIHistoryProjectState},
     ai_history_normalized::{
-        AIGlobalHistorySnapshot, AIHistoryProjectRequest, global_today_normalized_tokens_at,
-        index_global_history_fresh_at, indexed_sessions_since_at,
+        AIGlobalHistorySnapshot, AIHistoryProjectRequest, index_global_history_fresh_at,
+        indexed_sessions_since_at, load_indexed_global_history_at, normalized_history_path,
         normalized_project_totals_since_at,
     },
     ai_runtime::{

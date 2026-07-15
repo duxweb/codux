@@ -1296,9 +1296,6 @@ impl CoduxApp {
             }
         }
         self.maybe_refresh_git_for_agent_activity(terminal_status_changed, cx);
-        if include_scheduled_tick {
-            self.refresh_global_today_ai_tokens();
-        }
         let remote_ai_stats_changed = self.apply_pushed_remote_ai_stats();
         let memory_event = current_memory_update_event();
         let memory_update_event = memory_event.revision > self.memory_seen_revision;
@@ -1608,27 +1605,17 @@ impl CoduxApp {
         self.refresh_dock_badge_now(cx);
     }
 
-    pub(super) fn refresh_global_today_ai_tokens(&mut self) -> bool {
-        let Ok(tokens) = self.runtime_service.global_today_normalized_ai_tokens() else {
-            return false;
-        };
-        let tokens = tokens.max(0);
-        if self.state.ai_global_history.today_total_tokens == tokens {
-            return false;
-        }
-        self.state.ai_global_history.today_total_tokens = tokens;
-        self.state.refresh_daily_level();
-        true
-    }
-
-    pub(super) fn refresh_today_level_after_day_change(&mut self) -> bool {
+    pub(super) fn refresh_global_history_after_day_change(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let day_start =
             codux_runtime::ai_history_normalized::local_day_start_seconds(app_now_seconds());
         if (day_start - self.today_level_day_start).abs() < 1.0 {
             return false;
         }
         self.today_level_day_start = day_start;
-        self.refresh_global_today_ai_tokens();
+        self.refresh_ai_global_history_summary(cx);
         true
     }
 
@@ -1740,8 +1727,9 @@ impl CoduxApp {
                     }
                 }
                 AIHistoryEvent::Global { snapshot } => {
-                    self.state.ai_global_history =
-                        normalized_global_ai_history_snapshot_to_summary(snapshot);
+                    self.state.set_ai_global_history(
+                        normalized_global_ai_history_snapshot_to_summary(snapshot),
+                    );
                     applied += 1;
                 }
                 AIHistoryEvent::Status { project_id, .. }

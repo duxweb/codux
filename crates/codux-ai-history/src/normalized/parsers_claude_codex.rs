@@ -9,7 +9,8 @@ fn parse_claude_history_file_snapshot(
     let mut cwd_confirmed = false;
     let mut cwd_denied = false;
     let mut early_line_count = 0;
-    let mut seen_assistant_ids = HashMap::<String, bool>::new();
+    let mut assistant_entry_indexes = HashMap::<String, usize>::new();
+    let mut assistant_usage_baselines = HashMap::<String, HistoryUsage>::new();
     let mut payload = seed.cloned().unwrap_or_default();
     if starting_at > 0 || payload.session_key.is_some() {
         cwd_confirmed = true;
@@ -52,12 +53,12 @@ fn parse_claude_history_file_snapshot(
             .and_then(parse_iso8601_seconds)
             .unwrap_or_else(now_seconds);
         let row_type = row.get("type").and_then(|value| value.as_str());
-        if let Some(role) = claude_role(row_type) {
+        if let Some(kind) = claude_event_kind(&row) {
             result.events.push(HistoryEvent {
                 source: "claude".to_string(),
                 session_id: session_id.clone(),
                 timestamp,
-                role,
+                kind,
             });
             payload.session_key = Some(session_id.clone());
             payload.external_session_id = Some(session_id.clone());
@@ -69,30 +70,45 @@ fn parse_claude_history_file_snapshot(
             last_processed_offset = end_offset;
             return true;
         }
-        if let Some(uuid) = row
-            .get("uuid")
+        let message = row.get("message").unwrap_or(&Value::Null);
+        let message_id = message
+            .get("id")
             .and_then(|value| value.as_str())
             .and_then(normalized_string)
-            && seen_assistant_ids.insert(uuid, true).is_some()
-        {
-            last_processed_offset = end_offset;
-            return true;
-        }
-        let message = row.get("message").unwrap_or(&Value::Null);
+            .or_else(|| {
+                row.get("uuid")
+                    .and_then(|value| value.as_str())
+                    .and_then(normalized_string)
+            });
         let usage = message.get("usage").unwrap_or(&Value::Null);
-        let input_tokens = json_i64(usage.get("input_tokens"));
-        let output_tokens = json_i64(usage.get("output_tokens"));
-        // Claude reports cache writes (cache_creation_input_tokens) and cache
-        // reads (cache_read_input_tokens) as separate categories from
-        // input_tokens. Both are cached input -- count both, matching the live
-        // runtime probe (ai_runtime/probe/claude.rs). Dropping cache-creation
-        // here undercounts Claude usage.
-        let cached_input_tokens = json_i64(usage.get("cache_read_input_tokens"))
-            + json_i64(usage.get("cache_creation_input_tokens"));
-        let total_tokens = input_tokens + output_tokens + cached_input_tokens;
-        if total_tokens <= 0 {
-            last_processed_offset = end_offset;
-            return true;
+        let current_usage = HistoryUsage {
+            input_tokens: json_i64(usage.get("input_tokens")),
+            output_tokens: json_i64(usage.get("output_tokens")),
+            cached_input_tokens: json_i64(usage.get("cache_read_input_tokens"))
+                + json_i64(usage.get("cache_creation_input_tokens")),
+            reasoning_output_tokens: 0,
+        };
+        let message_id = message_id.unwrap_or_else(|| format!("offset:{end_offset}"));
+        let baseline = assistant_usage_baselines
+            .entry(message_id.clone())
+            .or_insert_with(|| {
+                if payload.last_claude_message_id.as_deref() == Some(message_id.as_str()) {
+                    HistoryUsage {
+                        input_tokens: payload.last_claude_input_tokens,
+                        output_tokens: payload.last_claude_output_tokens,
+                        cached_input_tokens: payload.last_claude_cached_input_tokens,
+                        reasoning_output_tokens: 0,
+                    }
+                } else {
+                    HistoryUsage::default()
+                }
+            });
+        let entry_usage = current_usage.saturating_delta(baseline);
+        if !message_id.starts_with("offset:") {
+            payload.last_claude_message_id = Some(message_id.clone());
+            payload.last_claude_input_tokens = current_usage.input_tokens;
+            payload.last_claude_output_tokens = current_usage.output_tokens;
+            payload.last_claude_cached_input_tokens = current_usage.cached_input_tokens;
         }
         let model = message
             .get("model")
@@ -100,21 +116,31 @@ fn parse_claude_history_file_snapshot(
             .and_then(normalized_string)
             .or_else(|| Some("unknown".to_string()));
         payload.last_model = model.clone().or(payload.last_model.clone());
-        result.entries.push(HistoryEntry {
+        let entry = HistoryEntry {
             source: "claude".to_string(),
             session_id: session_id.clone(),
             external_session_id: Some(session_id),
             session_title: claude_title(&row).or_else(|| Some(project.name.clone())),
             timestamp,
             model,
-            input_tokens,
-            output_tokens,
-            cached_input_tokens,
+            input_tokens: entry_usage.input_tokens,
+            output_tokens: entry_usage.output_tokens,
+            cached_input_tokens: entry_usage.cached_input_tokens,
             reasoning_output_tokens: 0,
             usage_amounts: Vec::new(),
-        });
+        };
+        if let Some(index) = assistant_entry_indexes.get(&message_id).copied() {
+            result.entries[index] = entry;
+        } else {
+            assistant_entry_indexes.insert(message_id, result.entries.len());
+            result.entries.push(entry);
+        }
         last_processed_offset = end_offset;
         true
+    });
+
+    result.entries.retain(|entry| {
+        entry.total_tokens() > 0 || entry.cached_input_tokens > 0 || !entry.usage_amounts.is_empty()
     });
 
     JSONLParseSnapshot {
@@ -141,9 +167,13 @@ fn parse_codex_history_file_snapshot(
         .session_key
         .clone()
         .unwrap_or_else(|| file_path.display().to_string());
+    let mut session_identity_resolved = payload.session_key.is_some();
     let mut session_title: Option<String> = payload.session_title.clone();
     let mut model: Option<String> = payload.last_model.clone();
-    let mut total_by_model = payload.model_total_tokens_by_name.clone();
+    let mut total_usage_by_session = payload.codex_total_usage_by_session.clone();
+    let mut active_task_started_at_by_session = payload
+        .codex_active_task_started_at_by_session
+        .clone();
     let mut pending_entries = Vec::new();
     let mut pending_events = Vec::new();
     let mut last_processed_offset = starting_at.max(0);
@@ -171,12 +201,15 @@ fn parse_codex_history_file_snapshot(
                 .unwrap_or(false)
         {
             matched_project = true;
-            if let Some(id) = payload
-                .get("id")
-                .and_then(|value| value.as_str())
-                .and_then(normalized_string)
-            {
-                session_id = id;
+            if !session_identity_resolved {
+                if let Some(id) = payload
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .and_then(normalized_string)
+                {
+                    session_id = id;
+                }
+                session_identity_resolved = true;
             }
             session_title = payload
                 .get("thread_name")
@@ -211,12 +244,39 @@ fn parse_codex_history_file_snapshot(
         if row_type == Some("response_item") && session_title.is_none() {
             session_title = codex_response_title(payload);
         }
-        pending_events.push(HistoryEvent {
-            source: "codex".to_string(),
-            session_id: session_id.clone(),
-            timestamp,
-            role: codex_role(row_type),
-        });
+        if let Some(kind) = codex_event_kind(row_type, payload) {
+            match kind {
+                HistoryEventKind::ActivityStart => {
+                    active_task_started_at_by_session.insert(session_id.clone(), timestamp);
+                }
+                HistoryEventKind::ActivityEnd => {
+                    if let Some(started_at) =
+                        active_task_started_at_by_session.remove(&session_id)
+                    {
+                        pending_events.push(HistoryEvent {
+                            source: "codex".to_string(),
+                            session_id: session_id.clone(),
+                            timestamp: started_at,
+                            kind: HistoryEventKind::ActivityStart,
+                        });
+                    }
+                    pending_events.push(HistoryEvent {
+                        source: "codex".to_string(),
+                        session_id: session_id.clone(),
+                        timestamp,
+                        kind,
+                    });
+                }
+                HistoryEventKind::Request | HistoryEventKind::Activity => {
+                    pending_events.push(HistoryEvent {
+                        source: "codex".to_string(),
+                        session_id: session_id.clone(),
+                        timestamp,
+                        kind,
+                    });
+                }
+            }
+        }
         if row_type != Some("event_msg")
             || payload.get("type").and_then(|value| value.as_str()) != Some("token_count")
         {
@@ -239,28 +299,28 @@ fn parse_codex_history_file_snapshot(
         let last_usage = codex_history_usage(info.get("last_token_usage"));
         let total_usage = codex_history_usage(info.get("total_token_usage"));
         let usage = if let Some(total_usage) = total_usage {
-            // codex's total_token_usage is a session-global cumulative counter
-            // shared across models, so the baseline must be tracked per session,
-            // NOT per model. Keying it by model meant a mid-session model switch
-            // saw a 0 baseline and re-attributed the entire accumulated total as
-            // one delta (the ~100M single-request inflation).
-            let previous = total_by_model.get(&session_id).copied().unwrap_or_else(|| {
-                // Migrate a pre-fix per-model checkpoint: the cumulative is
-                // monotonic, so the highest recorded value is the last
-                // cumulative seen -- using it avoids a one-time re-inflation on
-                // the first parse after this fix.
-                total_by_model.values().copied().max().unwrap_or(0)
-            });
-            let current = total_usage.total_tokens();
-            let delta = (current - previous).max(0);
-            total_by_model.clear();
-            total_by_model.insert(session_id.clone(), previous.max(current));
-            if delta <= 0 {
-                None
-            } else if last_usage.as_ref().map(|usage| usage.total_tokens()) == Some(delta) {
+            let previous = total_usage_by_session
+                .get(&session_id)
+                .cloned()
+                .unwrap_or_default();
+            let reset = total_usage.cumulative_total_tokens()
+                < previous.cumulative_total_tokens()
+                && last_usage.as_ref() == Some(&total_usage);
+            let delta = total_usage.saturating_delta(&previous);
+            total_usage_by_session.insert(
+                session_id.clone(),
+                if reset {
+                    total_usage.clone()
+                } else {
+                    total_usage.componentwise_max(&previous)
+                },
+            );
+            if reset {
                 last_usage
+            } else if delta.total_tokens() <= 0 && delta.cached_input_tokens <= 0 {
+                None
             } else {
-                Some(total_usage.delta(delta))
+                Some(delta)
             }
         } else {
             last_usage
@@ -302,7 +362,8 @@ fn parse_codex_history_file_snapshot(
         .or(payload.external_session_id.clone());
     payload.session_title = session_title.or(payload.session_title.clone());
     payload.last_model = model.or(payload.last_model.clone());
-    payload.model_total_tokens_by_name = total_by_model;
+    payload.codex_total_usage_by_session = total_usage_by_session;
+    payload.codex_active_task_started_at_by_session = active_task_started_at_by_session;
 
     JSONLParseSnapshot {
         result,

@@ -8,12 +8,15 @@ use std::path::PathBuf;
 
 pub(super) struct RuntimeStdioService {
     terminals: RuntimeStdioTerminals,
+    ai_history: codux_ai_history::indexer::AIHistoryIndexer,
 }
 
 impl RuntimeStdioService {
     pub(super) fn new(data_dir: PathBuf, writer: RuntimeStdioWriter) -> Self {
+        let ai_history = crate::ai_stats::open_indexer_at(&data_dir);
         Self {
             terminals: RuntimeStdioTerminals::new(data_dir, writer),
+            ai_history,
         }
     }
 
@@ -103,6 +106,24 @@ impl RuntimeStdioService {
             )),
             "worktree.create" | "worktree.remove" | "worktree.merge" => {
                 self.worktree_mutation(method, params)
+            }
+            "ai.state" => crate::ai_stats::ai_state_payload(
+                &self.ai_history,
+                required_str(params, "projectId")?,
+                required_str(params, "projectName")?,
+                required_str(params, "projectPath")?,
+                params
+                    .get("refresh")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            ),
+            "ai.session" => {
+                crate::sessions::ai_session_payload(&self.ai_history, params).and_then(|value| {
+                    value
+                        .get("result")
+                        .cloned()
+                        .ok_or_else(|| "AI session result is missing".to_string())
+                })
             }
             "terminal.list" => self.terminals.list(),
             "terminal.create" => self.terminals.create(params),

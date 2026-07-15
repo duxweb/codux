@@ -83,6 +83,7 @@ impl RuntimeService {
             active_project_watches: Arc::new(Mutex::new(ActiveProjectWatches::default())),
             project_watch_registration: Arc::new(Mutex::new(())),
             ai_history_activation_keys: Arc::new(Mutex::new(HashSet::new())),
+            hosted_ai_history_events: Arc::new(Mutex::new(VecDeque::new())),
             git_cancels: Arc::new(Mutex::new(HashMap::new())),
             power_manager: shared_power_manager(),
             remote_host,

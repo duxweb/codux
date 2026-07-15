@@ -12,7 +12,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
 
     for event in &parsed.events {
         let key = history_key(&event.source, &event.session_id);
-        let active_duration = *active_duration_by_key.get(&key).unwrap_or(&0);
+        let active_duration = active_duration_by_key.get(&key);
         let session = sessions_by_key
             .entry(key)
             .or_insert_with(|| SessionAccumulator {
@@ -24,8 +24,10 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
             });
         session.first_seen_at = min_nonzero(session.first_seen_at, event.timestamp);
         session.last_seen_at = session.last_seen_at.max(event.timestamp);
-        session.active_duration_seconds = session.active_duration_seconds.max(active_duration);
-        if event.role == HistoryRole::User {
+        session.active_duration_seconds = session
+            .active_duration_seconds
+            .max(active_duration.map(|duration| duration.total_seconds).unwrap_or(0));
+        if event.kind == HistoryEventKind::Request {
             session.request_count += 1;
         }
     }
@@ -44,7 +46,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
     for entry in &parsed.entries {
         let total_tokens = entry.total_tokens();
         let key = history_key(&entry.source, &entry.session_id);
-        let active_duration = *active_duration_by_key.get(&key).unwrap_or(&0);
+        let active_duration = active_duration_by_key.get(&key);
         let session = sessions_by_key
             .entry(key)
             .or_insert_with(|| SessionAccumulator {
@@ -67,7 +69,9 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
         session.cached_input_tokens += entry.cached_input_tokens;
         session.reasoning_output_tokens += entry.reasoning_output_tokens;
         merge_usage_amounts(&mut session.usage_amounts, &entry.usage_amounts);
-        session.active_duration_seconds = session.active_duration_seconds.max(active_duration);
+        session.active_duration_seconds = session
+            .active_duration_seconds
+            .max(active_duration.map(|duration| duration.total_seconds).unwrap_or(0));
         if entry.timestamp >= today_start {
             session.today_tokens += total_tokens;
             session.today_cached_input_tokens += entry.cached_input_tokens;
@@ -137,7 +141,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
 
     for event in &parsed.events {
         let day = local_day_start_seconds(event.timestamp);
-        if event.role == HistoryRole::User {
+        if event.kind == HistoryEventKind::Request {
             if let Some(day_item) = heatmap.get_mut(&(day as i64)) {
                 day_item.request_count += 1;
             } else {

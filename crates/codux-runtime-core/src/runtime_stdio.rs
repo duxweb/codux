@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub const RUNTIME_STDIO_PROTOCOL_VERSION: u32 = 2;
+pub const RUNTIME_STDIO_PROTOCOL_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(

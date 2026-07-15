@@ -73,20 +73,7 @@ impl AIUsageStore {
                 COALESCE(SUM(bucket.total_tokens), 0) AS total_tokens,
                 COALESCE(SUM(bucket.cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(bucket.request_count), 0) AS request_count,
-                COALESCE((
-                    SELECT SUM(active_duration_seconds)
-                    FROM (
-                        SELECT DISTINCT
-                            active_session.source,
-                            active_session.file_path,
-                            active_session.project_path,
-                            active_session.session_key,
-                            active_session.active_duration_seconds
-                        FROM ai_history_file_session_link AS active_session
-                        WHERE active_session.project_id = project.project_id
-                          AND active_session.project_path = project.project_path
-                    )
-                ), 0) AS active_duration_seconds,
+                COALESCE(SUM(bucket.active_duration_seconds), 0) AS active_duration_seconds,
                 COALESCE(SUM(CASE WHEN bucket.bucket_end > ?1 AND bucket.bucket_start < ?2 THEN bucket.total_tokens ELSE 0 END), 0) AS today_total_tokens,
                 COALESCE(SUM(CASE WHEN bucket.bucket_end > ?3 AND bucket.bucket_start < ?4 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS today_cached_input_tokens
             FROM (
@@ -218,9 +205,24 @@ impl AIUsageStore {
         cutoff: Option<f64>,
     ) -> Result<AIGlobalHistoryRangeSummary> {
         let key = key.into();
-        let totals = self.indexed_global_range_totals(conn, cutoff)?;
         let sessions = self.indexed_sessions_since(conn, cutoff)?;
-        let project_totals = self.indexed_global_project_totals_since(conn, cutoff)?;
+        let mut totals = self.indexed_global_range_totals(conn, cutoff)?;
+        totals.active_duration_seconds = sessions
+            .iter()
+            .map(|session| session.active_duration_seconds)
+            .sum();
+        totals.session_count = sessions.len();
+        let mut project_totals = self.indexed_global_project_totals_since(conn, cutoff)?;
+        for project in &mut project_totals {
+            project.active_duration_seconds = sessions
+                .iter()
+                .filter(|session| {
+                    session.project_id == project.project_id
+                        && session.project_path == project.project_path
+                })
+                .map(|session| session.active_duration_seconds)
+                .sum();
+        }
         let tool_breakdown = self.indexed_global_breakdown_since(conn, "source", cutoff)?;
         let model_breakdown = self.indexed_global_breakdown_since(conn, "model", cutoff)?;
         Ok(AIGlobalHistoryRangeSummary {
@@ -249,15 +251,13 @@ impl AIUsageStore {
             WITH filtered_buckets AS (
                 SELECT *
                 FROM ai_history_file_usage_bucket
-                WHERE ?1 IS NULL OR bucket_start >= ?2
+                WHERE ?1 IS NULL OR bucket_end > ?2
             ),
             matching_sessions AS (
                 SELECT DISTINCT
                     session.source,
-                    session.file_path,
                     session.project_path,
-                    session.session_key,
-                    session.active_duration_seconds
+                    COALESCE(session.external_session_id, session.session_key) AS logical_session_key
                 FROM ai_history_file_session_link AS session
                 INNER JOIN filtered_buckets AS bucket
                   ON bucket.source = session.source
@@ -271,7 +271,7 @@ impl AIUsageStore {
                 COALESCE((SELECT SUM(total_tokens) FROM filtered_buckets), 0) AS total_tokens,
                 COALESCE((SELECT SUM(cached_input_tokens) FROM filtered_buckets), 0) AS cached_input_tokens,
                 COALESCE((SELECT SUM(request_count) FROM filtered_buckets), 0) AS request_count,
-                COALESCE((SELECT SUM(active_duration_seconds) FROM matching_sessions), 0) AS active_duration_seconds,
+                COALESCE((SELECT SUM(active_duration_seconds) FROM filtered_buckets), 0) AS active_duration_seconds,
                 COALESCE((SELECT COUNT(*) FROM matching_sessions), 0) AS session_count;
             "#,
             params![cutoff, cutoff],
@@ -371,27 +371,13 @@ impl AIUsageStore {
                 project.project_id,
                 project.project_name,
                 project.project_path,
-                COUNT(DISTINCT CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN session.source || ':' || COALESCE(session.external_session_id, session.session_key) ELSE NULL END) AS session_count,
-                COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.input_tokens ELSE 0 END), 0) AS input_tokens,
-                COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_start >= ?4 THEN bucket.output_tokens ELSE 0 END), 0) AS output_tokens,
-                COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_start >= ?6 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
-                COALESCE(SUM(CASE WHEN ?7 IS NULL OR bucket.bucket_start >= ?8 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
-                COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_start >= ?10 THEN bucket.request_count ELSE 0 END), 0) AS request_count,
-                COALESCE((
-                    SELECT SUM(active_duration_seconds)
-                    FROM (
-                        SELECT DISTINCT
-                            active_session.source,
-                            active_session.file_path,
-                            active_session.project_path,
-                            active_session.session_key,
-                            active_session.active_duration_seconds
-                        FROM ai_history_file_session_link AS active_session
-                        WHERE active_session.project_id = project.project_id
-                          AND active_session.project_path = project.project_path
-                          AND (?11 IS NULL OR active_session.last_seen_at >= ?12)
-                    )
-                ), 0) AS active_duration_seconds,
+                COUNT(DISTINCT CASE WHEN ?1 IS NULL OR bucket.bucket_end > ?2 THEN session.source || ':' || COALESCE(session.external_session_id, session.session_key) ELSE NULL END) AS session_count,
+                COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_end > ?2 THEN bucket.input_tokens ELSE 0 END), 0) AS input_tokens,
+                COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_end > ?4 THEN bucket.output_tokens ELSE 0 END), 0) AS output_tokens,
+                COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_end > ?6 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
+                COALESCE(SUM(CASE WHEN ?7 IS NULL OR bucket.bucket_end > ?8 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
+                COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_end > ?10 THEN bucket.request_count ELSE 0 END), 0) AS request_count,
+                COALESCE(SUM(CASE WHEN ?11 IS NULL OR bucket.bucket_end > ?12 THEN bucket.active_duration_seconds ELSE 0 END), 0) AS active_duration_seconds,
                 COALESCE(SUM(CASE WHEN bucket.bucket_end > ?13 AND bucket.bucket_start < ?14 THEN bucket.total_tokens ELSE 0 END), 0) AS today_total_tokens,
                 COALESCE(SUM(CASE WHEN bucket.bucket_end > ?15 AND bucket.bucket_start < ?16 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS today_cached_input_tokens
             FROM (
@@ -400,7 +386,6 @@ impl AIUsageStore {
                     COALESCE(NULLIF(MAX(session.project_name), ''), session.project_path) AS project_name,
                     session.project_path AS project_path
                 FROM ai_history_file_session_link AS session
-                WHERE (?11 IS NULL OR session.last_seen_at >= ?12)
                 GROUP BY session.project_id, session.project_path
             ) AS project
             LEFT JOIN ai_history_file_session_link AS session
@@ -471,9 +456,9 @@ impl AIUsageStore {
             r#"
             SELECT
                 {group_expr} AS item_key,
-                COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
-                COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_start >= ?4 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
-                COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_start >= ?6 THEN bucket.request_count ELSE 0 END), 0) AS request_count
+                COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_end > ?2 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
+                COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_end > ?4 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
+                COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_end > ?6 THEN bucket.request_count ELSE 0 END), 0) AS request_count
             FROM ai_history_file_usage_bucket AS bucket
             GROUP BY item_key
             HAVING total_tokens > 0 OR cached_input_tokens > 0 OR request_count > 0
@@ -576,21 +561,27 @@ impl AIUsageStore {
                     session.first_seen_at AS first_seen_at,
                     session.last_seen_at AS last_seen_at,
                     session.last_model AS last_model,
-                    session.active_duration_seconds AS active_duration_seconds,
-                    COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_start >= ?2 THEN bucket.request_count ELSE 0 END), 0) AS request_count,
-                    COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_start >= ?4 THEN bucket.input_tokens ELSE 0 END), 0) AS input_tokens,
-                    COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_start >= ?6 THEN bucket.output_tokens ELSE 0 END), 0) AS output_tokens,
-                    COALESCE(SUM(CASE WHEN ?7 IS NULL OR bucket.bucket_start >= ?8 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
-                    COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_start >= ?10 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
-                    COALESCE(SUM(CASE WHEN bucket.bucket_end > ?11 AND bucket.bucket_start < ?12 THEN bucket.total_tokens ELSE 0 END), 0) AS today_tokens,
-                    COALESCE(SUM(CASE WHEN bucket.bucket_end > ?13 AND bucket.bucket_start < ?14 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS today_cached_input_tokens
+                    COALESCE(SUM(CASE
+                        WHEN ?11 IS NULL THEN bucket.active_duration_seconds
+                        WHEN bucket.bucket_end <= ?12 THEN 0
+                        ELSE MIN(
+                            bucket.active_duration_seconds,
+                            MAX(0, CAST(bucket.bucket_end - MAX(bucket.bucket_start, ?12) AS INTEGER))
+                        )
+                    END), 0) AS active_duration_seconds,
+                    COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_end > ?2 THEN bucket.request_count ELSE 0 END), 0) AS request_count,
+                    COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_end > ?4 THEN bucket.input_tokens ELSE 0 END), 0) AS input_tokens,
+                    COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_end > ?6 THEN bucket.output_tokens ELSE 0 END), 0) AS output_tokens,
+                    COALESCE(SUM(CASE WHEN ?7 IS NULL OR bucket.bucket_end > ?8 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
+                    COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_end > ?10 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
+                    COALESCE(SUM(CASE WHEN bucket.bucket_end > ?13 AND bucket.bucket_start < ?14 THEN bucket.total_tokens ELSE 0 END), 0) AS today_tokens,
+                    COALESCE(SUM(CASE WHEN bucket.bucket_end > ?15 AND bucket.bucket_start < ?16 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS today_cached_input_tokens
                 FROM ai_history_file_session_link AS session
                 LEFT JOIN ai_history_file_usage_bucket AS bucket
                   ON bucket.source = session.source
                  AND bucket.file_path = session.file_path
                  AND bucket.project_path = session.project_path
                  AND bucket.session_key = session.session_key
-                WHERE (?15 IS NULL OR session.last_seen_at >= ?16)
                 GROUP BY
                     session.source,
                     session.file_path,
@@ -602,10 +593,9 @@ impl AIUsageStore {
                     session.session_title,
                     session.first_seen_at,
                     session.last_seen_at,
-                    session.last_model,
-                    session.active_duration_seconds
+                    session.last_model
             )
-            WHERE total_tokens > 0 OR cached_input_tokens > 0 OR request_count > 0
+            WHERE total_tokens > 0 OR cached_input_tokens > 0 OR request_count > 0 OR active_duration_seconds > 0
             ORDER BY last_seen_at DESC;
             "#,
         )?;
@@ -622,12 +612,12 @@ impl AIUsageStore {
                     cutoff,
                     cutoff,
                     cutoff,
+                    cutoff,
+                    cutoff,
                     today_start,
                     today_end,
                     today_start,
                     today_end,
-                    cutoff,
-                    cutoff,
                 ],
                 |row| {
                     let source: String = row.get(0)?;
@@ -635,19 +625,6 @@ impl AIUsageStore {
                     let external_session_id: Option<String> = row.get(2)?;
                     let first_seen_at: f64 = row.get(7)?;
                     let last_seen_at: f64 = row.get(8)?;
-                    let stored_active_duration: i64 = row.get(10)?;
-                    let active_duration_seconds = cutoff
-                        .map(|cutoff| {
-                            if last_seen_at <= cutoff {
-                                0
-                            } else {
-                                let clipped = (last_seen_at - first_seen_at.max(cutoff))
-                                    .max(0.0)
-                                    .round() as i64;
-                                stored_active_duration.max(0).min(clipped)
-                            }
-                        })
-                        .unwrap_or(stored_active_duration.max(0));
                     Ok(AISessionSummary {
                         session_id: deterministic_uuid(&history_group_key(
                             &source,
@@ -663,7 +640,7 @@ impl AIUsageStore {
                         last_seen_at,
                         last_tool: Some(source),
                         last_model: row.get(9)?,
-                        active_duration_seconds,
+                        active_duration_seconds: row.get::<_, i64>(10)?.max(0),
                         request_count: row.get(11)?,
                         total_input_tokens: row.get(12)?,
                         total_output_tokens: row.get(13)?,
@@ -677,7 +654,7 @@ impl AIUsageStore {
                 },
             )?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        Ok(merge_logical_sessions(rows))
     }
 }
 

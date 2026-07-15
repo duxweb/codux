@@ -6,8 +6,8 @@ use super::state::{
 use super::types::{AIHistoryEvent, AIHistoryIndexerState, AIHistoryJob};
 use crate::normalized::{
     AIGlobalHistorySnapshot, AIHistoryProjectRequest, AIHistorySnapshot,
-    index_global_history_fresh_at, index_project_history_fresh_at, load_indexed_project_history_at,
-    project_history_source_fingerprint,
+    index_global_history_fresh_at, index_project_history_fresh_at, load_indexed_global_history_at,
+    load_indexed_project_history_at, project_history_source_fingerprint,
 };
 use crate::trace::{runtime_trace, runtime_trace_elapsed};
 use crate::usage_store::AIUsageStore;
@@ -48,51 +48,7 @@ pub fn history_indexer_loop(
                 project,
                 database_path,
             } => {
-                runtime_trace(
-                    "ai-history",
-                    &format!(
-                        "project refresh start project={} path={}",
-                        project.id, project.path
-                    ),
-                );
-                if let Ok(next_state) = mark_project_running(&state, &project) {
-                    push_history_event(&events, AIHistoryEvent::ProjectState { state: next_state });
-                }
-                push_history_event(
-                    &events,
-                    AIHistoryEvent::Status {
-                        scope: "project".to_string(),
-                        project_id: Some(project.id.clone()),
-                        is_loading: true,
-                        detail: "indexing".to_string(),
-                    },
-                );
-                let result =
-                    run_project_index(&events, Arc::clone(&state), database_path, project.clone());
-                let finished_state = match result {
-                    Ok(snapshot) => {
-                        push_history_event(
-                            &events,
-                            AIHistoryEvent::Project {
-                                snapshot: snapshot.clone(),
-                            },
-                        );
-                        mark_project_completed(&state, &project, snapshot)
-                    }
-                    Err(error) => mark_project_failed(&state, &project, error),
-                };
-                if let Ok(next_state) = finished_state {
-                    push_history_event(&events, AIHistoryEvent::ProjectState { state: next_state });
-                }
-                push_history_event(
-                    &events,
-                    AIHistoryEvent::Status {
-                        scope: "project".to_string(),
-                        project_id: Some(project.id),
-                        is_loading: false,
-                        detail: "completed".to_string(),
-                    },
-                );
+                let _ = refresh_project(&events, Arc::clone(&state), database_path, project);
             }
             AIHistoryJob::RefreshGlobal {
                 projects,
@@ -111,7 +67,7 @@ pub fn history_indexer_loop(
                         detail: "indexing".to_string(),
                     },
                 );
-                if let Ok(snapshot) = run_global_index(database_path, projects) {
+                if let Ok(snapshot) = run_global_snapshot(database_path, projects) {
                     push_history_event(&events, AIHistoryEvent::Global { snapshot });
                 }
                 push_history_event(
@@ -126,6 +82,73 @@ pub fn history_indexer_loop(
             }
         }
     }
+}
+
+fn refresh_project(
+    events: &Arc<Mutex<VecDeque<AIHistoryEvent>>>,
+    state: Arc<Mutex<AIHistoryIndexerState>>,
+    database_path: PathBuf,
+    project: AIHistoryProjectRequest,
+) -> Result<super::AIHistoryProjectState, String> {
+    runtime_trace(
+        "ai-history",
+        &format!(
+            "project refresh start project={} path={}",
+            project.id, project.path
+        ),
+    );
+    if let Ok(next_state) = mark_project_running(&state, &project) {
+        push_history_event(events, AIHistoryEvent::ProjectState { state: next_state });
+    }
+    push_history_event(
+        events,
+        AIHistoryEvent::Status {
+            scope: "project".to_string(),
+            project_id: Some(project.id.clone()),
+            is_loading: true,
+            detail: "indexing".to_string(),
+        },
+    );
+    let result = run_project_index(events, Arc::clone(&state), database_path, project.clone());
+    let finished_state = match result {
+        Ok(snapshot) => {
+            push_history_event(
+                events,
+                AIHistoryEvent::Project {
+                    snapshot: snapshot.clone(),
+                },
+            );
+            mark_project_completed(&state, &project, snapshot)
+        }
+        Err(error) => mark_project_failed(&state, &project, error),
+    };
+    if let Ok(next_state) = &finished_state {
+        push_history_event(
+            events,
+            AIHistoryEvent::ProjectState {
+                state: next_state.clone(),
+            },
+        );
+    }
+    push_history_event(
+        events,
+        AIHistoryEvent::Status {
+            scope: "project".to_string(),
+            project_id: Some(project.id),
+            is_loading: false,
+            detail: "completed".to_string(),
+        },
+    );
+    finished_state
+}
+
+fn run_global_snapshot(
+    database_path: PathBuf,
+    projects: Vec<AIHistoryProjectRequest>,
+) -> Result<AIGlobalHistorySnapshot, String> {
+    load_indexed_global_history_at(database_path, projects)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "AI history is not indexed yet.".to_string())
 }
 
 fn run_project_index(

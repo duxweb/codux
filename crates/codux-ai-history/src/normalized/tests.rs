@@ -321,6 +321,158 @@ runtime launch context
     }
 
     #[test]
+    fn claude_counts_only_the_final_snapshot_for_each_message() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = "/tmp/project-snapshots";
+        let log_dir = root.join(".claude/projects/-tmp-project-snapshots");
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::write(
+            log_dir.join("session.jsonl"),
+            r#"{"type":"user","sessionId":"s1","cwd":"/tmp/project-snapshots","timestamp":"2026-05-17T00:00:00Z","message":{"content":"hello"}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-snapshots","timestamp":"2026-05-17T00:01:00Z","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":5}}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-snapshots","timestamp":"2026-05-17T00:01:01Z","uuid":"row-2","message":{"id":"msg-1","model":"claude-sonnet","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":5}}}
+"#,
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path.to_string(),
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 150);
+        assert_eq!(snapshot.project_summary.project_cached_input_tokens, 5);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn claude_checkpoint_continues_the_last_message_snapshot() {
+        use std::io::Write as _;
+
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        let project = AIHistoryProjectRequest {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: "/tmp/project-checkpoint".to_string(),
+        };
+        fs::write(
+            &file_path,
+            r#"{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-checkpoint","timestamp":"2026-05-17T00:01:00Z","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":5}}}
+"#,
+        )
+        .unwrap();
+        let initial_size = fs::metadata(&file_path).unwrap().len() as i64;
+        let first = parse_claude_history_file_snapshot(&project, &file_path, 0, None);
+        let seed = decode_checkpoint_payload(first.payload_json.as_deref()).unwrap();
+
+        let mut file = fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "type": "assistant",
+                "sessionId": "s1",
+                "cwd": "/tmp/project-checkpoint",
+                "timestamp": "2026-05-17T00:01:01Z",
+                "uuid": "row-2",
+                "message": {
+                    "id": "msg-1",
+                    "model": "claude-sonnet",
+                    "usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "cache_read_input_tokens": 5
+                    }
+                }
+            })
+        )
+        .unwrap();
+        let second = parse_claude_history_file_snapshot(
+            &project,
+            &file_path,
+            initial_size,
+            Some(&seed),
+        );
+
+        assert_eq!(first.result.entries.len(), 1);
+        assert_eq!(first.result.entries[0].input_tokens, 100);
+        assert_eq!(first.result.entries[0].output_tokens, 10);
+        assert_eq!(second.result.entries.len(), 1);
+        assert_eq!(second.result.entries[0].input_tokens, 0);
+        assert_eq!(second.result.entries[0].output_tokens, 40);
+        assert_eq!(second.result.entries[0].cached_input_tokens, 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn claude_request_count_excludes_tool_results_and_synthetic_rows() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = "/tmp/project-requests";
+        let log_dir = root.join(".claude/projects/-tmp-project-requests");
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::write(
+            log_dir.join("session.jsonl"),
+            r#"{"type":"user","sessionId":"s1","cwd":"/tmp/project-requests","timestamp":"2026-05-17T00:00:00Z","message":{"content":"real request"}}
+{"type":"user","sessionId":"s1","cwd":"/tmp/project-requests","timestamp":"2026-05-17T00:00:10Z","message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","content":"done"}]}}
+{"type":"user","sessionId":"s1","cwd":"/tmp/project-requests","timestamp":"2026-05-17T00:00:20Z","isMeta":true,"message":{"content":"synthetic context"}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-requests","timestamp":"2026-05-17T00:01:00Z","uuid":"row-1","message":{"id":"msg-1","model":"claude-sonnet","usage":{"input_tokens":10,"output_tokens":5}}}
+"#,
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path.to_string(),
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.sessions[0].request_count, 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn claude_active_duration_starts_at_each_request_and_excludes_idle_gaps() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = "/tmp/project-duration";
+        let log_dir = root.join(".claude/projects/-tmp-project-duration");
+        fs::create_dir_all(&log_dir).unwrap();
+        fs::write(
+            log_dir.join("session.jsonl"),
+            r#"{"type":"user","sessionId":"s1","cwd":"/tmp/project-duration","timestamp":"2026-05-17T00:00:00Z","message":{"content":"first"}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-duration","timestamp":"2026-05-17T00:01:00Z","uuid":"a1","message":{"id":"m1","model":"claude-sonnet","usage":{"input_tokens":10,"output_tokens":5}}}
+{"type":"user","sessionId":"s1","cwd":"/tmp/project-duration","timestamp":"2026-05-20T00:00:00Z","message":{"content":"second"}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-duration","timestamp":"2026-05-20T00:02:00Z","uuid":"a2","message":{"id":"m2","model":"claude-sonnet","usage":{"input_tokens":12,"output_tokens":6}}}
+"#,
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path.to_string(),
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.sessions[0].request_count, 2);
+        assert_eq!(snapshot.sessions[0].active_duration_seconds, 180);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn codex_model_switch_does_not_reinflate_cumulative_tokens() {
         let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
         let project_path = root.join("project-a").to_string_lossy().to_string();
@@ -380,6 +532,421 @@ runtime launch context
         // The per-model-baseline bug would report 1000 + 1100 = 2100.
         assert_eq!(snapshot.project_summary.project_total_tokens, 1100);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_cumulative_usage_differences_each_field_exactly() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let codex_dir = root.join(".codex/sessions");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(
+            codex_dir.join("rollout.jsonl"),
+            [
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:00Z",
+                    "type": "session_meta",
+                    "payload": { "cwd": project_path, "id": "s1" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:01:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": { "total_token_usage": {
+                            "input_tokens": 100,
+                            "cached_input_tokens": 40,
+                            "cache_read_input_tokens": 35,
+                            "output_tokens": 20,
+                            "reasoning_output_tokens": 5
+                        }}
+                    }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:02:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": { "total_token_usage": {
+                            "input_tokens": 180,
+                            "cached_input_tokens": 70,
+                            "cache_read_input_tokens": 65,
+                            "output_tokens": 35,
+                            "reasoning_output_tokens": 8
+                        }}
+                    }
+                }),
+            ]
+            .into_iter()
+            .map(|row| row.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 145);
+        assert_eq!(snapshot.project_summary.project_cached_input_tokens, 70);
+        assert_eq!(snapshot.sessions[0].total_input_tokens, 110);
+        assert_eq!(snapshot.sessions[0].total_output_tokens, 35);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_active_duration_uses_explicit_task_boundaries() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let codex_dir = root.join(".codex/sessions");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(
+            codex_dir.join("rollout.jsonl"),
+            [
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:00Z",
+                    "type": "session_meta",
+                    "payload": { "cwd": project_path, "id": "s1" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:01Z",
+                    "type": "turn_context",
+                    "payload": { "cwd": project_path, "model": "gpt-5" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:10Z",
+                    "type": "event_msg",
+                    "payload": { "type": "task_started" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:01:10Z",
+                    "type": "event_msg",
+                    "payload": { "type": "task_complete" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-20T00:00:01Z",
+                    "type": "turn_context",
+                    "payload": { "cwd": project_path, "model": "gpt-5" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-20T00:00:10Z",
+                    "type": "event_msg",
+                    "payload": { "type": "task_started" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-20T00:01:10Z",
+                    "type": "event_msg",
+                    "payload": { "type": "task_complete" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-20T00:01:11Z",
+                    "type": "event_msg",
+                    "payload": { "type": "token_count", "info": {
+                        "last_token_usage": { "input_tokens": 10, "output_tokens": 5 }
+                    }}
+                }),
+            ]
+            .into_iter()
+            .map(|row| row.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.sessions[0].request_count, 2);
+        assert_eq!(snapshot.sessions[0].active_duration_seconds, 120);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_subagent_remains_an_independent_session() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let codex_dir = root.join(".codex/sessions");
+        fs::create_dir_all(&codex_dir).unwrap();
+
+        for (file_name, session_id, parent_thread_id, input_tokens) in [
+            ("parent.jsonl", "parent-session", None, 100),
+            (
+                "subagent.jsonl",
+                "subagent-session",
+                Some("parent-session"),
+                40,
+            ),
+        ] {
+            let mut session_meta = serde_json::json!({
+                "timestamp": "2026-05-17T00:00:00Z",
+                "type": "session_meta",
+                "payload": {
+                    "cwd": project_path,
+                    "id": session_id,
+                    "source": "cli"
+                }
+            });
+            if let Some(parent_thread_id) = parent_thread_id {
+                session_meta["payload"]["parent_thread_id"] =
+                    serde_json::json!(parent_thread_id);
+                session_meta["payload"]["source"] = serde_json::json!({
+                    "subagent": {
+                        "thread_spawn": {
+                            "parent_thread_id": parent_thread_id,
+                            "depth": 1
+                        }
+                    }
+                });
+            }
+            let mut rows = vec![session_meta];
+            if let Some(parent_thread_id) = parent_thread_id {
+                rows.push(serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:00Z",
+                    "type": "session_meta",
+                    "payload": {
+                        "cwd": project_path,
+                        "id": parent_thread_id,
+                        "source": "cli"
+                    }
+                }));
+            }
+            rows.extend([
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:01Z",
+                    "type": "turn_context",
+                    "payload": { "cwd": project_path, "model": "gpt-5" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:01:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": { "total_token_usage": {
+                            "input_tokens": input_tokens,
+                            "output_tokens": 10
+                        }}
+                    }
+                }),
+            ]);
+            fs::write(
+                codex_dir.join(file_name),
+                rows
+                .into_iter()
+                .map(|row| row.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            )
+            .unwrap();
+        }
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        let session_ids = snapshot
+            .sessions
+            .iter()
+            .filter_map(|session| session.external_session_id.as_deref())
+            .collect::<HashSet<_>>();
+        assert_eq!(snapshot.sessions.len(), 2);
+        assert_eq!(session_ids, HashSet::from(["parent-session", "subagent-session"]));
+        assert_eq!(snapshot.project_summary.project_total_tokens, 160);
+        assert_eq!(
+            snapshot
+                .sessions
+                .iter()
+                .map(|session| session.request_count)
+                .sum::<i64>(),
+            2
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_checkpoint_preserves_an_open_task_boundary() {
+        use std::io::Write as _;
+
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("rollout.jsonl");
+        let project = AIHistoryProjectRequest {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: "/tmp/project-checkpoint".to_string(),
+        };
+        fs::write(
+            &file_path,
+            r#"{"timestamp":"2026-05-17T00:00:00Z","type":"session_meta","payload":{"cwd":"/tmp/project-checkpoint","id":"s1"}}
+{"timestamp":"2026-05-17T00:00:10Z","type":"event_msg","payload":{"type":"task_started"}}
+"#,
+        )
+        .unwrap();
+        let initial_size = fs::metadata(&file_path).unwrap().len() as i64;
+        let first = parse_codex_history_file_snapshot(&project, &file_path, 0, None);
+        let seed = decode_checkpoint_payload(first.payload_json.as_deref()).unwrap();
+        let mut file = fs::OpenOptions::new().append(true).open(&file_path).unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "timestamp": "2026-05-17T00:02:10Z",
+                "type": "event_msg",
+                "payload": { "type": "task_complete" }
+            })
+        )
+        .unwrap();
+
+        let second = parse_codex_history_file_snapshot(
+            &project,
+            &file_path,
+            initial_size,
+            Some(&seed),
+        );
+        let durations = active_duration_by_history_key(&second.result.events);
+
+        assert_eq!(durations["codex:s1"].total_seconds, 120);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_session_metadata_is_not_counted_as_a_request() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let codex_dir = root.join(".codex/sessions");
+        fs::create_dir_all(&codex_dir).unwrap();
+        fs::write(
+            codex_dir.join("rollout.jsonl"),
+            format!(
+                "{}\n{}\n{}\n",
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:00Z",
+                    "type": "session_meta",
+                    "payload": { "cwd": project_path, "id": "s1" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:00:01Z",
+                    "type": "turn_context",
+                    "payload": { "cwd": project_path, "model": "gpt-5" }
+                }),
+                serde_json::json!({
+                    "timestamp": "2026-05-17T00:01:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": { "last_token_usage": { "input_tokens": 10, "output_tokens": 5 } }
+                    }
+                }),
+            ),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.sessions[0].request_count, 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_repeated_cumulative_snapshot_is_not_counted_twice() {
+        let snapshot = codex_cumulative_snapshot(&[100, 100], &[None, Some(100)]);
+        assert_eq!(snapshot.project_summary.project_total_tokens, 100);
+    }
+
+    #[test]
+    fn codex_cumulative_reset_starts_a_new_baseline() {
+        let snapshot = codex_cumulative_snapshot(
+            &[1_000, 200, 250],
+            &[None, Some(200), Some(50)],
+        );
+        assert_eq!(snapshot.project_summary.project_total_tokens, 1_250);
+    }
+
+    fn codex_cumulative_snapshot(
+        cumulative_input_tokens: &[i64],
+        last_input_tokens: &[Option<i64>],
+    ) -> AIHistorySnapshot {
+        assert_eq!(cumulative_input_tokens.len(), last_input_tokens.len());
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let codex_dir = root.join(".codex/sessions");
+        fs::create_dir_all(&codex_dir).unwrap();
+        let mut rows = vec![serde_json::json!({
+            "timestamp": "2026-05-17T00:00:00Z",
+            "type": "session_meta",
+            "payload": { "cwd": project_path, "id": "s1" }
+        })];
+        for (index, (cumulative, last)) in cumulative_input_tokens
+            .iter()
+            .zip(last_input_tokens)
+            .enumerate()
+        {
+            let mut info = serde_json::json!({
+                "model": "gpt-5",
+                "total_token_usage": {
+                    "input_tokens": cumulative,
+                    "output_tokens": 0
+                }
+            });
+            if let Some(last) = last {
+                info["last_token_usage"] = serde_json::json!({
+                    "input_tokens": last,
+                    "output_tokens": 0
+                });
+            }
+            rows.push(serde_json::json!({
+                "timestamp": format!("2026-05-17T00:{:02}:00Z", index + 1),
+                "type": "event_msg",
+                "payload": { "type": "token_count", "info": info }
+            }));
+        }
+        fs::write(
+            codex_dir.join("rollout.jsonl"),
+            rows.into_iter()
+                .map(|row| row.to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+        let _ = fs::remove_dir_all(root);
+        snapshot
     }
 
     #[test]

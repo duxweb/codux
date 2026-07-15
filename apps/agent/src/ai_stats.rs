@@ -13,10 +13,15 @@ use codux_ai_history::indexer::AIHistoryIndexer;
 use codux_ai_history::normalized::AIHistoryProjectRequest;
 use codux_runtime_core::ai_stats::RemoteAICurrentSessionProvider;
 use serde_json::{Value, json};
+use std::path::Path;
 
 /// Open the indexer against the agent data dir's usage cache.
 pub fn open_indexer() -> AIHistoryIndexer {
-    AIHistoryIndexer::with_database_path(crate::projects::agent_data_dir().join("ai-usage.sqlite3"))
+    open_indexer_at(&crate::projects::agent_data_dir())
+}
+
+pub fn open_indexer_at(data_dir: &Path) -> AIHistoryIndexer {
+    AIHistoryIndexer::with_database_path(data_dir.join("ai-usage.sqlite3"))
 }
 
 /// Build the `ai.stats` payload for a project.
@@ -58,14 +63,20 @@ fn stats_payload_from_state(
 /// The full `AIHistoryProjectState` (incl. snapshot) for a desktop controller,
 /// indexed from the payload's project path directly (the controller owns the
 /// project record; the agent just indexes the host's history for that path).
-pub fn ai_state_payload(indexer: &AIHistoryIndexer, id: &str, name: &str, path: &str) -> Value {
+pub fn ai_state_payload(
+    indexer: &AIHistoryIndexer,
+    id: &str,
+    name: &str,
+    path: &str,
+    refresh: bool,
+) -> Result<Value, String> {
     let request = AIHistoryProjectRequest {
         id: id.to_string(),
         name: name.to_string(),
         path: path.to_string(),
     };
-    match indexer.project_state(request) {
-        Ok(state) => serde_json::to_value(state).unwrap_or(Value::Null),
-        Err(error) => json!({ "projectId": id, "projectName": name, "error": error }),
+    if refresh {
+        indexer.refresh_project(request.clone())?;
     }
+    serde_json::to_value(indexer.project_state(request)?).map_err(|error| error.to_string())
 }

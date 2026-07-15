@@ -61,6 +61,7 @@ pub fn run(version: &str) -> Result<(), String> {
             "git".to_string(),
             "worktree".to_string(),
             "terminal".to_string(),
+            "aiHistory".to_string(),
         ],
     })?;
 

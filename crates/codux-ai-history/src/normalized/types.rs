@@ -216,13 +216,15 @@ pub struct HistoryEvent {
     pub source: String,
     pub session_id: String,
     pub timestamp: f64,
-    pub role: HistoryRole,
+    pub kind: HistoryEventKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HistoryRole {
-    User,
-    Assistant,
+pub enum HistoryEventKind {
+    Request,
+    Activity,
+    ActivityStart,
+    ActivityEnd,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -246,7 +248,16 @@ pub struct AIExternalFileCheckpointPayload {
     pub session_title: Option<String>,
     pub last_model: Option<String>,
     #[serde(default)]
-    pub model_total_tokens_by_name: HashMap<String, i64>,
+    pub(crate) codex_total_usage_by_session: HashMap<String, HistoryUsage>,
+    #[serde(default)]
+    pub(crate) codex_active_task_started_at_by_session: HashMap<String, f64>,
+    pub last_claude_message_id: Option<String>,
+    #[serde(default)]
+    pub last_claude_input_tokens: i64,
+    #[serde(default)]
+    pub last_claude_output_tokens: i64,
+    #[serde(default)]
+    pub last_claude_cached_input_tokens: i64,
 }
 
 #[derive(Debug, Default)]

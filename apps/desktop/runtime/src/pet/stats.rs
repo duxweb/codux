@@ -72,9 +72,17 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
 
     let total_requests: i64 = sessions.iter().map(|session| session.request_count).sum();
     let total_tokens: i64 = sessions.iter().map(|session| session.total_tokens).sum();
-    let total_secs: i64 = sessions
+    let measured_sessions = sessions
+        .iter()
+        .filter(|session| session.active_duration_seconds > 0)
+        .collect::<Vec<_>>();
+    let total_secs: i64 = measured_sessions
         .iter()
         .map(|session| session.active_duration_seconds)
+        .sum();
+    let measured_requests: i64 = measured_sessions
+        .iter()
+        .map(|session| session.request_count)
         .sum();
     let session_count = sessions.len().max(1);
 
@@ -84,11 +92,11 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
         0.0
     };
     let req_per_hour = if total_secs > 0 {
-        total_requests as f64 / (total_secs as f64 / 3600.0)
+        measured_requests as f64 / (total_secs as f64 / 3600.0)
     } else {
         0.0
     };
-    let short_count = sessions
+    let short_count = measured_sessions
         .iter()
         .filter(|session| session.active_duration_seconds < 300)
         .count();
@@ -100,15 +108,9 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
                 .unwrap_or(false)
         })
         .count();
-    let sustained_seconds = sessions
+    let sustained_seconds = measured_sessions
         .iter()
-        .map(|session| {
-            let active_seconds = session.active_duration_seconds.max(0);
-            let wall_clock_seconds = (session.last_seen_at - session.first_seen_at)
-                .max(0.0)
-                .round() as i64;
-            active_seconds.max(wall_clock_seconds)
-        })
+        .map(|session| session.active_duration_seconds)
         .collect::<Vec<_>>();
     let max_secs = sustained_seconds.iter().copied().max().unwrap_or(0);
     let multi_turn_sessions = sessions
@@ -151,7 +153,15 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
         })
         .count();
     let focus = display_pts(smoothed_ratio(deep_sessions, sessions.len()), 80.0, 0.55);
-    let burst = display_pts(smoothed_ratio(short_count, sessions.len()), 200.0, 0.55);
+    let burst = display_pts(
+        if measured_sessions.is_empty() {
+            0.0
+        } else {
+            smoothed_ratio(short_count, measured_sessions.len())
+        },
+        200.0,
+        0.55,
+    );
     let rate = display_pts(sat_ratio(req_per_hour, 6.0), 130.0, 0.65);
     let core = display_pts(smoothed_ratio(night_count, session_count), 240.0, 0.55);
     let streak = display_pts(sat_ratio(night_count as f64, 8.0), 70.0, 0.6);
@@ -159,7 +169,15 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
         .iter()
         .filter(|seconds| **seconds >= 1800)
         .count();
-    let long = display_pts(smoothed_ratio(long_count, sessions.len()), 200.0, 0.55);
+    let long = display_pts(
+        if measured_sessions.is_empty() {
+            0.0
+        } else {
+            smoothed_ratio(long_count, measured_sessions.len())
+        },
+        200.0,
+        0.55,
+    );
     let peak = display_pts(sat_ratio(max_secs as f64, 3600.0), 130.0, 0.6);
     let repair_share = if total_tokens > 0 {
         repair_token_budget as f64 / total_tokens as f64

@@ -125,8 +125,7 @@ impl RuntimeState {
         self.git = git_workspace.status;
         self.git_review = git_workspace.review;
         self.files = load_file_entries(&project.path, None);
-        self.ai_global_history = load_global_ai_history(&self.support_dir);
-        self.refresh_daily_level();
+        self.set_ai_global_history(load_global_ai_history(&self.support_dir));
         self.ai_history = load_ai_history(&self.support_dir, &project.path);
         self.ai_session_detail =
             self.ai_history.sessions.first().map(|session| {
@@ -204,7 +203,8 @@ impl RuntimeState {
         }
     }
 
-    pub fn refresh_daily_level(&mut self) {
+    pub fn set_ai_global_history(&mut self, history: AIGlobalHistorySummary) {
+        self.ai_global_history = history;
         self.daily_level = build_daily_level(&self.ai_global_history);
     }
 }

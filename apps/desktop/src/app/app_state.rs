@@ -545,7 +545,6 @@ pub(in crate::app) struct DBProfileTestDisplay {
 pub(in crate::app) struct ProjectSwitchLoad {
     pub(in crate::app) project_id: String,
     pub(in crate::app) generation: u64,
-    pub(in crate::app) ai_global_history: AIGlobalHistorySummary,
     pub(in crate::app) memory: MemorySummary,
     pub(in crate::app) memory_manager: MemoryManagerSnapshot,
 }

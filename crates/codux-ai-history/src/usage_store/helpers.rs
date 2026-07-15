@@ -110,64 +110,6 @@ fn history_group_key(source: &str, session_key: &str, external_session_id: Optio
     history_key(source, external_session_id.unwrap_or(session_key))
 }
 
-fn active_duration_by_session_id(events: &[HistoryEvent]) -> HashMap<String, i64> {
-    let mut grouped = HashMap::<String, Vec<&HistoryEvent>>::new();
-    for event in events {
-        grouped
-            .entry(event.session_id.clone())
-            .or_default()
-            .push(event);
-    }
-
-    let mut result = HashMap::new();
-    for (session_id, mut events) in grouped {
-        events.sort_by(|left, right| left.timestamp.total_cmp(&right.timestamp));
-        let (Some(first), Some(last)) = (events.first(), events.last()) else {
-            continue;
-        };
-        let wall_clock_seconds = (last.timestamp - first.timestamp).max(0.0).round() as i64;
-        let mut active_seconds = 0i64;
-        let mut waiting_for_first_response = false;
-        let mut turn_start: Option<f64> = None;
-        let mut turn_end: Option<f64> = None;
-
-        for event in events {
-            match event.role {
-                HistoryRole::User => {
-                    if let (Some(start), Some(end)) = (turn_start, turn_end)
-                        && end > start
-                    {
-                        active_seconds = active_seconds
-                            .saturating_add((end - start).max(0.0).round() as i64)
-                            .min(wall_clock_seconds);
-                    }
-                    turn_start = None;
-                    turn_end = None;
-                    waiting_for_first_response = true;
-                }
-                HistoryRole::Assistant => {
-                    if waiting_for_first_response {
-                        turn_start = Some(event.timestamp);
-                        turn_end = Some(event.timestamp);
-                        waiting_for_first_response = false;
-                    } else if turn_start.is_some() {
-                        turn_end = Some(event.timestamp);
-                    }
-                }
-            }
-        }
-        if let (Some(start), Some(end)) = (turn_start, turn_end)
-            && end > start
-        {
-            active_seconds = active_seconds
-                .saturating_add((end - start).max(0.0).round() as i64)
-                .min(wall_clock_seconds);
-        }
-        result.insert(session_id, active_seconds.min(wall_clock_seconds));
-    }
-    result
-}
-
 fn min_nonzero(left: f64, right: f64) -> f64 {
     if left <= 0.0 { right } else { left.min(right) }
 }
@@ -180,6 +122,48 @@ fn preferred_string(left: Option<&str>, right: Option<&str>) -> Option<String> {
 fn normalized_optional_string(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.to_string())
+}
+
+fn merge_logical_sessions(sessions: Vec<AISessionSummary>) -> Vec<AISessionSummary> {
+    let mut merged = HashMap::<(String, String), AISessionSummary>::new();
+    for session in sessions {
+        let key = (session.session_id.clone(), session.project_path.clone());
+        if let Some(current) = merged.get_mut(&key) {
+            let newer = session.last_seen_at >= current.last_seen_at;
+            current.first_seen_at = min_nonzero(current.first_seen_at, session.first_seen_at);
+            current.last_seen_at = current.last_seen_at.max(session.last_seen_at);
+            current.request_count = current.request_count.saturating_add(session.request_count);
+            current.total_input_tokens = current
+                .total_input_tokens
+                .saturating_add(session.total_input_tokens);
+            current.total_output_tokens = current
+                .total_output_tokens
+                .saturating_add(session.total_output_tokens);
+            current.total_tokens = current.total_tokens.saturating_add(session.total_tokens);
+            current.cached_input_tokens = current
+                .cached_input_tokens
+                .saturating_add(session.cached_input_tokens);
+            current.active_duration_seconds = current
+                .active_duration_seconds
+                .max(session.active_duration_seconds);
+            current.today_tokens = current.today_tokens.saturating_add(session.today_tokens);
+            current.today_cached_input_tokens = current
+                .today_cached_input_tokens
+                .saturating_add(session.today_cached_input_tokens);
+            if newer {
+                current.project_id = session.project_id;
+                current.project_name = session.project_name;
+                current.session_title = session.session_title;
+                current.last_tool = session.last_tool;
+                current.last_model = session.last_model;
+            }
+        } else {
+            merged.insert(key, session);
+        }
+    }
+    let mut sessions = merged.into_values().collect::<Vec<_>>();
+    sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
+    sessions
 }
 
 fn displayable_model_name(value: Option<&str>) -> Option<&str> {

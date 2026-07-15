@@ -236,7 +236,6 @@ impl CoduxApp {
                             stats_queued_at.elapsed().as_millis()
                         ),
                     );
-                    let ai_global_history = stats_runtime_service.reload_global_ai_history();
                     let memory = stats_runtime_service.reload_memory(Some(&stats_project.id));
                     let memory_manager = stats_runtime_service.reload_memory_manager(
                         &projects,
@@ -256,7 +255,6 @@ impl CoduxApp {
                     ProjectSwitchLoad {
                         project_id: stats_project.id,
                         generation,
-                        ai_global_history,
                         memory,
                         memory_manager,
                     }
@@ -427,7 +425,6 @@ impl CoduxApp {
         {
             return;
         }
-        self.state.ai_global_history = load.ai_global_history;
         self.state.memory = load.memory;
         self.state.memory_manager = load.memory_manager;
         self.runtime_trace(

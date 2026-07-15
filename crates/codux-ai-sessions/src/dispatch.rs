@@ -8,6 +8,25 @@
 use serde_json::{Value, json};
 
 use crate::{AIHistoryService, AISessionForkRequest, AISessionForkTarget};
+use codux_ai_history::{indexer::AIHistoryIndexer, normalized::AIHistoryProjectRequest};
+
+pub fn session_op_result_with_indexer(
+    service: &AIHistoryService,
+    indexer: &AIHistoryIndexer,
+    project: AIHistoryProjectRequest,
+    payload: &Value,
+) -> Result<Value, String> {
+    let op = payload.get("op").and_then(Value::as_str).unwrap_or("");
+    let session_id = string_field(payload, "sessionId");
+    let state = match op {
+        "indexedRename" => {
+            indexer.rename_session(project, session_id, string_field(payload, "title"))
+        }
+        "indexedRemove" => indexer.remove_session(project, session_id),
+        _ => return session_op_result(service, &project.path, payload),
+    }?;
+    serde_json::to_value(state).map_err(|error| error.to_string())
+}
 
 /// Run one `ai.session` op and return its JSON result.
 pub fn session_op_result(

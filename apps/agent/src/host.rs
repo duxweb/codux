@@ -800,7 +800,7 @@ fn make_handler(
             }
             REMOTE_AI_SESSION => {
                 // The host runs the codux-ai-sessions engine against its own history.
-                match crate::sessions::ai_session_payload(&payload) {
+                match crate::sessions::ai_session_payload(&indexer, &payload) {
                     Ok(result) => Some((REMOTE_AI_SESSION_RESULT, result)),
                     Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
                 }
@@ -831,15 +831,19 @@ fn make_handler(
                     .get("projectPath")
                     .and_then(Value::as_str)
                     .unwrap_or("");
-                Some((
-                    REMOTE_AI_STATE,
-                    crate::ai_stats::ai_state_payload(
-                        &indexer,
-                        project_id,
-                        project_name,
-                        project_path,
-                    ),
-                ))
+                match crate::ai_stats::ai_state_payload(
+                    &indexer,
+                    project_id,
+                    project_name,
+                    project_path,
+                    payload
+                        .get("refresh")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                ) {
+                    Ok(state) => Some((REMOTE_AI_STATE, state)),
+                    Err(error) => Some((REMOTE_ERROR, json!({ "message": error }))),
+                }
             }
             _ => None,
         };

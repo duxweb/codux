@@ -1,6 +1,6 @@
 use super::{
     CUSTOM_SPECIES_PREFIX, PET_STATE_DECODE_NAMESPACES, PetCustomPet, PetLegacyRecord,
-    PetProgressInfo, PetSnapshot, PetStats, STATS_MODEL_VERSION,
+    PetProgressInfo, PetSnapshot, PetStats,
     catalog::{custom_pet_from_dir, custom_pets_dir, load_custom_pets},
     day_index, decode_pet_state_data, default_persona_id, sanitize_claim_species,
     sanitize_custom_name, sanitize_custom_pet, sanitize_species,
@@ -15,7 +15,7 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 struct MacPersistedPetState {
     state_version: Option<u32>,
-    _stats_model_version: Option<u32>,
+    stats_model_version: Option<u32>,
     claimed_at: Option<MacDate>,
     species: Option<String>,
     current_identity: Option<MacPetIdentity>,
@@ -230,7 +230,7 @@ fn mac_state_to_snapshot(state: MacPersistedPetState) -> PetSnapshot {
         .collect();
     PetSnapshot {
         state_version: state.state_version.unwrap_or(0),
-        stats_model_version: STATS_MODEL_VERSION,
+        stats_model_version: state.stats_model_version.unwrap_or(0),
         claimed_at,
         species,
         custom_pet,
@@ -342,13 +342,11 @@ mod tests {
         assert_eq!(snapshot.species, "dragon");
         assert_eq!(snapshot.custom_name, "Spark");
         assert_eq!(snapshot.current_experience_tokens, 1200);
-        assert_eq!(snapshot.current_stats.chaos, 2);
-        assert_eq!(snapshot.global_normalized_total_watermark, Some(5000));
-        assert_eq!(
-            snapshot
-                .project_normalized_token_watermarks
-                .get("project-a"),
-            Some(&5000)
-        );
+        assert_eq!(snapshot.progress.total_xp, 1200);
+        assert_eq!(snapshot.current_stats, PetStats::default());
+        assert_eq!(snapshot.stats_updated_day, None);
+        assert_eq!(snapshot.global_normalized_total_watermark, None);
+        assert!(snapshot.project_normalized_token_watermarks.is_empty());
+        assert_eq!(snapshot.total_normalized_tokens, 0);
     }
 }

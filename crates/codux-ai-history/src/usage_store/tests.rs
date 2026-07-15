@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::normalized::JSONLParseSnapshot;
+    use crate::normalized::{JSONLParseSnapshot, load_indexed_global_history_at};
     use chrono::TimeZone;
     use uuid::Uuid;
 
@@ -313,7 +313,22 @@ mod tests {
                 parsed_history_with_external("file-session-2", "external-1", 200.0, 20, 20)
             })
             .unwrap();
+        for (path, duration) in [(&first_path, 60), (&second_path, 30)] {
+            let path = normalized_path(path);
+            conn.execute(
+                "UPDATE ai_history_file_session_link SET active_duration_seconds = ?1 WHERE file_path = ?2;",
+                params![duration, path],
+            )
+            .unwrap();
+            conn.execute(
+                "UPDATE ai_history_file_usage_bucket SET active_duration_seconds = ?1 WHERE file_path = ?2;",
+                params![duration, path],
+            )
+            .unwrap();
+        }
         let snapshot = store.project_snapshot(&conn, project).unwrap();
+        let global_sessions = store.indexed_sessions_since(&conn, None).unwrap();
+        let range = store.indexed_global_range_summary(&conn, "all", None).unwrap();
 
         assert_eq!(snapshot.sessions.len(), 1);
         assert_eq!(
@@ -321,6 +336,173 @@ mod tests {
             Some("external-1")
         );
         assert_eq!(snapshot.sessions[0].total_tokens, 60);
+        assert_eq!(snapshot.sessions[0].active_duration_seconds, 60);
+        assert_eq!(global_sessions.len(), 1);
+        assert_eq!(global_sessions[0].total_tokens, 60);
+        assert_eq!(global_sessions[0].active_duration_seconds, 60);
+        assert_eq!(range.session_count, 1);
+        assert_eq!(range.active_duration_seconds, 60);
+        assert_eq!(range.project_totals[0].active_duration_seconds, 60);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn project_snapshot_uses_measured_active_duration_only() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        fs::write(&file_path, "{}\n").unwrap();
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let project = test_project(&root);
+
+        store
+            .load_or_index_file(&conn, "claude", &file_path, &project, || {
+                parsed_history("s1", 100.0, 10, 10)
+            })
+            .unwrap();
+        let snapshot = store.project_snapshot(&conn, project).unwrap();
+
+        assert_eq!(snapshot.sessions[0].active_duration_seconds, 0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn range_active_duration_is_clipped_to_the_selected_window() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let start = 10_000.0;
+        insert_usage_bucket(&conn, "/tmp/project-a", "session", start, 100);
+
+        let all = store.indexed_global_range_summary(&conn, "all", None).unwrap();
+        let clipped = store
+            .indexed_global_range_summary(&conn, "range", Some(start + 900.0))
+            .unwrap();
+
+        assert_eq!(all.active_duration_seconds, 1_800);
+        assert_eq!(clipped.active_duration_seconds, 900);
+        assert_eq!(clipped.project_totals[0].active_duration_seconds, 900);
+        assert_eq!(clipped.sessions[0].active_duration_seconds, 900);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn removes_deleted_source_files_after_a_successful_scan() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let removed_path = root.join("removed.jsonl");
+        let retained_path = root.join("retained.jsonl");
+        fs::write(&removed_path, "{}\n").unwrap();
+        fs::write(&retained_path, "{}\n").unwrap();
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let project = test_project(&root);
+        store
+            .load_or_index_file(&conn, "claude", &removed_path, &project, || {
+                parsed_history("removed", 100.0, 100, 0)
+            })
+            .unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &retained_path, &project, || {
+                parsed_history("retained", 200.0, 20, 0)
+            })
+            .unwrap();
+        fs::remove_file(&removed_path).unwrap();
+
+        store
+            .remove_missing_source_files(
+                &conn,
+                "claude",
+                &project.path,
+                &[retained_path],
+            )
+            .unwrap();
+        let snapshot = store.project_snapshot(&conn, project).unwrap();
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 20);
+        assert_eq!(snapshot.sessions.len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn global_store_retains_only_current_project_and_worktree_paths() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        insert_usage_bucket(&conn, "/tmp/project-a", "project", 10_000.0, 100);
+        insert_usage_bucket(&conn, "/tmp/project-a-worktree", "worktree", 10_000.0, 200);
+        insert_usage_bucket(&conn, "/tmp/removed-project", "removed", 10_000.0, 9_999);
+
+        store
+            .retain_project_paths(
+                &conn,
+                &["/tmp/project-a".to_string(), "/tmp/project-a-worktree".to_string()],
+            )
+            .unwrap();
+        let totals = store.indexed_global_project_totals(&conn).unwrap();
+
+        assert_eq!(totals.len(), 2);
+        assert_eq!(totals.iter().map(|item| item.total_tokens).sum::<i64>(), 300);
+        assert!(totals.iter().all(|item| item.project_path != "/tmp/removed-project"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn partial_global_index_is_not_reported_as_complete() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let database_path = root.join("ai-usage.sqlite3");
+        let store = AIUsageStore::at_path(database_path.clone());
+        let conn = store.connect().unwrap();
+        insert_usage_bucket(&conn, "/tmp/project-a", "project-a", 10_000.0, 100);
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_project_index_state (
+                project_path, project_id, project_name, indexed_at
+            ) VALUES (?1, ?2, ?3, ?4)
+            "#,
+            params!["/tmp/project-a", "project-a", "Project A", 10_000.0],
+        )
+        .unwrap();
+        drop(conn);
+
+        let snapshot = load_indexed_global_history_at(
+            database_path,
+            vec![
+                AIHistoryProjectRequest {
+                    id: "project-a".to_string(),
+                    name: "Project A".to_string(),
+                    path: "/tmp/project-a".to_string(),
+                },
+                AIHistoryProjectRequest {
+                    id: "project-b".to_string(),
+                    name: "Project B".to_string(),
+                    path: "/tmp/project-b".to_string(),
+                },
+            ],
+        )
+        .unwrap();
+
+        assert!(snapshot.is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn empty_project_scope_removes_all_indexed_history() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let database_path = root.join("ai-usage.sqlite3");
+        let store = AIUsageStore::at_path(database_path.clone());
+        let conn = store.connect().unwrap();
+        insert_usage_bucket(&conn, "/tmp/removed-project", "removed", 10_000.0, 100);
+        drop(conn);
+
+        let snapshot = load_indexed_global_history_at(database_path, Vec::new())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(snapshot.total_tokens, 0);
+        assert_eq!(snapshot.project_count, 0);
+        assert!(snapshot.sessions.is_empty());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -359,7 +541,7 @@ mod tests {
                 source: "claude".to_string(),
                 session_id: session_id.to_string(),
                 timestamp,
-                role: HistoryRole::User,
+                kind: HistoryEventKind::Request,
             }],
             entries: vec![HistoryEntry {
                 source: "claude".to_string(),
@@ -417,9 +599,10 @@ mod tests {
             r#"
             INSERT INTO ai_history_file_usage_bucket (
                 source, file_path, project_path, session_key, model, bucket_start, bucket_end,
-                input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count
+                input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count,
+                active_duration_seconds
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
             params![
                 "codex",
@@ -433,7 +616,8 @@ mod tests {
                 total_tokens / 2,
                 total_tokens,
                 0,
-                1
+                1,
+                1_800
             ],
         )
         .unwrap();

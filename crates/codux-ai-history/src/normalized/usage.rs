@@ -8,8 +8,8 @@ fn opencode_tokens_usage(value: &Value) -> HistoryUsage {
     }
 }
 
-#[derive(Debug, Clone)]
-struct HistoryUsage {
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct HistoryUsage {
     input_tokens: i64,
     output_tokens: i64,
     cached_input_tokens: i64,
@@ -21,32 +21,39 @@ impl HistoryUsage {
         self.input_tokens + self.output_tokens + self.reasoning_output_tokens
     }
 
-    fn delta(&self, delta: i64) -> Self {
-        if delta <= 0 || self.total_tokens() <= 0 {
-            return Self {
-                input_tokens: delta.max(0),
-                output_tokens: 0,
-                cached_input_tokens: 0,
-                reasoning_output_tokens: 0,
-            };
-        }
-        let ratio = delta as f64 / self.total_tokens() as f64;
-        let output = (self.output_tokens as f64 * ratio).round() as i64;
-        let reasoning = (self.reasoning_output_tokens as f64 * ratio).round() as i64;
-        let cached = (self.cached_input_tokens as f64 * ratio).round() as i64;
+    fn cumulative_total_tokens(&self) -> i64 {
+        self.total_tokens() + self.cached_input_tokens
+    }
+
+    fn saturating_delta(&self, previous: &Self) -> Self {
         Self {
-            input_tokens: (delta - output - reasoning).max(0),
-            output_tokens: output.max(0),
-            cached_input_tokens: cached.max(0),
-            reasoning_output_tokens: reasoning.max(0),
+            input_tokens: (self.input_tokens - previous.input_tokens).max(0),
+            output_tokens: (self.output_tokens - previous.output_tokens).max(0),
+            cached_input_tokens: (self.cached_input_tokens - previous.cached_input_tokens).max(0),
+            reasoning_output_tokens: (self.reasoning_output_tokens
+                - previous.reasoning_output_tokens)
+                .max(0),
+        }
+    }
+
+    fn componentwise_max(&self, previous: &Self) -> Self {
+        Self {
+            input_tokens: self.input_tokens.max(previous.input_tokens),
+            output_tokens: self.output_tokens.max(previous.output_tokens),
+            cached_input_tokens: self
+                .cached_input_tokens
+                .max(previous.cached_input_tokens),
+            reasoning_output_tokens: self
+                .reasoning_output_tokens
+                .max(previous.reasoning_output_tokens),
         }
     }
 }
 
 fn codex_history_usage(value: Option<&Value>) -> Option<HistoryUsage> {
     let value = value?;
-    let cached_input_tokens =
-        json_i64(value.get("cached_input_tokens")) + json_i64(value.get("cache_read_input_tokens"));
+    let cached_input_tokens = json_i64(value.get("cached_input_tokens"))
+        .max(json_i64(value.get("cache_read_input_tokens")));
     let reasoning_output_tokens = json_i64(value.get("reasoning_output_tokens"));
     let input_tokens = (json_i64(value.get("input_tokens")) - cached_input_tokens).max(0);
     let output_tokens = (json_i64(value.get("output_tokens")) - reasoning_output_tokens).max(0);
@@ -125,66 +132,125 @@ fn fixed_today_time_buckets(mut map: HashMap<i64, AITimeBucket>) -> Vec<AITimeBu
         .collect()
 }
 
-fn active_duration_by_history_key(events: &[HistoryEvent]) -> HashMap<String, i64> {
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ActiveDurationSummary {
+    pub(crate) total_seconds: i64,
+    pub(crate) seconds_by_bucket: HashMap<i64, i64>,
+}
+
+fn active_duration_by_history_key(
+    events: &[HistoryEvent],
+) -> HashMap<String, ActiveDurationSummary> {
+    active_duration_by_key(events, |event| {
+        history_key(&event.source, &event.session_id)
+    })
+}
+
+pub(crate) fn active_duration_by_session_id(
+    events: &[HistoryEvent],
+) -> HashMap<String, ActiveDurationSummary> {
+    active_duration_by_key(events, |event| event.session_id.clone())
+}
+
+fn active_duration_by_key(
+    events: &[HistoryEvent],
+    key_for_event: impl Fn(&HistoryEvent) -> String,
+) -> HashMap<String, ActiveDurationSummary> {
     let mut grouped = HashMap::<String, Vec<&HistoryEvent>>::new();
     for event in events {
-        grouped
-            .entry(history_key(&event.source, &event.session_id))
-            .or_default()
-            .push(event);
+        grouped.entry(key_for_event(event)).or_default().push(event);
     }
 
     let mut result = HashMap::new();
     for (key, mut events) in grouped {
         events.sort_by(|left, right| left.timestamp.total_cmp(&right.timestamp));
-        let Some(first) = events.first() else {
-            continue;
+        let intervals = if events.iter().any(|event| {
+            matches!(
+                event.kind,
+                HistoryEventKind::ActivityStart | HistoryEventKind::ActivityEnd
+            )
+        }) {
+            explicit_activity_intervals(&events)
+        } else {
+            conversational_activity_intervals(&events)
         };
-        let Some(last) = events.last() else {
-            continue;
-        };
-        let wall_clock_seconds = (last.timestamp - first.timestamp).max(0.0).round() as i64;
-        let mut active_seconds = 0i64;
-        let mut waiting_for_first_response = false;
-        let mut turn_start: Option<f64> = None;
-        let mut turn_end: Option<f64> = None;
-
-        for event in events {
-            match event.role {
-                HistoryRole::User => {
-                    if let (Some(start), Some(end)) = (turn_start, turn_end)
-                        && end > start
-                    {
-                        active_seconds = active_seconds
-                            .saturating_add((end - start).max(0.0).round() as i64)
-                            .min(wall_clock_seconds);
-                    }
-                    turn_start = None;
-                    turn_end = None;
-                    waiting_for_first_response = true;
-                }
-                HistoryRole::Assistant => {
-                    if waiting_for_first_response {
-                        turn_start = Some(event.timestamp);
-                        turn_end = Some(event.timestamp);
-                        waiting_for_first_response = false;
-                    } else if turn_start.is_some() {
-                        turn_end = Some(event.timestamp);
-                    }
-                }
-            }
-        }
-
-        if let (Some(start), Some(end)) = (turn_start, turn_end)
-            && end > start
-        {
-            active_seconds = active_seconds
-                .saturating_add((end - start).max(0.0).round() as i64)
-                .min(wall_clock_seconds);
-        }
-        result.insert(key, active_seconds.min(wall_clock_seconds));
+        result.insert(key, summarize_activity_intervals(intervals));
     }
     result
+}
+
+fn explicit_activity_intervals(events: &[&HistoryEvent]) -> Vec<(f64, f64)> {
+    let mut intervals = Vec::new();
+    let mut started_at = None;
+    for event in events {
+        match event.kind {
+            HistoryEventKind::ActivityStart => started_at = Some(event.timestamp),
+            HistoryEventKind::ActivityEnd => {
+                if let Some(start) = started_at.take()
+                    && event.timestamp > start
+                {
+                    intervals.push((start, event.timestamp));
+                }
+            }
+            HistoryEventKind::Request | HistoryEventKind::Activity => {}
+        }
+    }
+    intervals
+}
+
+fn conversational_activity_intervals(events: &[&HistoryEvent]) -> Vec<(f64, f64)> {
+    let mut intervals = Vec::new();
+    let mut activity_start = None;
+    let mut activity_end = None;
+    for event in events {
+        match event.kind {
+            HistoryEventKind::Request => {
+                push_activity_interval(&mut intervals, activity_start, activity_end);
+                activity_start = Some(event.timestamp);
+                activity_end = Some(event.timestamp);
+            }
+            HistoryEventKind::Activity => {
+                if activity_start.is_some() {
+                    activity_end = Some(event.timestamp);
+                }
+            }
+            HistoryEventKind::ActivityStart | HistoryEventKind::ActivityEnd => {}
+        }
+    }
+    push_activity_interval(&mut intervals, activity_start, activity_end);
+    intervals
+}
+
+fn push_activity_interval(
+    intervals: &mut Vec<(f64, f64)>,
+    start: Option<f64>,
+    end: Option<f64>,
+) {
+    if let (Some(start), Some(end)) = (start, end)
+        && end > start
+    {
+        intervals.push((start, end));
+    }
+}
+
+fn summarize_activity_intervals(intervals: Vec<(f64, f64)>) -> ActiveDurationSummary {
+    let mut summary = ActiveDurationSummary::default();
+    for (start, end) in intervals {
+        let mut cursor = start.round() as i64;
+        let end = end.round() as i64;
+        while cursor < end {
+            let bucket_start = half_hour_bucket_start(cursor as f64).round() as i64;
+            let segment_end = end.min(bucket_start.saturating_add(30 * 60));
+            let seconds = segment_end.saturating_sub(cursor);
+            if seconds <= 0 {
+                break;
+            }
+            summary.total_seconds = summary.total_seconds.saturating_add(seconds);
+            *summary.seconds_by_bucket.entry(bucket_start).or_default() += seconds;
+            cursor = segment_end;
+        }
+    }
+    summary
 }
 
 pub fn history_key(source: &str, session_id: &str) -> String {

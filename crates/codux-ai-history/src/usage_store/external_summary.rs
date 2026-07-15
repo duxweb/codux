@@ -53,9 +53,10 @@ fn external_file_summary_from_parsed(
         session.first_seen_at = min_nonzero(session.first_seen_at, event.timestamp);
         session.last_seen_at = session.last_seen_at.max(event.timestamp);
         session.active_duration_seconds = session.active_duration_seconds.max(
-            *active_duration_by_session
+            active_duration_by_session
                 .get(&event.session_id)
-                .unwrap_or(&0),
+                .map(|duration| duration.total_seconds)
+                .unwrap_or(0),
         );
     }
 
@@ -78,13 +79,15 @@ fn external_file_summary_from_parsed(
         session.first_seen_at = min_nonzero(session.first_seen_at, entry.timestamp);
         session.last_seen_at = session.last_seen_at.max(entry.timestamp);
         session.active_duration_seconds = session.active_duration_seconds.max(
-            *active_duration_by_session
+            active_duration_by_session
                 .get(&entry.session_id)
-                .unwrap_or(&0),
+                .map(|duration| duration.total_seconds)
+                .unwrap_or(0),
         );
     }
 
     let mut buckets = HashMap::<(String, String, i64), AIUsageBucket>::new();
+    let mut bucket_models = HashMap::<(String, i64), String>::new();
     for entry in &parsed.entries {
         let model = entry.model.clone().unwrap_or_else(|| "unknown".to_string());
         let bucket_start = half_hour_bucket_start(entry.timestamp);
@@ -96,6 +99,9 @@ fn external_file_summary_from_parsed(
             .or_insert_with(|| {
                 usage_bucket_from_session(source, session, project, &model, bucket_start)
             });
+        bucket_models
+            .entry((entry.session_id.clone(), bucket_start as i64))
+            .or_insert_with(|| model.clone());
         bucket.input_tokens += entry.input_tokens;
         bucket.output_tokens += entry.output_tokens + entry.reasoning_output_tokens;
         bucket.total_tokens += entry.total_tokens();
@@ -104,7 +110,7 @@ fn external_file_summary_from_parsed(
     }
 
     for event in &parsed.events {
-        if event.role != HistoryRole::User {
+        if event.kind != HistoryEventKind::Request {
             continue;
         }
         let bucket_start = half_hour_bucket_start(event.timestamp);
@@ -120,7 +126,40 @@ fn external_file_summary_from_parsed(
             .or_insert_with(|| {
                 usage_bucket_from_session(source, session, project, &model, bucket_start)
             });
+        bucket_models
+            .entry((event.session_id.clone(), bucket_start as i64))
+            .or_insert_with(|| model.clone());
         bucket.request_count += 1;
+    }
+
+    for (session_id, duration) in &active_duration_by_session {
+        let Some(session) = sessions.get(session_id) else {
+            continue;
+        };
+        for (&bucket_start, &seconds) in &duration.seconds_by_bucket {
+            if seconds <= 0 {
+                continue;
+            }
+            let model = bucket_models
+                .get(&(session_id.clone(), bucket_start))
+                .cloned()
+                .or_else(|| session.last_model.clone())
+                .unwrap_or_else(|| "unknown".to_string());
+            let bucket = buckets
+                .entry((session_id.clone(), model.clone(), bucket_start))
+                .or_insert_with(|| {
+                    usage_bucket_from_session(
+                        source,
+                        session,
+                        project,
+                        &model,
+                        bucket_start as f64,
+                    )
+                });
+            bucket.active_duration_seconds = bucket
+                .active_duration_seconds
+                .saturating_add(seconds);
+        }
     }
 
     let mut usage_buckets = buckets.into_values().collect::<Vec<_>>();

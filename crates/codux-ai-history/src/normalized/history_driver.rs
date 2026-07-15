@@ -51,7 +51,8 @@ impl HistorySourceDriver {
         project: &AIHistoryProjectRequest,
         home: &Path,
     ) -> Result<()> {
-        for file_path in self.paths(project, home) {
+        let paths = self.paths(project, home);
+        for file_path in &paths {
             match self.kind {
                 HistorySourceDriverKind::File { parse_file, .. } => {
                     let _ = store.load_or_index_file(conn, self.source, &file_path, project, || {
@@ -80,6 +81,7 @@ impl HistorySourceDriver {
                 }
             }
         }
+        store.remove_missing_source_files(conn, self.source, &project.path, &paths)?;
         Ok(())
     }
 }

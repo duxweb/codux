@@ -107,7 +107,7 @@ fn paths_equivalent(left: Option<&str>, right: &str) -> bool {
     left == right
 }
 
-fn normalized_history_path(value: &str) -> Option<String> {
+pub fn normalized_history_path(value: &str) -> Option<String> {
     let mut value = value.trim();
     if value.is_empty() {
         return None;

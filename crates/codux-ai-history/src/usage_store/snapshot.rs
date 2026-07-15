@@ -45,7 +45,6 @@ fn build_snapshot_from_rows(
                 first_seen_at: link.first_seen_at,
                 last_seen_at: link.last_seen_at,
                 last_model: link.last_model.clone(),
-                active_duration_seconds: link.active_duration_seconds,
                 ..Default::default()
             });
         session.external_session_id = session
@@ -163,7 +162,11 @@ fn build_snapshot_from_rows(
                 || !session.usage_amounts.is_empty()
         })
         .map(|session| AISessionSummary {
-            session_id: deterministic_uuid(&history_key(&session.source, &session.session_key)),
+            session_id: deterministic_uuid(&history_group_key(
+                &session.source,
+                &session.session_key,
+                session.external_session_id.as_deref(),
+            )),
             external_session_id: session.external_session_id,
             project_id: project.id.clone(),
             project_name: project.name.clone(),
@@ -179,11 +182,7 @@ fn build_snapshot_from_rows(
             total_tokens: session.total_tokens,
             cached_input_tokens: session.cached_input_tokens,
             usage_amounts: session.usage_amounts,
-            active_duration_seconds: session.active_duration_seconds.max(
-                (session.last_seen_at - session.first_seen_at)
-                    .max(0.0)
-                    .round() as i64,
-            ),
+            active_duration_seconds: session.active_duration_seconds.max(0),
             today_tokens: session.today_tokens,
             today_cached_input_tokens: session.today_cached_input_tokens,
             today_usage_amounts: session.today_usage_amounts,

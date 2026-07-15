@@ -825,6 +825,7 @@ impl RemoteController {
         project_id: &str,
         project_name: &str,
         project_path: &str,
+        refresh: bool,
     ) -> Result<codux_ai_history::indexer::AIHistoryProjectState, String> {
         let value = self.request(
             REMOTE_AI_STATE,
@@ -833,6 +834,7 @@ impl RemoteController {
                 "projectId": project_id,
                 "projectName": project_name,
                 "projectPath": project_path,
+                "refresh": refresh,
             }),
         )?;
         serde_json::from_value(value).map_err(|error| error.to_string())

@@ -17,19 +17,19 @@ fn parse_kiro_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
     let timestamps = kiro_history_timestamps(&value);
     let last_timestamp = timestamps.last().copied().unwrap_or_else(now_seconds);
     let mut result = ParsedHistory::default();
-    let mut last_role = None;
+    let mut last_kind = None;
     for timestamp in &timestamps {
-        let role = if last_role == Some(HistoryRole::User) {
-            HistoryRole::Assistant
+        let kind = if last_kind == Some(HistoryEventKind::Request) {
+            HistoryEventKind::Activity
         } else {
-            HistoryRole::User
+            HistoryEventKind::Request
         };
-        last_role = Some(role);
+        last_kind = Some(kind);
         result.events.push(HistoryEvent {
             source: "kiro".to_string(),
             session_id: session_id.clone(),
             timestamp: *timestamp,
-            role,
+            kind,
         });
     }
 
@@ -84,9 +84,9 @@ fn parse_agy_database_history_file(
             source: "agy".to_string(),
             session_id: session_id.clone(),
             timestamp: event.timestamp,
-            role: match event.role {
-                crate::agy_db::AgyConversationRole::User => HistoryRole::User,
-                crate::agy_db::AgyConversationRole::Assistant => HistoryRole::Assistant,
+            kind: match event.role {
+                crate::agy_db::AgyConversationRole::User => HistoryEventKind::Request,
+                crate::agy_db::AgyConversationRole::Assistant => HistoryEventKind::Activity,
             },
         });
     }
@@ -137,14 +137,14 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
         };
         let timestamp = kimi_timestamp(&row).unwrap_or_else(now_seconds);
         last_timestamp = Some(timestamp);
-        if let Some(role) = kimi_role(&row) {
+        if let Some(kind) = kimi_event_kind(&row) {
             result.events.push(HistoryEvent {
                 source: "kimi".to_string(),
                 session_id: session_id.clone(),
                 timestamp,
-                role,
+                kind,
             });
-            if role == HistoryRole::User && session_title.is_none() {
+            if kind == HistoryEventKind::Request && session_title.is_none() {
                 session_title = kimi_text(&row).map(|value| truncate_title(&value));
             }
         }
@@ -261,7 +261,7 @@ fn kimi_timestamp(value: &Value) -> Option<f64> {
         })
 }
 
-fn kimi_role(value: &Value) -> Option<HistoryRole> {
+fn kimi_event_kind(value: &Value) -> Option<HistoryEventKind> {
     let role = value
         .get("role")
         .or_else(|| value.get("message").and_then(|message| message.get("role")))
@@ -270,9 +270,9 @@ fn kimi_role(value: &Value) -> Option<HistoryRole> {
         .unwrap_or_default()
         .to_ascii_lowercase();
     if role.contains("user") || role == "human" {
-        Some(HistoryRole::User)
+        Some(HistoryEventKind::Request)
     } else if role.contains("assistant") || role.contains("agent") || role.contains("model") {
-        Some(HistoryRole::Assistant)
+        Some(HistoryEventKind::Activity)
     } else {
         None
     }
@@ -542,17 +542,17 @@ fn parse_opencode_session_message_events(
         if let Some(model) = opencode_message_model(&data) {
             parsed.last_model = Some(model);
         }
-        let role = match message_type.as_str() {
-            "user" => Some(HistoryRole::User),
-            "assistant" => Some(HistoryRole::Assistant),
+        let kind = match message_type.as_str() {
+            "user" => Some(HistoryEventKind::Request),
+            "assistant" => Some(HistoryEventKind::Activity),
             _ => None,
         };
-        if let Some(role) = role {
+        if let Some(kind) = kind {
             parsed.events.push(HistoryEvent {
                 source: source.to_string(),
                 session_id: session_id.to_string(),
                 timestamp: created_at,
-                role,
+                kind,
             });
         }
     }
@@ -595,17 +595,17 @@ fn parse_opencode_message_events(
         if let Some(model) = opencode_message_model(&data) {
             parsed.last_model = Some(model);
         }
-        let role = match data.get("role").and_then(|value| value.as_str()) {
-            Some("user") => Some(HistoryRole::User),
-            Some("assistant") => Some(HistoryRole::Assistant),
+        let kind = match data.get("role").and_then(|value| value.as_str()) {
+            Some("user") => Some(HistoryEventKind::Request),
+            Some("assistant") => Some(HistoryEventKind::Activity),
             _ => None,
         };
-        if let Some(role) = role {
+        if let Some(kind) = kind {
             parsed.events.push(HistoryEvent {
                 source: source.to_string(),
                 session_id: session_id.to_string(),
                 timestamp: created_at,
-                role,
+                kind,
             });
         }
         parse_opencode_part_models(conn, &message_id, parsed);
@@ -702,16 +702,16 @@ fn parse_opencode_legacy_database(
         else {
             continue;
         };
-        let role = if payload.get("role").and_then(|value| value.as_str()) == Some("user") {
-            HistoryRole::User
+        let kind = if payload.get("role").and_then(|value| value.as_str()) == Some("user") {
+            HistoryEventKind::Request
         } else {
-            HistoryRole::Assistant
+            HistoryEventKind::Activity
         };
         result.events.push(HistoryEvent {
             source: source.to_string(),
             session_id: session_id.clone(),
             timestamp,
-            role,
+            kind,
         });
         let model = payload
             .get("modelID")
@@ -775,16 +775,16 @@ fn parse_opencode_legacy_message_file(
         .and_then(|value| value.to_str())
         .and_then(normalized_string)
         .unwrap_or_else(|| file_path.display().to_string());
-    let role = if payload.get("role").and_then(|value| value.as_str()) == Some("user") {
-        HistoryRole::User
+    let kind = if payload.get("role").and_then(|value| value.as_str()) == Some("user") {
+        HistoryEventKind::Request
     } else {
-        HistoryRole::Assistant
+        HistoryEventKind::Activity
     };
     result.events.push(HistoryEvent {
         source: source.to_string(),
         session_id: session_id.clone(),
         timestamp,
-        role,
+        kind,
     });
     let model = payload
         .get("modelID")

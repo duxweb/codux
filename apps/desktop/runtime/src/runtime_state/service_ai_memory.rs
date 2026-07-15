@@ -10,10 +10,6 @@ impl RuntimeService {
         load_ai_history(&self.support_dir, project_path)
     }
 
-    pub fn reload_global_ai_history(&self) -> AIGlobalHistorySummary {
-        load_global_ai_history(&self.support_dir)
-    }
-
     pub fn reload_project_ai_session_detail(
         &self,
         project_path: &str,
@@ -21,7 +17,7 @@ impl RuntimeService {
     ) -> AISessionDetail {
         let mut args = serde_json::Map::new();
         args.insert("sessionId".to_string(), session_id.into());
-        if let Some(result) = self.remote_ai_session(project_path, "detail", args) {
+        if let Some(result) = self.hosted_ai_session(project_path, "detail", args) {
             return match result {
                 Ok(value) => serde_json::from_value(value).unwrap_or_else(|error| AISessionDetail {
                     id: session_id.to_string(),
@@ -56,7 +52,7 @@ impl RuntimeService {
             "targetTool".to_string(),
             serde_json::to_value(request.target_tool).map_err(|error| error.to_string())?,
         );
-        if let Some(result) = self.remote_ai_session(&request.project_path, "fork", args) {
+        if let Some(result) = self.hosted_ai_session(&request.project_path, "fork", args) {
             return result.and_then(|value| {
                 serde_json::from_value(value).map_err(|error| error.to_string())
             });
@@ -73,7 +69,7 @@ impl RuntimeService {
         let mut args = serde_json::Map::new();
         args.insert("sessionId".to_string(), session_id.into());
         args.insert("title".to_string(), title.into());
-        if let Some(result) = self.remote_ai_session(project_path, "rename", args) {
+        if let Some(result) = self.hosted_ai_session(project_path, "rename", args) {
             return result.and_then(|value| {
                 serde_json::from_value(value).map_err(|error| error.to_string())
             });
@@ -92,7 +88,7 @@ impl RuntimeService {
     ) -> Result<AIHistorySummary, String> {
         let mut args = serde_json::Map::new();
         args.insert("sessionId".to_string(), session_id.into());
-        if let Some(result) = self.remote_ai_session(project_path, "remove", args) {
+        if let Some(result) = self.hosted_ai_session(project_path, "remove", args) {
             return result.and_then(|value| {
                 serde_json::from_value(value).map_err(|error| error.to_string())
             });
@@ -354,17 +350,8 @@ impl RuntimeService {
     }
 
     fn refresh_global_ai_history_index(&self) {
-        let root_projects = ProjectStore::new(self.support_dir.clone())
-            .project_summaries()
-            .into_iter()
-            .map(|project| AIHistoryProjectRequest {
-                id: project.id,
-                name: project.name,
-                path: project.path,
-            })
-            .collect();
         let _ = index_global_history_fresh_at(
-            root_projects,
+            self.ai_history_workspace_requests(),
             crate::ai_usage_store::AIUsageStore::at_path(self.ai_usage_database_path()),
         );
     }

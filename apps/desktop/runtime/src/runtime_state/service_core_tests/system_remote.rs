@@ -74,3 +74,134 @@ fn runtime_dock_badge_count_matches_tauri_attention_semantics() {
     assert_eq!(runtime_dock_badge_count(true, &snapshot), Some(5));
     assert_eq!(runtime_dock_badge_count(false, &snapshot), None);
 }
+
+#[test]
+fn ai_history_global_scope_includes_project_roots_and_worktrees() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-ai-history-workspaces-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&support_dir).expect("create support dir");
+    fs::write(
+        support_dir.join("state.json"),
+        serde_json::json!({
+            "projects": [
+                { "id": "project-a", "name": "Project A", "path": "/tmp/project-a" },
+                { "id": "project-b", "name": "Project B", "path": "/tmp/project-b" },
+                { "id": "project-windows", "name": "Project Windows", "path": "C:\\Users\\test\\project" },
+                {
+                    "id": "project-wsl",
+                    "name": "Project WSL",
+                    "path": "/home/test/project",
+                    "runtimeTarget": { "kind": "wsl", "distribution": "Ubuntu" }
+                },
+                {
+                    "id": "project-remote",
+                    "name": "Project Remote",
+                    "path": "/srv/project",
+                    "runtimeTarget": { "kind": "remote", "deviceId": "device-1" }
+                }
+            ],
+            "worktrees": [
+                {
+                    "id": "worktree-a",
+                    "projectId": "project-a",
+                    "name": "Feature A",
+                    "branch": "feature/a",
+                    "path": "/tmp/project-a-worktree",
+                    "status": "todo",
+                    "isDefault": false,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                },
+                {
+                    "id": "duplicate-root",
+                    "projectId": "project-a",
+                    "name": "Duplicate Root",
+                    "branch": "main",
+                    "path": "/tmp/project-a",
+                    "status": "todo",
+                    "isDefault": true,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                },
+                {
+                    "id": "duplicate-windows-root",
+                    "projectId": "project-windows",
+                    "name": "Duplicate Windows Root",
+                    "branch": "main",
+                    "path": "\\\\?\\c:\\users\\test\\project\\",
+                    "status": "todo",
+                    "isDefault": true,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                },
+                {
+                    "id": "worktree-wsl",
+                    "projectId": "project-wsl",
+                    "name": "WSL Feature",
+                    "branch": "feature/wsl",
+                    "path": "/home/test/project-feature",
+                    "status": "todo",
+                    "isDefault": false,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                },
+                {
+                    "id": "worktree-remote",
+                    "projectId": "project-remote",
+                    "name": "Remote Feature",
+                    "branch": "feature/remote",
+                    "path": "/srv/project-feature",
+                    "status": "todo",
+                    "isDefault": false,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                }
+            ]
+        })
+        .to_string(),
+    )
+    .expect("write state");
+    let service = RuntimeService::new(support_dir.clone());
+
+    let requests = service.ai_history_workspace_requests();
+
+    assert_eq!(requests.len(), 4);
+    assert!(requests.iter().any(|request| request.id == "project-a"));
+    assert!(requests.iter().any(|request| request.id == "project-b"));
+    assert!(requests.iter().any(|request| request.id == "worktree-a"));
+    assert!(requests.iter().any(|request| request.id == "project-windows"));
+    assert!(!requests.iter().any(|request| request.id == "project-wsl"));
+    assert!(!requests.iter().any(|request| request.id == "worktree-wsl"));
+    assert!(!requests.iter().any(|request| request.id == "project-remote"));
+    assert!(!requests.iter().any(|request| request.id == "worktree-remote"));
+    assert!(!requests.iter().any(|request| request.id == "duplicate-root"));
+    assert!(
+        !requests
+            .iter()
+            .any(|request| request.id == "duplicate-windows-root")
+    );
+    let _ = fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn applying_global_history_updates_daily_level_from_the_same_snapshot() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-ai-history-level-{}",
+        uuid::Uuid::new_v4()
+    ));
+    fs::create_dir_all(&support_dir).expect("create support dir");
+    let mut state = RuntimeState::load_from_support_dir(support_dir.clone());
+    let history = AIGlobalHistorySummary {
+        today_total_tokens: 6_000_000,
+        ..Default::default()
+    };
+
+    state.set_ai_global_history(history);
+
+    assert_eq!(state.ai_global_history.today_total_tokens, 6_000_000);
+    assert_eq!(state.daily_level.tokens, 6_000_000);
+    assert_eq!(state.daily_level.current_tier.id, "gold");
+    let _ = fs::remove_dir_all(support_dir);
+}

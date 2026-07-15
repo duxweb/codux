@@ -179,11 +179,16 @@ pub fn index_global_history_fresh_at(
     let mut today_cached_input_tokens = 0;
     let mut project_count = 0;
     let home = home_dir();
+    let projects = projects
+        .into_iter()
+        .filter(|project| !project.path.trim().is_empty())
+        .collect::<Vec<_>>();
+    let project_paths = projects
+        .iter()
+        .map(|project| project.path.clone())
+        .collect::<Vec<_>>();
 
     for project in projects {
-        if project.path.trim().is_empty() {
-            continue;
-        }
         let snapshot =
             load_project_history_with_store_or_fallback(project, &home, &store, &mut |_, _| {});
         total_tokens += snapshot.project_summary.project_total_tokens;
@@ -193,61 +198,8 @@ pub fn index_global_history_fresh_at(
         project_count += 1;
     }
 
-    if let Ok(conn) = store.connect() {
-        let now = now_seconds();
-        if let (
-            Ok(project_totals),
-            Ok(sessions),
-            Ok(heatmap),
-            Ok(today_time_buckets),
-            Ok(recent_time_buckets),
-            Ok(tool_breakdown),
-            Ok(model_breakdown),
-            Ok(range_summaries),
-        ) = (
-            store.indexed_global_project_totals(&conn),
-            store.indexed_sessions_since(&conn, None),
-            store.indexed_global_heatmap(&conn),
-            store.indexed_global_today_buckets(&conn),
-            store.indexed_global_recent_buckets(&conn),
-            store.indexed_global_breakdown(&conn, "source"),
-            store.indexed_global_breakdown(&conn, "model"),
-            indexed_global_range_summaries(&store, &conn, now),
-        ) {
-            let (
-                total_tokens,
-                cached_input_tokens,
-                today_total_tokens,
-                today_cached_input_tokens,
-            ) = project_totals.iter().fold(
-                (0, 0, 0, 0),
-                |(total, cached, today, today_cached), project| {
-                    (
-                        total + project.total_tokens,
-                        cached + project.cached_input_tokens,
-                        today + project.today_total_tokens,
-                        today_cached + project.today_cached_input_tokens,
-                    )
-                },
-            );
-            let project_count = project_totals.len();
-            return AIGlobalHistorySnapshot {
-                total_tokens,
-                cached_input_tokens,
-                today_total_tokens,
-                today_cached_input_tokens,
-                sessions,
-                project_totals,
-                heatmap,
-                today_time_buckets,
-                recent_time_buckets,
-                tool_breakdown,
-                model_breakdown,
-                range_summaries,
-                project_count,
-                indexed_at: now,
-            };
-        }
+    if let Ok(Some(snapshot)) = load_indexed_global_history_with_store(Some(project_paths), &store) {
+        return snapshot;
     }
 
     AIGlobalHistorySnapshot {
@@ -272,7 +224,7 @@ pub fn load_indexed_global_history(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<Option<AIGlobalHistorySnapshot>> {
     let store = AIUsageStore::default();
-    load_indexed_global_history_with_store(projects, &store)
+    load_indexed_global_history_with_store(Some(project_paths(projects)), &store)
 }
 
 pub fn load_indexed_global_history_at(
@@ -280,31 +232,52 @@ pub fn load_indexed_global_history_at(
     projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<Option<AIGlobalHistorySnapshot>> {
     let store = AIUsageStore::at_path(database_path);
-    load_indexed_global_history_with_store(projects, &store)
+    load_indexed_global_history_with_store(Some(project_paths(projects)), &store)
+}
+
+pub fn load_all_indexed_global_history_at(
+    database_path: PathBuf,
+) -> Result<Option<AIGlobalHistorySnapshot>> {
+    let store = AIUsageStore::at_path(database_path);
+    load_indexed_global_history_with_store(None, &store)
 }
 
 fn load_indexed_global_history_with_store(
-    projects: Vec<AIHistoryProjectRequest>,
+    project_paths: Option<Vec<String>>,
     store: &AIUsageStore,
 ) -> Result<Option<AIGlobalHistorySnapshot>> {
     let conn = store.connect()?;
     let now = now_seconds();
-    let requested_count = projects
-        .iter()
-        .filter(|project| !project.path.trim().is_empty())
-        .count();
-    let project_totals = store.indexed_global_project_totals(&conn)?;
-    let indexed_count = project_totals
-        .iter()
-        .filter(|project| {
-            projects
-                .iter()
-                .any(|requested| requested.path == project.project_path)
-        })
-        .count();
-
-    if requested_count > 0 && indexed_count == 0 && project_totals.is_empty() {
-        return Ok(None);
+    if let Some(project_paths) = project_paths.as_ref() {
+        store.retain_project_paths(&conn, project_paths)?;
+    }
+    let mut project_totals = store.indexed_global_project_totals(&conn)?;
+    if let Some(project_paths) = project_paths.as_ref() {
+        let requested_paths = project_paths
+            .iter()
+            .filter_map(|path| normalized_history_path(path))
+            .collect::<HashSet<_>>();
+        let mut statement = conn.prepare("SELECT project_path FROM ai_history_project_index_state;")?;
+        let indexed_paths = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .filter_map(|path| normalized_history_path(&path))
+            .collect::<HashSet<_>>();
+        if indexed_paths != requested_paths {
+            return Ok(None);
+        }
+    }
+    let sessions = store.indexed_sessions_since(&conn, None)?;
+    for project in &mut project_totals {
+        project.active_duration_seconds = sessions
+            .iter()
+            .filter(|session| {
+                session.project_id == project.project_id
+                    && session.project_path == project.project_path
+            })
+            .map(|session| session.active_duration_seconds)
+            .sum();
     }
     let (total_tokens, cached_input_tokens, today_total_tokens, today_cached_input_tokens) =
         project_totals
@@ -324,7 +297,7 @@ fn load_indexed_global_history_with_store(
         cached_input_tokens,
         today_total_tokens,
         today_cached_input_tokens,
-        sessions: store.indexed_sessions_since(&conn, None)?,
+        sessions,
         project_totals,
         heatmap: store.indexed_global_heatmap(&conn)?,
         today_time_buckets: store.indexed_global_today_buckets(&conn)?,
@@ -335,6 +308,16 @@ fn load_indexed_global_history_with_store(
         project_count,
         indexed_at: now,
     }))
+}
+
+fn project_paths(projects: Vec<AIHistoryProjectRequest>) -> Vec<String> {
+    projects
+        .into_iter()
+        .filter_map(|project| {
+            let path = project.path.trim();
+            (!path.is_empty()).then(|| path.to_string())
+        })
+        .collect()
 }
 
 fn indexed_global_range_summaries(

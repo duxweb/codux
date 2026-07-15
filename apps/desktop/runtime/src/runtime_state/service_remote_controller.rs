@@ -266,24 +266,6 @@ impl RuntimeService {
             })
     }
 
-    /// Run an AI-session op on the host of a remote project (keyed by path).
-    /// Returns `None` for a local project (caller falls back to the local
-    /// engine). `op`-specific args are merged with `projectPath`.
-    pub(crate) fn remote_ai_session(
-        &self,
-        project_path: &str,
-        op: &str,
-        mut args: serde_json::Map<String, serde_json::Value>,
-    ) -> Option<Result<serde_json::Value, String>> {
-        let device_id = self.host_device_for_project_path(project_path)?;
-        let controller = match self.remote_controllers.controller_for(&device_id) {
-            Ok(controller) => controller,
-            Err(error) => return Some(Err(error)),
-        };
-        args.insert("projectPath".to_string(), project_path.to_string().into());
-        Some(controller.ai_session(op, serde_json::Value::Object(args)))
-    }
-
     /// Live AI runtime sessions of a remote-hosted project, read from the
     /// host's existing `ai.stats.currentSessions` payload.
     pub fn remote_ai_current_sessions(

@@ -45,7 +45,7 @@ fn usage_bucket_from_session(
         cached_input_tokens: 0,
         usage_amounts: Vec::new(),
         request_count: 0,
-        active_duration_seconds: session.active_duration_seconds,
+        active_duration_seconds: 0,
         first_seen_at: session.first_seen_at,
         last_seen_at: session.last_seen_at,
     }
@@ -68,7 +68,7 @@ fn build_session_links(usage_buckets: &[AIUsageBucket]) -> Vec<NormalizedSession
                 session.last_model = bucket.model.clone().or(session.last_model.clone());
                 session.active_duration_seconds = session
                     .active_duration_seconds
-                    .max(bucket.active_duration_seconds);
+                    .saturating_add(bucket.active_duration_seconds);
             })
             .or_insert_with(|| NormalizedSessionLinkRow {
                 source: bucket.source.clone(),

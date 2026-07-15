@@ -5,10 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use codux_runtime::{
-    ai_history::{
-        AIGlobalHistorySummary, AIHistorySummary, AISessionForkRequest, AISessionForkTarget,
-        AISessionSummary,
-    },
+    ai_history::{AIHistorySummary, AISessionForkRequest, AISessionForkTarget, AISessionSummary},
     ai_history_indexer::AIHistoryEvent,
     db::{DBConnectionProfile, DBProfileSummary, DBProfileUpsertRequest, DBSummary},
     desktop_pet::{
@@ -176,9 +173,9 @@ pub(crate) const ASSISTANT_PANEL_WIDTH: f32 = 320.0;
 
 use self::{
     ai_history_mapping::{
-        AI_SESSION_FORK_TARGETS, ai_history_project_requests, ai_history_should_replace,
-        ai_history_summary_from_project_state, ai_history_summary_from_state_or_status,
-        ai_history_worktree_request, ai_session_fork_command, ai_session_restore_command,
+        AI_SESSION_FORK_TARGETS, ai_history_should_replace, ai_history_summary_from_project_state,
+        ai_history_summary_from_state_or_status, ai_history_worktree_request,
+        ai_session_fork_command, ai_session_restore_command,
         normalized_ai_history_snapshot_to_summary,
         normalized_global_ai_history_snapshot_to_summary,
     },

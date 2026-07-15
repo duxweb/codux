@@ -405,18 +405,12 @@ impl CoduxApp {
         }
         self.ai_global_history_refreshing = true;
         self.ai_global_history_refresh_pending = false;
-        let projects = ai_history_project_requests(&self.state.projects);
         let service = self.runtime_service.clone();
         cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
             let result = codux_runtime::async_runtime::run_limited_blocking(move || {
                 service
-                    .indexed_global_ai_history_summary(projects)
+                    .indexed_global_ai_history_summary()
                     .map(normalized_global_ai_history_snapshot_to_summary)
-                    .or_else(|error| {
-                        let mut fallback = service.reload_global_ai_history();
-                        fallback.error = Some(error);
-                        Ok::<_, String>(fallback)
-                    })
             })
             .await
             .map_err(|error| error.to_string())
@@ -424,7 +418,7 @@ impl CoduxApp {
             let _ = this.update(cx, |app, cx| {
                 app.ai_global_history_refreshing = false;
                 if let Ok(summary) = result {
-                    app.state.ai_global_history = summary;
+                    app.state.set_ai_global_history(summary);
                 }
                 let rerun = app.ai_global_history_refresh_pending;
                 app.ai_global_history_refresh_pending = false;

@@ -17,8 +17,11 @@ mod summary;
 mod tests;
 mod types;
 
-pub use dispatch::{session_op_payload, session_op_result};
+pub use dispatch::{session_op_payload, session_op_result, session_op_result_with_indexer};
 pub use restore::session_restore_command;
+pub use summary::{
+    global_summary_from_normalized_snapshot, project_summary_from_normalized_snapshot,
+};
 pub use types::*;
 
 use rusqlite::Connection;

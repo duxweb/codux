@@ -127,7 +127,7 @@ impl CoduxApp {
                             // skips live links, joins an in-flight retry.
                             app.runtime_service.ensure_saved_remote_hosts_connected();
                         }
-                        let today_level_changed = app.refresh_today_level_after_day_change();
+                        let today_level_changed = app.refresh_global_history_after_day_change(cx);
                         let result = if include_slow_tick {
                             app.apply_runtime_activity_tick(
                                 true,
@@ -248,6 +248,7 @@ impl CoduxApp {
                         UiRegion::TaskColumn,
                     ],
                 );
+                app.refresh_ai_global_history_summary(cx);
                 app.refresh_window_runtime_data(cx);
                 app.maybe_prompt_github_star(cx);
             });

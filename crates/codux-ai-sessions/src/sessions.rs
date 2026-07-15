@@ -3,7 +3,6 @@ use super::queries::{load_file_usage, load_session_detail_links, load_session_li
 use super::types::SessionLink;
 use super::{AIHistoryService, AIHistorySummary, AISessionDetail, AISessionFileSummary};
 use rusqlite::params;
-use std::collections::HashMap;
 
 impl AIHistoryService {
     pub fn rename_project_session(
@@ -95,7 +94,6 @@ impl AIHistoryService {
             ..Default::default()
         };
         let mut files = Vec::new();
-        let mut active_duration_by_key = HashMap::<(String, String), i64>::new();
 
         for link in links.into_iter().filter(|link| {
             matched
@@ -110,9 +108,9 @@ impl AIHistoryService {
             }
             detail.first_seen_at = min_option(detail.first_seen_at, link.first_seen_at);
             detail.last_seen_at = max_option(detail.last_seen_at, link.last_seen_at);
-            active_duration_by_key
-                .entry((link.source.clone(), link.session_key.clone()))
-                .or_insert(link.active_duration_seconds);
+            detail.active_duration_seconds = detail
+                .active_duration_seconds
+                .max(link.active_duration_seconds);
 
             let (total_tokens, cached_input_tokens, request_count) = load_file_usage(
                 &conn,
@@ -136,7 +134,17 @@ impl AIHistoryService {
             });
         }
 
-        detail.active_duration_seconds = active_duration_by_key.values().copied().sum();
+        if let Some(session) = self
+            .project_summary(project_path)
+            .sessions
+            .into_iter()
+            .find(|session| session.id == session_id)
+        {
+            detail.total_tokens = session.total_tokens;
+            detail.cached_input_tokens = session.cached_input_tokens;
+            detail.request_count = session.request_count;
+            detail.active_duration_seconds = session.active_duration_seconds;
+        }
         files.sort_by(|a, b| {
             b.last_seen_at
                 .partial_cmp(&a.last_seen_at)

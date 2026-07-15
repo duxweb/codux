@@ -1,4 +1,125 @@
 impl AIUsageStore {
+    pub fn remove_missing_source_files(
+        &self,
+        conn: &Connection,
+        source: &str,
+        project_path: &str,
+        current_paths: &[PathBuf],
+    ) -> Result<()> {
+        let current_paths = current_paths
+            .iter()
+            .map(|path| normalized_path(path))
+            .collect::<HashSet<_>>();
+        let mut statement = conn.prepare(
+            r#"
+            SELECT file_path
+            FROM ai_history_file_state
+            WHERE source = ?1 AND project_path = ?2;
+            "#,
+        )?;
+        let stored_paths = statement
+            .query_map(params![source, project_path], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        let missing_paths = stored_paths
+            .into_iter()
+            .filter(|path| {
+                !current_paths.contains(path)
+                    && fs::metadata(path)
+                        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+            })
+            .collect::<Vec<_>>();
+        self.delete_source_files(conn, source, project_path, &missing_paths)
+    }
+
+    pub fn retain_project_paths(
+        &self,
+        conn: &Connection,
+        project_paths: &[String],
+    ) -> Result<()> {
+        let mut statement = conn.prepare(
+            r#"
+            SELECT project_path FROM ai_history_file_state
+            UNION
+            SELECT project_path FROM ai_history_file_session_link
+            UNION
+            SELECT project_path FROM ai_history_project_index_state;
+            "#,
+        )?;
+        let stored_paths = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        let project_paths = project_paths
+            .iter()
+            .filter_map(|path| normalized_history_path(path))
+            .collect::<HashSet<_>>();
+        let removed_paths = stored_paths
+            .into_iter()
+            .filter(|stored| {
+                normalized_history_path(stored)
+                    .is_some_and(|stored| !project_paths.contains(&stored))
+            })
+            .collect::<Vec<_>>();
+        if removed_paths.is_empty() {
+            return Ok(());
+        }
+
+        conn.execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
+        let result = (|| -> Result<()> {
+            for project_path in &removed_paths {
+                for table in [
+                    "ai_history_file_usage_amount",
+                    "ai_history_file_usage_bucket",
+                    "ai_history_file_session_link",
+                    "ai_history_file_checkpoint",
+                    "ai_history_file_state",
+                    "ai_history_project_index_state",
+                ] {
+                    conn.execute(
+                        &format!("DELETE FROM {table} WHERE project_path = ?1;"),
+                        params![project_path],
+                    )?;
+                }
+            }
+            Ok(())
+        })();
+        finish_transaction(conn, result)
+    }
+
+    fn delete_source_files(
+        &self,
+        conn: &Connection,
+        source: &str,
+        project_path: &str,
+        file_paths: &[String],
+    ) -> Result<()> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+        conn.execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
+        let result = (|| -> Result<()> {
+            for file_path in file_paths {
+                for table in [
+                    "ai_history_file_usage_amount",
+                    "ai_history_file_usage_bucket",
+                    "ai_history_file_session_link",
+                    "ai_history_file_checkpoint",
+                    "ai_history_file_state",
+                ] {
+                    conn.execute(
+                        &format!(
+                            "DELETE FROM {table} WHERE source = ?1 AND file_path = ?2 AND project_path = ?3;"
+                        ),
+                        params![source, file_path, project_path],
+                    )?;
+                }
+            }
+            Ok(())
+        })();
+        finish_transaction(conn, result)
+    }
+
     pub fn load_or_index_file<F>(
         &self,
         conn: &Connection,
@@ -286,8 +407,9 @@ impl AIUsageStore {
                     r#"
                     INSERT INTO ai_history_file_usage_bucket (
                         source, file_path, project_path, session_key, model, bucket_start, bucket_end,
-                        input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12);
+                        input_tokens, output_tokens, total_tokens, cached_input_tokens, request_count,
+                        active_duration_seconds
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13);
                     "#,
                     params![
                         summary.source,
@@ -302,6 +424,7 @@ impl AIUsageStore {
                         bucket.total_tokens,
                         bucket.cached_input_tokens,
                         bucket.request_count,
+                        bucket.active_duration_seconds,
                     ],
                 )?;
                 for amount in &bucket.usage_amounts {
@@ -330,15 +453,19 @@ impl AIUsageStore {
             Ok(())
         })();
 
-        match result {
-            Ok(()) => {
-                conn.execute_batch("COMMIT;")?;
-                Ok(())
-            }
-            Err(error) => {
-                let _ = conn.execute_batch("ROLLBACK;");
-                Err(error)
-            }
+        finish_transaction(conn, result)
+    }
+}
+
+fn finish_transaction(conn: &Connection, result: Result<()>) -> Result<()> {
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT;")?;
+            Ok(())
+        }
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            Err(error)
         }
     }
 }

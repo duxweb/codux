@@ -1,3 +1,12 @@
+// Bumped 12 -> 13 to keep forked Codex rollout files under their own first
+// session metadata instead of the copied parent metadata that follows it.
+//
+// Bumped 11 -> 12 to rebuild Codex histories with exact per-field cumulative
+// deltas and turn boundaries that exclude idle time between resumed prompts.
+//
+// Bumped 10 -> 11 to rebuild histories after fixing Claude message snapshot
+// deduplication, request classification, and Codex cumulative counter resets.
+//
 // Bumped 9 -> 10 to fold reasoning output into persisted output_tokens. The
 // raw normalized entries keep reasoning separate, but indexed buckets expose
 // output as the user-facing output bucket so total_tokens = input + output and
@@ -15,7 +24,7 @@
 // preserved by construction: it sums total_tokens (cached excluded, so the
 // Claude fix is invisible to it) and only accumulates positive deltas against a
 // high-water mark (so the codex de-inflation cannot lower it).
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "10";
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "13";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
@@ -65,6 +74,7 @@ const SCHEMA_STATEMENTS: &[&str] = &[
         total_tokens INTEGER NOT NULL,
         cached_input_tokens INTEGER NOT NULL,
         request_count INTEGER NOT NULL,
+        active_duration_seconds INTEGER NOT NULL,
         PRIMARY KEY (source, file_path, project_path, session_key, model, bucket_start)
     );
     "#,

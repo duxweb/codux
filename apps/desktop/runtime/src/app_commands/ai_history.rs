@@ -20,24 +20,16 @@ pub fn ai_history_project_state(
 }
 pub fn ai_history_global_summary(
     service: &RuntimeService,
-    projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<AIGlobalHistorySnapshot, String> {
-    service.indexed_global_ai_history_summary(projects)
+    service.indexed_global_ai_history_summary()
 }
-pub fn ai_history_refresh_global(
-    service: &RuntimeService,
-    projects: Vec<AIHistoryProjectRequest>,
-) -> Result<(), String> {
-    service.refresh_indexed_global_ai_history(projects)
+pub fn ai_history_refresh_global(service: &RuntimeService) -> Result<(), String> {
+    service.refresh_indexed_global_ai_history()
 }
 pub fn ai_history_global_state(
     service: &RuntimeService,
-    projects: Vec<AIHistoryProjectRequest>,
 ) -> Result<Option<AIGlobalHistorySnapshot>, String> {
-    service.indexed_global_ai_history_state(projects)
-}
-pub fn ai_history_global_today_normalized_tokens(service: &RuntimeService) -> Result<i64, String> {
-    service.global_today_normalized_ai_tokens()
+    service.indexed_global_ai_history_state()
 }
 pub fn ai_history_session_rename(
     service: &RuntimeService,
@@ -83,16 +75,13 @@ mod tests {
 
         ai_history_refresh_project(&service, project.clone()).expect("refresh project");
 
-        let global_state =
-            ai_history_global_state(&service, vec![project.clone()]).expect("global state");
+        let global_state = ai_history_global_state(&service).expect("global state");
         assert!(global_state.is_some());
 
-        let global_summary =
-            ai_history_global_summary(&service, Vec::new()).expect("global summary");
+        let global_summary = ai_history_global_summary(&service).expect("global summary");
         assert_eq!(global_summary.project_count, 0);
 
-        ai_history_refresh_global(&service, Vec::new()).expect("refresh global");
-        assert!(ai_history_global_today_normalized_tokens(&service).expect("today tokens") >= 0);
+        ai_history_refresh_global(&service).expect("refresh global");
 
         assert!(
             ai_history_session_rename(

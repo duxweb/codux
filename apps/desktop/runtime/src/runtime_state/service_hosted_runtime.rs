@@ -388,6 +388,30 @@ impl RuntimeService {
         }
     }
 
+    fn hosted_ai_history_runtime(
+        &self,
+        project_path: &str,
+    ) -> Result<Option<HostedProjectRuntime>, String> {
+        match self.hosted_runtime_for_project_path(project_path) {
+            Some(runtime) => runtime.map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) fn hosted_ai_session(
+        &self,
+        project_path: &str,
+        op: &str,
+        mut args: serde_json::Map<String, Value>,
+    ) -> Option<Result<Value, String>> {
+        let runtime = match self.hosted_runtime_for_project_path(project_path)? {
+            Ok(runtime) => runtime,
+            Err(error) => return Some(Err(error)),
+        };
+        args.insert("projectPath".to_string(), project_path.into());
+        Some(runtime.ai_session(op, Value::Object(args)))
+    }
+
     fn hosted_runtime_for_project_path_blocking(
         &self,
         project_path: &str,
@@ -487,6 +511,81 @@ fn project_contains_workspace(
 }
 
 impl HostedProjectRuntime {
+    fn refresh_state(
+        &self,
+        project: &AIHistoryProjectRequest,
+    ) -> Result<AIHistoryProjectState, String> {
+        const REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+        let started_at = std::time::Instant::now();
+        let mut state = self.state(project, true)?;
+        while state.is_loading || state.queued {
+            if started_at.elapsed() >= REFRESH_TIMEOUT {
+                return Err("Hosted AI history refresh timed out".to_string());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            state = self.state(project, false)?;
+        }
+        Ok(state)
+    }
+
+    fn state(
+        &self,
+        project: &AIHistoryProjectRequest,
+        refresh: bool,
+    ) -> Result<AIHistoryProjectState, String> {
+        match self {
+            Self::Wsl(client) => client
+                .request(
+                    "ai.state",
+                    json!({
+                        "projectId": project.id,
+                        "projectName": project.name,
+                        "projectPath": project.path,
+                        "refresh": refresh,
+                    }),
+                )
+                .and_then(|value| {
+                    serde_json::from_value(value).map_err(|error| error.to_string())
+                }),
+            Self::Remote(controller) => controller.ai_state(
+                &project.id,
+                &project.name,
+                &project.path,
+                refresh,
+            ),
+        }
+    }
+
+    fn ai_session(&self, op: &str, args: Value) -> Result<Value, String> {
+        match self {
+            Self::Wsl(client) => {
+                let mut params = args.as_object().cloned().unwrap_or_default();
+                params.insert("op".to_string(), op.into());
+                client.request("ai.session", Value::Object(params))
+            }
+            Self::Remote(controller) => controller.ai_session(op, args),
+        }
+    }
+
+    fn session_state(
+        &self,
+        project: &AIHistoryProjectRequest,
+        op: &str,
+        session_id: String,
+        title: Option<String>,
+    ) -> Result<AIHistoryProjectState, String> {
+        let mut args = serde_json::Map::new();
+        args.insert("projectId".to_string(), project.id.clone().into());
+        args.insert("projectName".to_string(), project.name.clone().into());
+        args.insert("projectPath".to_string(), project.path.clone().into());
+        args.insert("sessionId".to_string(), session_id.into());
+        if let Some(title) = title {
+            args.insert("title".to_string(), title.into());
+        }
+        self.ai_session(op, Value::Object(args))
+            .and_then(|value| serde_json::from_value(value).map_err(|error| error.to_string()))
+    }
+
     fn file_list(&self, path: &str, purpose: Option<&str>) -> Result<Value, String> {
         match self {
             Self::Wsl(client) => client.request(

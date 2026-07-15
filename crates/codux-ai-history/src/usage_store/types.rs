@@ -92,6 +92,7 @@ struct StoredUsageBucketRow {
     total_tokens: i64,
     cached_input_tokens: i64,
     request_count: i64,
+    active_duration_seconds: i64,
     usage_amounts: Vec<AIUsageAmount>,
 }
 

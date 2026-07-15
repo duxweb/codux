@@ -82,7 +82,6 @@ pub(super) fn stats_filter_button(
         .with_size(Size::Small)
         .compact()
         .rounded(px(999.0))
-        .selected(active)
         .child(
             div()
                 .text_size(STATS_FILTER_TEXT_SIZE)
