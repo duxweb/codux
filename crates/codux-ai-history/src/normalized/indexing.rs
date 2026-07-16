@@ -249,25 +249,21 @@ fn load_indexed_global_history_with_store(
     let conn = store.connect()?;
     let now = now_seconds();
     if let Some(project_paths) = project_paths.as_ref() {
-        store.retain_project_paths(&conn, project_paths)?;
-    }
-    let mut project_totals = store.indexed_global_project_totals(&conn)?;
-    if let Some(project_paths) = project_paths.as_ref() {
         let requested_paths = project_paths
             .iter()
-            .filter_map(|path| normalized_history_path(path))
+            .map(|path| crate::usage_store::canonical_project_path(path))
+            .filter(|path| !path.is_empty())
             .collect::<HashSet<_>>();
-        let mut statement = conn.prepare("SELECT project_path FROM ai_history_project_index_state;")?;
-        let indexed_paths = statement
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter_map(|path| normalized_history_path(&path))
-            .collect::<HashSet<_>>();
-        if indexed_paths != requested_paths {
+        if requested_paths.is_empty() {
+            return Ok(Some(empty_global_history_snapshot(now)));
+        }
+        let indexed_paths = store.indexed_project_paths(&conn)?;
+        if !requested_paths.is_subset(&indexed_paths) {
             return Ok(None);
         }
+        store.set_global_project_scope(&conn, Some(project_paths))?;
     }
+    let mut project_totals = store.indexed_global_project_totals(&conn)?;
     let sessions = store.indexed_sessions_since(&conn, None)?;
     for project in &mut project_totals {
         project.active_duration_seconds = sessions
@@ -308,6 +304,25 @@ fn load_indexed_global_history_with_store(
         project_count,
         indexed_at: now,
     }))
+}
+
+fn empty_global_history_snapshot(now: f64) -> AIGlobalHistorySnapshot {
+    AIGlobalHistorySnapshot {
+        total_tokens: 0,
+        cached_input_tokens: 0,
+        today_total_tokens: 0,
+        today_cached_input_tokens: 0,
+        sessions: Vec::new(),
+        project_totals: Vec::new(),
+        heatmap: Vec::new(),
+        today_time_buckets: Vec::new(),
+        recent_time_buckets: Vec::new(),
+        tool_breakdown: Vec::new(),
+        model_breakdown: Vec::new(),
+        range_summaries: Vec::new(),
+        project_count: 0,
+        indexed_at: now,
+    }
 }
 
 fn project_paths(projects: Vec<AIHistoryProjectRequest>) -> Vec<String> {

@@ -68,9 +68,11 @@ impl PetService {
 
     pub(super) fn load_snapshot(&self) -> Result<(PetSnapshot, String), String> {
         let local_state = self.load_local_snapshot()?;
+        // A local state that is claimed OR carries archived pets is
+        // authoritative; the mac-app fallback only migrates pristine installs.
         if local_state
             .as_ref()
-            .is_some_and(|(state, _)| state.claimed_at.is_some())
+            .is_some_and(|(state, _)| state.claimed_at.is_some() || !state.legacy.is_empty())
         {
             return Ok(local_state.unwrap());
         }

@@ -1,25 +1,27 @@
 use super::*;
 
 pub(super) fn sanitize_state(mut state: PetSnapshot) -> PetSnapshot {
-    let rebuild_token_watermarks = state.state_version < STATE_VERSION;
+    let pending_membership_migration =
+        state.state_version < STATE_VERSION && state.claimed_at.is_some();
+    if pending_membership_migration {
+        state.experience_recalibration_pending = true;
+    }
     let rebuild_stats = state.stats_model_version < STATS_MODEL_VERSION;
-    state.state_version = STATE_VERSION;
+    if !pending_membership_migration {
+        state.state_version = STATE_VERSION;
+    }
     state.stats_model_version = STATS_MODEL_VERSION;
     state.current_experience_tokens = state.current_experience_tokens.max(0);
     state.current_stats = state.current_stats.sanitized();
-    state.total_normalized_tokens = state.total_normalized_tokens.max(0);
+    state.experience_base_tokens = state.experience_base_tokens.max(0);
     state.daily_experience_tokens = state.daily_experience_tokens.max(0);
     state.custom_pet = state.custom_pet.and_then(sanitize_custom_pet);
     state.species = sanitize_claim_species(&state.species, state.custom_pet.as_ref());
     state.custom_name = sanitize_custom_name(&state.custom_name);
+    state.memberships = sanitize_memberships(state.memberships);
     state
-        .project_normalized_token_watermarks
-        .retain(|project_id, total| !project_id.trim().is_empty() && *total >= 0);
-    if rebuild_token_watermarks {
-        state.global_normalized_total_watermark = None;
-        state.project_normalized_token_watermarks.clear();
-        state.total_normalized_tokens = 0;
-    }
+        .pending_project_token_watermarks
+        .retain(|project_id, _| !project_id.trim().is_empty());
     if rebuild_stats {
         state.current_stats = PetStats::default();
         state.stats_updated_day = None;
@@ -41,6 +43,12 @@ fn sanitize_legacy_record(mut record: PetLegacyRecord) -> Option<PetLegacyRecord
     record.species = sanitize_claim_species(&record.species, record.custom_pet.as_ref());
     record.custom_name = sanitize_custom_name(&record.custom_name);
     record.total_xp = record.total_xp.max(0);
+    record.memberships = sanitize_memberships(record.memberships);
+    record.experience_base_tokens = if record.memberships.is_empty() {
+        record.experience_base_tokens.max(record.total_xp).max(0)
+    } else {
+        record.experience_base_tokens.max(0)
+    };
     record.stats = record.stats.sanitized();
     record.persona_id = pet_persona_id(&record.stats).to_string();
     record.progress = pet_progress_info(record.total_xp);
@@ -55,11 +63,41 @@ pub(super) fn legacy_record_from_state(state: &PetSnapshot) -> Option<PetLegacyR
         custom_pet: state.custom_pet.clone(),
         custom_name: sanitize_custom_name(&state.custom_name),
         total_xp: state.current_experience_tokens.max(0),
+        memberships: state.memberships.clone(),
+        experience_base_tokens: state.experience_base_tokens.max(0),
         stats: state.current_stats.clone().sanitized(),
         persona_id: pet_persona_id(&state.current_stats).to_string(),
         progress: pet_progress_info(state.current_experience_tokens),
         retired_at: now_seconds(),
     })
+}
+
+fn sanitize_memberships(memberships: Vec<PetProjectMembership>) -> Vec<PetProjectMembership> {
+    let mut sanitized = Vec::new();
+    for mut membership in memberships {
+        membership.project_path = normalize_workspace_path(&membership.project_path);
+        if membership.project_path.is_empty() {
+            continue;
+        }
+        if membership
+            .excluded_at
+            .is_some_and(|excluded_at| excluded_at <= membership.included_at)
+        {
+            membership.excluded_at = Some(membership.included_at);
+        }
+        if !sanitized.contains(&membership) {
+            sanitized.push(membership);
+        }
+    }
+    sanitized
+}
+
+pub(super) fn normalize_workspace_path(path: &str) -> String {
+    let path = path.trim();
+    if path.is_empty() {
+        return String::new();
+    }
+    codux_runtime_core::path::normalize_local_path(std::path::Path::new(path))
 }
 
 pub(super) fn sanitize_claim_species(species: &str, custom_pet: Option<&PetCustomPet>) -> String {

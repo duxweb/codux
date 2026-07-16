@@ -22,9 +22,17 @@ pub struct PetSummary {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PetProjectTokenTotal {
-    pub project_id: String,
-    pub total_tokens: i64,
+pub struct PetWorkspace {
+    pub project_path: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PetProjectMembership {
+    #[serde(default, alias = "projectId")]
+    pub project_path: String,
+    pub included_at: i64,
+    pub excluded_at: Option<i64>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -36,8 +44,8 @@ pub struct PetRefreshRequest {
 
 #[derive(Clone, Debug)]
 pub struct PetRefreshInput {
-    pub project_totals: Vec<PetProjectTokenTotal>,
-    pub fallback_total_tokens: i64,
+    pub experience_tokens: i64,
+    pub daily_experience_tokens: i64,
     pub computed_stats: PetStats,
 }
 
@@ -56,8 +64,7 @@ pub struct PetClaimInput {
     pub species: String,
     pub custom_name: String,
     pub custom_pet: Option<PetCustomPet>,
-    pub project_totals: Vec<PetProjectTokenTotal>,
-    pub fallback_total_tokens: i64,
+    pub workspaces: Vec<PetWorkspace>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -156,9 +163,14 @@ pub struct PetSnapshot {
     #[serde(default)]
     pub progress: PetProgressInfo,
     pub stats_updated_day: Option<i64>,
-    pub global_normalized_total_watermark: Option<i64>,
-    pub project_normalized_token_watermarks: HashMap<String, i64>,
-    pub total_normalized_tokens: i64,
+    #[serde(default)]
+    pub memberships: Vec<PetProjectMembership>,
+    #[serde(default, rename = "projectNormalizedTokenWatermarks", skip_serializing)]
+    pub pending_project_token_watermarks: HashMap<String, i64>,
+    #[serde(default)]
+    pub experience_recalibration_pending: bool,
+    #[serde(default)]
+    pub experience_base_tokens: i64,
     #[serde(default)]
     pub daily_experience_tokens: i64,
     #[serde(default)]
@@ -176,6 +188,10 @@ pub struct PetLegacyRecord {
     pub custom_pet: Option<PetCustomPet>,
     pub custom_name: String,
     pub total_xp: i64,
+    #[serde(default)]
+    pub memberships: Vec<PetProjectMembership>,
+    #[serde(default)]
+    pub experience_base_tokens: i64,
     pub stats: PetStats,
     #[serde(default = "super::default_persona_id")]
     pub persona_id: String,

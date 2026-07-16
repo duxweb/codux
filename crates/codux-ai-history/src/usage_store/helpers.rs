@@ -182,6 +182,21 @@ fn normalized_path(path: &Path) -> String {
     codux_runtime_core::path::normalize_local_path(path)
 }
 
+// Single canonical form for every project_path written to or queried from the
+// store; keeps /var vs /private/var (and other alias) identities consistent.
+pub(crate) fn canonical_project_path(value: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        return String::new();
+    }
+    normalized_path(Path::new(value))
+}
+
+fn canonical_project_request(mut project: AIHistoryProjectRequest) -> AIHistoryProjectRequest {
+    project.path = canonical_project_path(&project.path);
+    project
+}
+
 fn modified_seconds(metadata: &fs::Metadata) -> f64 {
     metadata
         .modified()

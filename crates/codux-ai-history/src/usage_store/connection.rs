@@ -14,9 +14,37 @@ fn initialize_connection(conn: &Connection) -> Result<()> {
             |row| row.get(0),
         )
         .optional()?;
-    if stored_version.as_deref() != Some(NORMALIZED_HISTORY_SCHEMA_VERSION) {
+    if stored_version.as_deref() != Some(NORMALIZED_HISTORY_SCHEMA_VERSION)
+        || !usage_event_schema_is_current(conn)?
+    {
         migrate_schema(conn)?;
     }
+    create_project_scope_views(conn, false)?;
+    Ok(())
+}
+
+// Per-connection views every global query reads from; scoping is defined once
+// here instead of per-statement.
+fn create_project_scope_views(conn: &Connection, scoped: bool) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        DROP VIEW IF EXISTS temp.scoped_file_usage_bucket;
+        DROP VIEW IF EXISTS temp.scoped_file_session_link;
+        "#,
+    )?;
+    let filter = if scoped {
+        " WHERE project_path IN (SELECT path FROM temp.scope_project_path)"
+    } else {
+        ""
+    };
+    conn.execute_batch(&format!(
+        r#"
+        CREATE TEMP VIEW scoped_file_usage_bucket AS
+            SELECT * FROM ai_history_file_usage_bucket{filter};
+        CREATE TEMP VIEW scoped_file_session_link AS
+            SELECT * FROM ai_history_file_session_link{filter};
+        "#
+    ))?;
     Ok(())
 }
 

@@ -310,10 +310,15 @@ impl Render for CoduxApp {
         let task_column_width = TASK_COLUMN_FIXED_WIDTH;
 
         self.ensure_pet_level_up_ticker(cx);
+        self.ensure_pet_recalibration_ticker(cx);
         let pet_level_up_overlay = self
             .pet_level_up
             .clone()
             .map(|fx| self.pet_level_up_overlay(&fx, cx));
+        let pet_recalibration_overlay = self
+            .pet_recalibration
+            .clone()
+            .map(|fx| self.pet_recalibration_overlay(&fx, cx));
 
         let focus_handle = self.root_focus_handle(cx);
         if !self.main_window_close_handler_registered {
@@ -470,6 +475,7 @@ impl Render for CoduxApp {
                 )
             })
             .children(pet_level_up_overlay)
+            .children(pet_recalibration_overlay)
             .child(self.codux_tooltip_layer(cx))
             // Host gpui-component modal dialogs (e.g. the git Quick Pick) as a
             // centered overlay on top of the main window.

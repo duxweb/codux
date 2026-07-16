@@ -6,6 +6,8 @@ impl AIUsageStore {
         project_path: &str,
         current_paths: &[PathBuf],
     ) -> Result<()> {
+        let project_path = canonical_project_path(project_path);
+        let project_path = project_path.as_str();
         let current_paths = current_paths
             .iter()
             .map(|path| normalized_path(path))
@@ -32,61 +34,6 @@ impl AIUsageStore {
         self.delete_source_files(conn, source, project_path, &missing_paths)
     }
 
-    pub fn retain_project_paths(
-        &self,
-        conn: &Connection,
-        project_paths: &[String],
-    ) -> Result<()> {
-        let mut statement = conn.prepare(
-            r#"
-            SELECT project_path FROM ai_history_file_state
-            UNION
-            SELECT project_path FROM ai_history_file_session_link
-            UNION
-            SELECT project_path FROM ai_history_project_index_state;
-            "#,
-        )?;
-        let stored_paths = statement
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
-        drop(statement);
-        let project_paths = project_paths
-            .iter()
-            .filter_map(|path| normalized_history_path(path))
-            .collect::<HashSet<_>>();
-        let removed_paths = stored_paths
-            .into_iter()
-            .filter(|stored| {
-                normalized_history_path(stored)
-                    .is_some_and(|stored| !project_paths.contains(&stored))
-            })
-            .collect::<Vec<_>>();
-        if removed_paths.is_empty() {
-            return Ok(());
-        }
-
-        conn.execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
-        let result = (|| -> Result<()> {
-            for project_path in &removed_paths {
-                for table in [
-                    "ai_history_file_usage_amount",
-                    "ai_history_file_usage_bucket",
-                    "ai_history_file_session_link",
-                    "ai_history_file_checkpoint",
-                    "ai_history_file_state",
-                    "ai_history_project_index_state",
-                ] {
-                    conn.execute(
-                        &format!("DELETE FROM {table} WHERE project_path = ?1;"),
-                        params![project_path],
-                    )?;
-                }
-            }
-            Ok(())
-        })();
-        finish_transaction(conn, result)
-    }
-
     fn delete_source_files(
         &self,
         conn: &Connection,
@@ -100,6 +47,8 @@ impl AIUsageStore {
         conn.execute_batch("BEGIN IMMEDIATE TRANSACTION;")?;
         let result = (|| -> Result<()> {
             for file_path in file_paths {
+                // usage_event rows survive file pruning on purpose: earned pet
+                // XP must not drop when a CLI rotates old transcripts away.
                 for table in [
                     "ai_history_file_usage_amount",
                     "ai_history_file_usage_bucket",
@@ -131,6 +80,7 @@ impl AIUsageStore {
     where
         F: FnOnce() -> ParsedHistory,
     {
+        let project = &canonical_project_request(project.clone());
         let metadata = fs::metadata(file_path)
             .with_context(|| format!("failed to read AI history file {}", file_path.display()))?;
         let normalized_file_path = normalized_path(file_path);
@@ -182,6 +132,7 @@ impl AIUsageStore {
         AppendParser: FnOnce(Option<&AIExternalFileCheckpoint>) -> JSONLParseSnapshot,
         RebuildParser: FnOnce() -> JSONLParseSnapshot,
     {
+        let project = &canonical_project_request(project.clone());
         let metadata = fs::metadata(file_path)
             .with_context(|| format!("failed to read AI history file {}", file_path.display()))?;
         let normalized_file_path = normalized_path(file_path);
@@ -225,6 +176,12 @@ impl AIUsageStore {
                             &stored_summary.usage_buckets,
                             &delta.usage_buckets,
                         ),
+                        usage_events: stored_summary
+                            .usage_events
+                            .iter()
+                            .chain(delta.usage_events.iter())
+                            .cloned()
+                            .collect(),
                     };
                     let checkpoint = AIExternalFileCheckpoint {
                         source: summary.source.clone(),
@@ -276,6 +233,7 @@ impl AIUsageStore {
         project_path: &str,
         modified_at: Option<f64>,
     ) -> Result<Option<AIExternalFileSummary>> {
+        let project_path = &canonical_project_path(project_path);
         let state_modified_at = conn
             .query_row(
                 r#"
@@ -298,6 +256,7 @@ impl AIUsageStore {
         }
 
         let usage_buckets = self.load_usage_buckets(conn, source, file_path, project_path)?;
+        let usage_events = self.load_usage_events(conn, source, file_path, project_path)?;
         let checkpoint = self.external_file_checkpoint(conn, source, file_path, project_path)?;
         Ok(Some(AIExternalFileSummary {
             source: source.to_string(),
@@ -306,6 +265,7 @@ impl AIUsageStore {
             file_size: checkpoint.map(|item| item.file_size).unwrap_or(0),
             project_path: project_path.to_string(),
             usage_buckets,
+            usage_events,
         }))
     }
 
@@ -327,6 +287,10 @@ impl AIUsageStore {
             )?;
             conn.execute(
                 "DELETE FROM ai_history_file_usage_amount WHERE source = ?1 AND file_path = ?2 AND project_path = ?3;",
+                params![summary.source, summary.file_path, summary.project_path],
+            )?;
+            conn.execute(
+                "DELETE FROM ai_history_file_usage_event WHERE source = ?1 AND file_path = ?2 AND project_path = ?3;",
                 params![summary.source, summary.file_path, summary.project_path],
             )?;
             conn.execute(
@@ -449,6 +413,30 @@ impl AIUsageStore {
                         ],
                     )?;
                 }
+            }
+            for (event_ordinal, event) in summary.usage_events.iter().enumerate() {
+                conn.execute(
+                    r#"
+                    INSERT INTO ai_history_file_usage_event (
+                        source, file_path, project_path, event_ordinal,
+                        project_id,
+                        session_key, occurred_at, total_tokens, request_count,
+                        active_duration_seconds
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);
+                    "#,
+                    params![
+                        summary.source,
+                        summary.file_path,
+                        summary.project_path,
+                        event_ordinal as i64,
+                        event.project_id,
+                        event.session_key,
+                        event.occurred_at,
+                        event.total_tokens,
+                        event.request_count,
+                        event.active_duration_seconds,
+                    ],
+                )?;
             }
             Ok(())
         })();

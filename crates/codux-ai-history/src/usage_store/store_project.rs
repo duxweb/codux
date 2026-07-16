@@ -4,6 +4,7 @@ impl AIUsageStore {
         conn: &Connection,
         project: AIHistoryProjectRequest,
     ) -> Result<AIHistorySnapshot> {
+        let project = canonical_project_request(project);
         let links = self.project_session_links(conn, &project.path)?;
         let buckets = self.project_usage_buckets(conn, &project.path)?;
         Ok(build_snapshot_from_rows(project, links, buckets))
@@ -14,6 +15,7 @@ impl AIUsageStore {
         conn: &Connection,
         project: AIHistoryProjectRequest,
     ) -> Result<Option<AIHistorySnapshot>> {
+        let project = canonical_project_request(project);
         let indexed_at = conn
             .query_row(
                 r#"
@@ -45,6 +47,7 @@ impl AIUsageStore {
         if title.is_empty() {
             return Ok(false);
         }
+        let project_path = &canonical_project_path(project_path);
         let links = self.project_session_links(conn, project_path)?;
         let matched = matching_session_keys(&links, session_id);
         if matched.is_empty() {
@@ -71,6 +74,7 @@ impl AIUsageStore {
         project_path: &str,
         session_id: &str,
     ) -> Result<bool> {
+        let project_path = &canonical_project_path(project_path);
         let links = self.project_session_links(conn, project_path)?;
         let matched = matching_session_keys(&links, session_id);
         if matched.is_empty() {
@@ -103,6 +107,7 @@ impl AIUsageStore {
         snapshot: &AIHistorySnapshot,
         project_path: &str,
     ) -> Result<()> {
+        let project_path = &canonical_project_path(project_path);
         conn.execute(
             r#"
             INSERT INTO ai_history_project_index_state (project_path, project_id, project_name, indexed_at)

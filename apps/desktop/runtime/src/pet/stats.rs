@@ -2,7 +2,7 @@ use super::{
     constants::STATS_REFRESH_INTERVAL_SECONDS,
     types::{PetSnapshot, PetStats},
 };
-use crate::ai_history_normalized::AISessionSummary;
+use crate::ai_usage_store::AIUsageIntervalSession;
 use chrono::{Local, TimeZone, Timelike};
 
 impl PetStats {
@@ -65,7 +65,7 @@ fn damp_stats(current: &PetStats, target: &PetStats) -> PetStats {
     }
 }
 
-pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats {
+pub(super) fn pet_stats_from_sessions(sessions: &[AIUsageIntervalSession]) -> PetStats {
     if sessions.is_empty() {
         return PetStats::default();
     }
@@ -103,7 +103,7 @@ pub(super) fn pet_stats_from_sessions(sessions: &[AISessionSummary]) -> PetStats
     let night_count = sessions
         .iter()
         .filter(|session| {
-            timestamp_hour_local(session.first_seen_at)
+            timestamp_hour_local(session.first_seen_at as f64)
                 .map(|hour| !(6..22).contains(&hour))
                 .unwrap_or(false)
         })

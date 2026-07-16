@@ -174,6 +174,11 @@ fn parse_codex_history_file_snapshot(
     let mut active_task_started_at_by_session = payload
         .codex_active_task_started_at_by_session
         .clone();
+    let mut canonical_session_meta_seen = payload.codex_canonical_session_meta_seen;
+    let mut is_subagent = payload.codex_is_subagent;
+    let mut session_created_at = payload.codex_session_created_at;
+    let mut subagent_history_start_ordinal = payload.codex_subagent_history_start_ordinal;
+    let mut own_history_started = payload.codex_own_history_started || !is_subagent;
     let mut pending_entries = Vec::new();
     let mut pending_events = Vec::new();
     let mut last_processed_offset = starting_at.max(0);
@@ -193,15 +198,24 @@ fn parse_codex_history_file_snapshot(
         };
         let row_type = row.get("type").and_then(|value| value.as_str());
         let payload = row.get("payload").unwrap_or(&Value::Null);
-        if row_type == Some("session_meta")
-            && payload
+        if row_type == Some("session_meta") && !canonical_session_meta_seen {
+            canonical_session_meta_seen = true;
+            matched_project = payload
                 .get("cwd")
                 .and_then(|value| value.as_str())
                 .map(|cwd| paths_equivalent(Some(cwd), &project.path))
-                .unwrap_or(false)
-        {
-            matched_project = true;
-            if !session_identity_resolved {
+                .unwrap_or(false);
+            is_subagent = codex_session_meta_is_subagent(payload);
+            session_created_at = payload
+                .get("timestamp")
+                .and_then(|value| value.as_str())
+                .and_then(parse_iso8601_seconds)
+                .or(Some(timestamp));
+            subagent_history_start_ordinal = payload
+                .get("subagent_history_start_ordinal")
+                .and_then(Value::as_u64);
+            own_history_started = !is_subagent;
+            if matched_project && !session_identity_resolved {
                 if let Some(id) = payload
                     .get("id")
                     .and_then(|value| value.as_str())
@@ -211,17 +225,31 @@ fn parse_codex_history_file_snapshot(
                 }
                 session_identity_resolved = true;
             }
-            session_title = payload
-                .get("thread_name")
-                .and_then(|value| value.as_str())
-                .and_then(normalized_string)
-                .or_else(|| {
-                    payload
-                        .get("title")
-                        .and_then(|value| value.as_str())
-                        .and_then(normalized_string)
-                })
-                .or(session_title.clone());
+            if matched_project {
+                session_title = payload
+                    .get("thread_name")
+                    .and_then(|value| value.as_str())
+                    .and_then(normalized_string)
+                    .or_else(|| {
+                        payload
+                            .get("title")
+                            .and_then(|value| value.as_str())
+                            .and_then(normalized_string)
+                    })
+                    .or(session_title.clone());
+            }
+        }
+        if is_subagent && !own_history_started {
+            own_history_started = codex_subagent_row_starts_own_history(
+                &row,
+                payload,
+                session_created_at,
+                subagent_history_start_ordinal,
+            );
+            if !own_history_started {
+                last_processed_offset = end_offset;
+                return true;
+            }
         }
         if row_type == Some("turn_context")
             && payload
@@ -277,7 +305,8 @@ fn parse_codex_history_file_snapshot(
                 }
             }
         }
-        if row_type != Some("event_msg")
+        if is_subagent
+            || row_type != Some("event_msg")
             || payload.get("type").and_then(|value| value.as_str()) != Some("token_count")
         {
             last_processed_offset = end_offset;
@@ -351,6 +380,16 @@ fn parse_codex_history_file_snapshot(
         true
     });
     if matched_project {
+        if let Some(timestamp) = session_created_at {
+            result.sessions.push(HistorySessionMetadata {
+                source: "codex".to_string(),
+                session_id: session_id.clone(),
+                external_session_id: Some(session_id.clone()),
+                session_title: session_title.clone().or_else(|| Some(project.name.clone())),
+                timestamp,
+                model: model.clone(),
+            });
+        }
         result.events.extend(pending_events);
         result.entries.extend(pending_entries);
     }
@@ -364,10 +403,70 @@ fn parse_codex_history_file_snapshot(
     payload.last_model = model.or(payload.last_model.clone());
     payload.codex_total_usage_by_session = total_usage_by_session;
     payload.codex_active_task_started_at_by_session = active_task_started_at_by_session;
+    payload.codex_canonical_session_meta_seen = canonical_session_meta_seen;
+    payload.codex_is_subagent = is_subagent;
+    payload.codex_session_created_at = session_created_at;
+    payload.codex_subagent_history_start_ordinal = subagent_history_start_ordinal;
+    payload.codex_own_history_started = own_history_started;
 
     JSONLParseSnapshot {
         result,
         last_processed_offset,
         payload_json: encode_checkpoint_payload(&payload),
     }
+}
+
+fn codex_session_meta_is_subagent(payload: &Value) -> bool {
+    payload
+        .get("parent_thread_id")
+        .and_then(Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+        || payload.get("thread_source").and_then(Value::as_str) == Some("subagent")
+        || payload
+            .get("source")
+            .and_then(|source| source.get("subagent"))
+            .is_some()
+}
+
+fn codex_subagent_row_starts_own_history(
+    row: &Value,
+    payload: &Value,
+    session_created_at: Option<f64>,
+    history_start_ordinal: Option<u64>,
+) -> bool {
+    if let Some(history_start_ordinal) = history_start_ordinal {
+        return row
+            .get("ordinal")
+            .and_then(Value::as_u64)
+            .is_some_and(|ordinal| ordinal >= history_start_ordinal);
+    }
+    if row.get("type").and_then(Value::as_str) != Some("event_msg")
+        || payload.get("type").and_then(Value::as_str) != Some("task_started")
+    {
+        return false;
+    }
+    let Some(session_created_at) = session_created_at else {
+        return false;
+    };
+    payload
+        .get("started_at")
+        .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|value| value as f64)))
+        .is_some_and(|started_at| started_at >= session_created_at.floor())
+        || payload
+            .get("turn_id")
+            .and_then(Value::as_str)
+            .and_then(uuid_v7_unix_seconds)
+            .is_some_and(|started_at| started_at >= session_created_at)
+}
+
+fn uuid_v7_unix_seconds(value: &str) -> Option<f64> {
+    let uuid = Uuid::parse_str(value).ok()?;
+    let bytes = uuid.as_bytes();
+    if bytes[6] >> 4 != 7 {
+        return None;
+    }
+    let millis = bytes[..6]
+        .iter()
+        .fold(0_u64, |value, byte| (value << 8) | u64::from(*byte));
+    Some(millis as f64 / 1_000.0)
 }

@@ -26,7 +26,6 @@ struct MacPersistedPetState {
     current_stats: Option<PetStats>,
     stats_updated_day: Option<MacDate>,
     legacy: Option<Vec<MacPetLegacyRecord>>,
-    global_normalized_total_watermark: Option<i64>,
     project_normalized_token_watermarks: Option<HashMap<String, i64>>,
 }
 
@@ -188,6 +187,10 @@ fn mac_date_from_value(value: Value) -> Option<MacDate> {
 
 fn mac_state_to_snapshot(state: MacPersistedPetState) -> PetSnapshot {
     let now = super::now_seconds();
+    let current_experience_tokens = state
+        .current_experience_tokens
+        .or(state.legacy_pre_xp_token_count)
+        .unwrap_or(0);
     let current_identity = state.current_identity;
     let custom_pet = current_identity
         .as_ref()
@@ -215,13 +218,6 @@ fn mac_state_to_snapshot(state: MacPersistedPetState) -> PetSnapshot {
             None
         }
     });
-    let project_watermarks = state
-        .project_normalized_token_watermarks
-        .unwrap_or_default();
-    let total_normalized_tokens = state
-        .global_normalized_total_watermark
-        .unwrap_or_else(|| project_watermarks.values().copied().sum())
-        .max(0);
     let legacy = state
         .legacy
         .unwrap_or_default()
@@ -235,16 +231,17 @@ fn mac_state_to_snapshot(state: MacPersistedPetState) -> PetSnapshot {
         species,
         custom_pet,
         custom_name: state.custom_name.unwrap_or_default(),
-        current_experience_tokens: state.current_experience_tokens.unwrap_or_default().max(0),
+        current_experience_tokens,
         current_stats: state.current_stats.unwrap_or_default().sanitized(),
         persona_id: default_persona_id(),
         progress: PetProgressInfo::default(),
         stats_updated_day: state.stats_updated_day.map(|date| date.0),
-        global_normalized_total_watermark: state
-            .global_normalized_total_watermark
-            .map(|value| value.max(0)),
-        project_normalized_token_watermarks: project_watermarks,
-        total_normalized_tokens,
+        memberships: Vec::new(),
+        pending_project_token_watermarks: state
+            .project_normalized_token_watermarks
+            .unwrap_or_default(),
+        experience_recalibration_pending: true,
+        experience_base_tokens: 0,
         daily_experience_tokens: 0,
         daily_experience_day: Some(day_index(now)),
         legacy,
@@ -296,6 +293,8 @@ fn mac_legacy_record_to_snapshot_record(record: MacPetLegacyRecord) -> Option<Pe
         custom_pet,
         custom_name: sanitize_custom_name(&record.custom_name),
         total_xp: record.total_xp.max(0),
+        memberships: Vec::new(),
+        experience_base_tokens: record.total_xp.max(0),
         stats: record.stats.sanitized(),
         persona_id: default_persona_id(),
         progress: PetProgressInfo::default(),
@@ -323,7 +322,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mac_state_migrates_to_current_snapshot_without_resetting_progress() {
+    fn mac_state_migrates_active_pet_for_history_rebuild() {
         let mac_json = r#"{
           "stateVersion": 8,
           "statsModelVersion": 3,
@@ -341,12 +340,33 @@ mod tests {
         let snapshot = super::super::sanitize_state(mac_state_to_snapshot(mac));
         assert_eq!(snapshot.species, "dragon");
         assert_eq!(snapshot.custom_name, "Spark");
-        assert_eq!(snapshot.current_experience_tokens, 1200);
-        assert_eq!(snapshot.progress.total_xp, 1200);
+        assert_eq!(snapshot.current_experience_tokens, 1_200);
+        assert_eq!(snapshot.progress.total_xp, 1_200);
         assert_eq!(snapshot.current_stats, PetStats::default());
         assert_eq!(snapshot.stats_updated_day, None);
-        assert_eq!(snapshot.global_normalized_total_watermark, None);
-        assert!(snapshot.project_normalized_token_watermarks.is_empty());
-        assert_eq!(snapshot.total_normalized_tokens, 0);
+        assert!(snapshot.memberships.is_empty());
+        assert_eq!(snapshot.experience_base_tokens, 0);
+        assert_eq!(snapshot.state_version, 8);
+        assert!(snapshot.experience_recalibration_pending);
+    }
+
+    #[test]
+    fn mac_state_keeps_legacy_hatch_tokens_until_recalibration() {
+        let mac = serde_json::from_str::<MacPersistedPetState>(
+            r#"{
+              "stateVersion": 4,
+              "species": "dragon",
+              "currentHatchTokens": 2400,
+              "legacy": []
+            }"#,
+        )
+        .unwrap();
+
+        let snapshot = super::super::sanitize_state(mac_state_to_snapshot(mac));
+
+        assert_eq!(snapshot.current_experience_tokens, 2_400);
+        assert_eq!(snapshot.progress.total_xp, 2_400);
+        assert!(snapshot.claimed_at.is_some());
+        assert!(snapshot.experience_recalibration_pending);
     }
 }

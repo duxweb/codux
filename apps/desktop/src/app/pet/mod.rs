@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::app_events::PetUpdateEvent;
-use crate::app::app_state::PetLevelUpFx;
+use crate::app::app_state::{PetLevelUpFx, PetRecalibrationFx};
 use crate::app::ui_helpers::with_codux_tooltip;
 use codux_runtime::pet::{PetCatalog, PetCatalogItem, PetLegacyRecord, PetStats};
 use gpui::{Hsla, ListSizingBehavior};
@@ -16,6 +16,7 @@ mod catalog;
 mod claim;
 mod dex;
 mod level_up;
+mod recalibration;
 mod widgets;
 
 use catalog::*;

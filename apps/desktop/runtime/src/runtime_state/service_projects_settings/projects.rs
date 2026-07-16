@@ -38,6 +38,7 @@ impl RuntimeService {
         if let Some(project_id) = snapshot.selected_project_id.as_deref() {
             let _ = self.mark_project_active_with_watch(project_id);
         }
+        self.sync_pet_project_memberships();
         Ok(snapshot)
     }
 
@@ -50,6 +51,7 @@ impl RuntimeService {
         if let Some(project_id) = snapshot.selected_project_id.as_deref() {
             let _ = self.mark_project_active_with_watch(project_id);
         }
+        self.sync_pet_project_memberships();
         Ok(snapshot)
     }
 
@@ -76,6 +78,7 @@ impl RuntimeService {
         } else {
             self.stop_active_project_watches();
         }
+        self.sync_pet_project_memberships();
         Ok(snapshot)
     }
 
@@ -127,12 +130,14 @@ impl RuntimeService {
     pub fn create_or_select_project(&self, name: &str, path: &str) -> Result<String, String> {
         let project_id = ProjectStore::new(self.support_dir.clone()).create_or_select_project(name, path)?;
         self.mark_project_active_with_watch(&project_id)?;
+        self.sync_pet_project_memberships();
         Ok(project_id)
     }
 
     pub fn update_project(&self, project_id: &str, name: &str, path: &str) -> Result<(), String> {
         ProjectStore::new(self.support_dir.clone()).update_project(project_id, name, path)?;
         self.mark_project_active_with_watch(project_id)?;
+        self.sync_pet_project_memberships();
         Ok(())
     }
 
@@ -157,6 +162,7 @@ impl RuntimeService {
         } else {
             self.stop_active_project_watches();
         }
+        self.sync_pet_project_memberships();
         Ok(next_project_id)
     }
 

@@ -219,6 +219,16 @@ pub struct HistoryEvent {
     pub kind: HistoryEventKind,
 }
 
+#[derive(Debug, Clone)]
+pub struct HistorySessionMetadata {
+    pub source: String,
+    pub session_id: String,
+    pub external_session_id: Option<String>,
+    pub session_title: Option<String>,
+    pub timestamp: f64,
+    pub model: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HistoryEventKind {
     Request,
@@ -231,6 +241,7 @@ pub enum HistoryEventKind {
 pub struct ParsedHistory {
     pub entries: Vec<HistoryEntry>,
     pub events: Vec<HistoryEvent>,
+    pub sessions: Vec<HistorySessionMetadata>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -251,6 +262,16 @@ pub struct AIExternalFileCheckpointPayload {
     pub(crate) codex_total_usage_by_session: HashMap<String, HistoryUsage>,
     #[serde(default)]
     pub(crate) codex_active_task_started_at_by_session: HashMap<String, f64>,
+    #[serde(default)]
+    pub(crate) codex_canonical_session_meta_seen: bool,
+    #[serde(default)]
+    pub(crate) codex_is_subagent: bool,
+    #[serde(default)]
+    pub(crate) codex_session_created_at: Option<f64>,
+    #[serde(default)]
+    pub(crate) codex_subagent_history_start_ordinal: Option<u64>,
+    #[serde(default)]
+    pub(crate) codex_own_history_started: bool,
     pub last_claude_message_id: Option<String>,
     #[serde(default)]
     pub last_claude_input_tokens: i64,

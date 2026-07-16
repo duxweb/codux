@@ -3,7 +3,7 @@ use crate::normalized::{
     AIProjectUsageSummary, AIProjectUsageTotal, AISessionSummary, AITimeBucket, AIUsageAmount,
     AIUsageBreakdownItem, HistoryEntry, HistoryEvent, HistoryEventKind, JSONLParseSnapshot,
     ParsedHistory, active_duration_by_session_id, deterministic_uuid, half_hour_bucket_start,
-    history_key, local_day_start_seconds, normalized_history_path, now_seconds,
+    history_key, local_day_start_seconds, now_seconds,
 };
 use crate::paths::app_support_dir;
 use anyhow::{Context, Result};

@@ -7,6 +7,11 @@ pub(in crate::app) struct PetLevelUpFx {
     pub(in crate::app) progress: f32,
 }
 
+#[derive(Clone)]
+pub(in crate::app) struct PetRecalibrationFx {
+    pub(in crate::app) progress: f32,
+}
+
 /// One entry in the file-picker directory listing (local or on a host).
 #[derive(Clone)]
 pub(in crate::app) struct RemoteBrowseEntry {
@@ -152,6 +157,8 @@ pub struct CoduxApp {
     pub(in crate::app) pet_sprite_animation_active: bool,
     pub(in crate::app) pet_level_up: Option<PetLevelUpFx>,
     pub(in crate::app) pet_level_up_ticking: bool,
+    pub(in crate::app) pet_recalibration: Option<PetRecalibrationFx>,
+    pub(in crate::app) pet_recalibration_ticking: bool,
     pub(in crate::app) file_preview: String,
     pub(in crate::app) file_preview_window_path: Option<String>,
     pub(in crate::app) file_preview_window_content: String,

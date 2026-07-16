@@ -31,6 +31,163 @@ impl AIUsageStore {
         Ok(conn)
     }
 
+    // Restrict every indexed_global_* query on this connection to the given
+    // project paths; None restores the unscoped (whole database) views.
+    pub fn set_global_project_scope(
+        &self,
+        conn: &Connection,
+        scope: Option<&[String]>,
+    ) -> Result<()> {
+        let Some(paths) = scope else {
+            return create_project_scope_views(conn, false);
+        };
+        conn.execute_batch(
+            r#"
+            CREATE TEMP TABLE IF NOT EXISTS scope_project_path (path TEXT PRIMARY KEY);
+            DELETE FROM temp.scope_project_path;
+            "#,
+        )?;
+        let mut statement =
+            conn.prepare("INSERT OR IGNORE INTO temp.scope_project_path (path) VALUES (?1);")?;
+        for path in paths {
+            let path = canonical_project_path(path);
+            if !path.is_empty() {
+                statement.execute(params![path])?;
+            }
+        }
+        drop(statement);
+        create_project_scope_views(conn, true)
+    }
+
+    // Canonical paths of every project the store has index data for.
+    pub fn indexed_project_paths(&self, conn: &Connection) -> Result<HashSet<String>> {
+        let mut statement = conn.prepare(
+            r#"
+            SELECT project_path FROM ai_history_project_index_state
+            UNION
+            SELECT project_path FROM ai_history_file_session_link
+            UNION
+            SELECT project_path FROM ai_history_file_usage_event;
+            "#,
+        )?;
+        let paths = statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(|path| canonical_project_path(&path))
+            .filter(|path| !path.is_empty())
+            .collect();
+        Ok(paths)
+    }
+
+    pub fn normalized_tokens_in_intervals(
+        &self,
+        conn: &Connection,
+        intervals: &[AIUsageInterval],
+    ) -> Result<i64> {
+        let mut total = 0_i64;
+        for interval in merged_usage_intervals(intervals) {
+            let interval_total = conn.query_row(
+                r#"
+                SELECT COALESCE(SUM(total_tokens), 0)
+                FROM ai_history_file_usage_event
+                WHERE project_path = ?1
+                  AND occurred_at >= ?2
+                  AND (?3 IS NULL OR occurred_at < ?3);
+                "#,
+                params![
+                    interval.project_path,
+                    interval.included_at,
+                    interval.excluded_at
+                ],
+                |row| row.get::<_, i64>(0),
+            )?;
+            total = total.saturating_add(interval_total.max(0));
+        }
+        Ok(total)
+    }
+
+    pub fn interval_sessions(
+        &self,
+        conn: &Connection,
+        intervals: &[AIUsageInterval],
+    ) -> Result<Vec<AIUsageIntervalSession>> {
+        let mut sessions = HashMap::<(String, String, String), AIUsageIntervalSession>::new();
+        for interval in merged_usage_intervals(intervals) {
+            let mut statement = conn.prepare(
+                r#"
+                SELECT
+                    source,
+                    session_key,
+                    MIN(MAX(occurred_at, ?2)),
+                    COALESCE(SUM(CASE
+                        WHEN occurred_at >= ?2 AND (?3 IS NULL OR occurred_at < ?3)
+                            THEN request_count ELSE 0 END), 0),
+                    COALESCE(SUM(CASE
+                        WHEN occurred_at >= ?2 AND (?3 IS NULL OR occurred_at < ?3)
+                            THEN total_tokens ELSE 0 END), 0),
+                    COALESCE(SUM(CASE
+                        WHEN active_duration_seconds <= 0 THEN 0
+                        ELSE MAX(0,
+                            MIN(occurred_at + active_duration_seconds, COALESCE(?3, occurred_at + active_duration_seconds))
+                            - MAX(occurred_at, ?2)
+                        )
+                    END), 0)
+                FROM ai_history_file_usage_event
+                WHERE project_path = ?1
+                  AND (
+                    (occurred_at >= ?2 AND (?3 IS NULL OR occurred_at < ?3))
+                    OR (
+                        active_duration_seconds > 0
+                        AND occurred_at < COALESCE(?3, occurred_at + active_duration_seconds)
+                        AND occurred_at + active_duration_seconds > ?2
+                    )
+                  )
+                GROUP BY source, session_key;
+                "#,
+            )?;
+            let rows = statement
+                .query_map(
+                    params![
+                        interval.project_path,
+                        interval.included_at,
+                        interval.excluded_at
+                    ],
+                    |row| {
+                        Ok(AIUsageIntervalSession {
+                            project_path: interval.project_path.clone(),
+                            source: row.get(0)?,
+                            session_key: row.get(1)?,
+                            first_seen_at: row.get(2)?,
+                            request_count: row.get::<_, i64>(3)?.max(0),
+                            total_tokens: row.get::<_, i64>(4)?.max(0),
+                            active_duration_seconds: row.get::<_, i64>(5)?.max(0),
+                        })
+                    },
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            for row in rows {
+                let key = (
+                    row.project_path.clone(),
+                    row.source.clone(),
+                    row.session_key.clone(),
+                );
+                sessions
+                    .entry(key)
+                    .and_modify(|current| {
+                        current.first_seen_at = current.first_seen_at.min(row.first_seen_at);
+                        current.request_count = current.request_count.saturating_add(row.request_count);
+                        current.total_tokens = current.total_tokens.saturating_add(row.total_tokens);
+                        current.active_duration_seconds = current
+                            .active_duration_seconds
+                            .saturating_add(row.active_duration_seconds);
+                    })
+                    .or_insert(row);
+            }
+        }
+        Ok(sessions.into_values().collect())
+    }
+
     pub fn global_today_normalized_tokens(&self, conn: &Connection) -> Result<i64> {
         let start = local_day_start_seconds(now_seconds());
         let end = start + 86_400.0;
@@ -81,13 +238,13 @@ impl AIUsageStore {
                     session.project_id AS project_id,
                     COALESCE(NULLIF(MAX(session.project_name), ''), session.project_path) AS project_name,
                     session.project_path AS project_path
-                FROM ai_history_file_session_link AS session
+                FROM scoped_file_session_link AS session
                 GROUP BY session.project_id, session.project_path
             ) AS project
-            LEFT JOIN ai_history_file_session_link AS session
+            LEFT JOIN scoped_file_session_link AS session
               ON session.project_id = project.project_id
              AND session.project_path = project.project_path
-            LEFT JOIN ai_history_file_usage_bucket AS bucket
+            LEFT JOIN scoped_file_usage_bucket AS bucket
               ON bucket.source = session.source
              AND bucket.file_path = session.file_path
              AND bucket.project_path = session.project_path
@@ -142,7 +299,7 @@ impl AIUsageStore {
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(request_count), 0) AS request_count
-            FROM ai_history_file_usage_bucket
+            FROM scoped_file_usage_bucket
             GROUP BY bucket_start
             ORDER BY bucket_start ASC;
             "#,
@@ -178,7 +335,7 @@ impl AIUsageStore {
                 COALESCE(SUM(bucket.total_tokens), 0) AS total_tokens,
                 COALESCE(SUM(bucket.cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(bucket.request_count), 0) AS request_count
-            FROM ai_history_file_usage_bucket AS bucket
+            FROM scoped_file_usage_bucket AS bucket
             GROUP BY item_key
             ORDER BY total_tokens DESC, item_key ASC;
             "#
@@ -250,7 +407,7 @@ impl AIUsageStore {
             r#"
             WITH filtered_buckets AS (
                 SELECT *
-                FROM ai_history_file_usage_bucket
+                FROM scoped_file_usage_bucket
                 WHERE ?1 IS NULL OR bucket_end > ?2
             ),
             matching_sessions AS (
@@ -258,7 +415,7 @@ impl AIUsageStore {
                     session.source,
                     session.project_path,
                     COALESCE(session.external_session_id, session.session_key) AS logical_session_key
-                FROM ai_history_file_session_link AS session
+                FROM scoped_file_session_link AS session
                 INNER JOIN filtered_buckets AS bucket
                   ON bucket.source = session.source
                  AND bucket.file_path = session.file_path
@@ -319,7 +476,7 @@ impl AIUsageStore {
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
                 COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
                 COALESCE(SUM(request_count), 0) AS request_count
-            FROM ai_history_file_usage_bucket
+            FROM scoped_file_usage_bucket
             WHERE bucket_end > ?1 AND bucket_start < ?2
             GROUP BY bucket_start, bucket_end
             ORDER BY bucket_start ASC;
@@ -385,13 +542,13 @@ impl AIUsageStore {
                     session.project_id AS project_id,
                     COALESCE(NULLIF(MAX(session.project_name), ''), session.project_path) AS project_name,
                     session.project_path AS project_path
-                FROM ai_history_file_session_link AS session
+                FROM scoped_file_session_link AS session
                 GROUP BY session.project_id, session.project_path
             ) AS project
-            LEFT JOIN ai_history_file_session_link AS session
+            LEFT JOIN scoped_file_session_link AS session
               ON session.project_id = project.project_id
              AND session.project_path = project.project_path
-            LEFT JOIN ai_history_file_usage_bucket AS bucket
+            LEFT JOIN scoped_file_usage_bucket AS bucket
               ON bucket.source = session.source
              AND bucket.file_path = session.file_path
              AND bucket.project_path = session.project_path
@@ -459,7 +616,7 @@ impl AIUsageStore {
                 COALESCE(SUM(CASE WHEN ?1 IS NULL OR bucket.bucket_end > ?2 THEN bucket.total_tokens ELSE 0 END), 0) AS total_tokens,
                 COALESCE(SUM(CASE WHEN ?3 IS NULL OR bucket.bucket_end > ?4 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
                 COALESCE(SUM(CASE WHEN ?5 IS NULL OR bucket.bucket_end > ?6 THEN bucket.request_count ELSE 0 END), 0) AS request_count
-            FROM ai_history_file_usage_bucket AS bucket
+            FROM scoped_file_usage_bucket AS bucket
             GROUP BY item_key
             HAVING total_tokens > 0 OR cached_input_tokens > 0 OR request_count > 0
             ORDER BY total_tokens DESC, item_key ASC;
@@ -576,8 +733,8 @@ impl AIUsageStore {
                     COALESCE(SUM(CASE WHEN ?9 IS NULL OR bucket.bucket_end > ?10 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS cached_input_tokens,
                     COALESCE(SUM(CASE WHEN bucket.bucket_end > ?13 AND bucket.bucket_start < ?14 THEN bucket.total_tokens ELSE 0 END), 0) AS today_tokens,
                     COALESCE(SUM(CASE WHEN bucket.bucket_end > ?15 AND bucket.bucket_start < ?16 THEN bucket.cached_input_tokens ELSE 0 END), 0) AS today_cached_input_tokens
-                FROM ai_history_file_session_link AS session
-                LEFT JOIN ai_history_file_usage_bucket AS bucket
+                FROM scoped_file_session_link AS session
+                LEFT JOIN scoped_file_usage_bucket AS bucket
                   ON bucket.source = session.source
                  AND bucket.file_path = session.file_path
                  AND bucket.project_path = session.project_path
@@ -667,6 +824,50 @@ fn usage_bucket_table_has_column(conn: &Connection, column: &str) -> Result<bool
         }
     }
     Ok(false)
+}
+
+fn merged_usage_intervals(intervals: &[AIUsageInterval]) -> Vec<AIUsageInterval> {
+    let mut intervals = intervals
+        .iter()
+        .filter_map(|interval| {
+            let project_path = canonical_project_path(&interval.project_path);
+            if project_path.is_empty() {
+                return None;
+            }
+            let excluded_at = interval.excluded_at.filter(|end| *end > interval.included_at);
+            if interval.excluded_at.is_some() && excluded_at.is_none() {
+                return None;
+            }
+            Some(AIUsageInterval {
+                project_path,
+                included_at: interval.included_at,
+                excluded_at,
+            })
+        })
+        .collect::<Vec<_>>();
+    intervals.sort_by(|left, right| {
+        left.project_path
+            .cmp(&right.project_path)
+            .then_with(|| left.included_at.cmp(&right.included_at))
+            .then_with(|| left.excluded_at.cmp(&right.excluded_at))
+    });
+    let mut merged = Vec::<AIUsageInterval>::new();
+    for interval in intervals {
+        if let Some(previous) = merged.last_mut()
+            && previous.project_path == interval.project_path
+            && previous
+                .excluded_at
+                .is_none_or(|end| interval.included_at <= end)
+        {
+            previous.excluded_at = match (previous.excluded_at, interval.excluded_at) {
+                (None, _) | (_, None) => None,
+                (Some(left), Some(right)) => Some(left.max(right)),
+            };
+            continue;
+        }
+        merged.push(interval);
+    }
+    merged
 }
 
 fn heatmap_days_from_buckets(rows: Vec<(f64, i64, i64, i64, i64, i64)>) -> Vec<AIHeatmapDay> {

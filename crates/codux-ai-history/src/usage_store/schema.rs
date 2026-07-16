@@ -1,3 +1,6 @@
+// Bumped 13 -> 14 to persist exact usage, request, and activity facts for
+// membership-scoped pet progress, with canonical project paths.
+//
 // Bumped 12 -> 13 to keep forked Codex rollout files under their own first
 // session metadata instead of the copied parent metadata that follows it.
 //
@@ -21,10 +24,8 @@
 // parser fixes (Claude cache_creation backfill + codex cumulative-delta
 // de-inflation). On launch a version mismatch drops the index tables and
 // re-parses every log from offset 0 with the corrected parser. Pet XP is
-// preserved by construction: it sums total_tokens (cached excluded, so the
-// Claude fix is invisible to it) and only accumulates positive deltas against a
-// high-water mark (so the codex de-inflation cannot lower it).
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "13";
+// derived from the corrected event facts, so parser fixes also correct pet XP.
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "14";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
@@ -92,6 +93,21 @@ const SCHEMA_STATEMENTS: &[&str] = &[
     );
     "#,
     r#"
+    CREATE TABLE IF NOT EXISTS ai_history_file_usage_event (
+        source TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        event_ordinal INTEGER NOT NULL,
+        session_key TEXT NOT NULL,
+        occurred_at INTEGER NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        request_count INTEGER NOT NULL,
+        active_duration_seconds INTEGER NOT NULL,
+        PRIMARY KEY (source, file_path, project_path, event_ordinal)
+    );
+    "#,
+    r#"
     CREATE TABLE IF NOT EXISTS ai_history_project_index_state (
         project_path TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
@@ -118,5 +134,6 @@ const SCHEMA_STATEMENTS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_project_path ON ai_history_file_usage_bucket(project_path, bucket_start);",
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_bucket_start ON ai_history_file_usage_bucket(bucket_start);",
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_amount_project_path ON ai_history_file_usage_amount(project_path, bucket_start);",
+    "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_event_project_time ON ai_history_file_usage_event(project_path, occurred_at);",
     "CREATE INDEX IF NOT EXISTS idx_ai_history_project_index_state_indexed_at ON ai_history_project_index_state(indexed_at DESC);",
 ];

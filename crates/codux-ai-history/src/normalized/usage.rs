@@ -136,6 +136,7 @@ fn fixed_today_time_buckets(mut map: HashMap<i64, AITimeBucket>) -> Vec<AITimeBu
 pub(crate) struct ActiveDurationSummary {
     pub(crate) total_seconds: i64,
     pub(crate) seconds_by_bucket: HashMap<i64, i64>,
+    pub(crate) intervals: Vec<(f64, f64)>,
 }
 
 fn active_duration_by_history_key(
@@ -234,7 +235,10 @@ fn push_activity_interval(
 }
 
 fn summarize_activity_intervals(intervals: Vec<(f64, f64)>) -> ActiveDurationSummary {
-    let mut summary = ActiveDurationSummary::default();
+    let mut summary = ActiveDurationSummary {
+        intervals: intervals.clone(),
+        ..Default::default()
+    };
     for (start, end) in intervals {
         let mut cursor = start.round() as i64;
         let end = end.round() as i64;

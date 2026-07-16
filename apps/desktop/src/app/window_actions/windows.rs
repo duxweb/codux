@@ -163,6 +163,8 @@ impl CoduxApp {
             pet_sprite_animation_active: false,
             pet_level_up: None,
             pet_level_up_ticking: false,
+            pet_recalibration: None,
+            pet_recalibration_ticking: false,
             file_preview: "select a file to preview it".to_string(),
             file_preview_window_path: None,
             file_preview_window_content: String::new(),

@@ -1,76 +1,84 @@
-#[test]
-fn indexed_pet_totals_are_filtered_to_active_project_workspaces() {
-    let mut active = HashSet::new();
-    active.insert("project-1".to_string());
-    active.insert("worktree-1".to_string());
-
-    let filtered = filter_active_indexed_project_totals(
-        vec![
-            crate::ai_usage_store::AIUsageProjectTotal {
-                project_id: "project-1".to_string(),
-                total_tokens: 10,
-            },
-            crate::ai_usage_store::AIUsageProjectTotal {
-                project_id: "removed-project".to_string(),
-                total_tokens: 9_999,
-            },
-            crate::ai_usage_store::AIUsageProjectTotal {
-                project_id: "worktree-1".to_string(),
-                total_tokens: 20,
-            },
-        ],
-        &active,
+fn write_pet_test_projects(
+    support_dir: &Path,
+    projects: &[(&str, &str, &Path)],
+) {
+    let projects = projects
+        .iter()
+        .map(|(id, name, path)| {
+            json!({
+                "id": id,
+                "name": name,
+                "path": path.to_string_lossy()
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut snapshot = serde_json::Map::new();
+    snapshot.insert("projects".to_string(), json!(projects));
+    snapshot.insert(
+        "selectedProjectId".to_string(),
+        json!(projects.first().and_then(|project| project["id"].as_str())),
     );
+    // state.json is served by a process-global in-memory ConfigStore; writes
+    // must go through it or a running service never sees the change.
+    crate::config::save_raw_state_snapshot(
+        &crate::config::state_file_path(support_dir.to_path_buf()),
+        &snapshot,
+    )
+    .expect("write project state");
+}
 
-    assert_eq!(filtered.len(), 2);
-    assert_eq!(filtered[0].project_id, "project-1");
-    assert_eq!(filtered[0].total_tokens, 10);
-    assert_eq!(filtered[1].project_id, "worktree-1");
-    assert_eq!(filtered[1].total_tokens, 20);
+fn replace_usage_event_total(
+    support_dir: &Path,
+    project_dir: &Path,
+    session_key: &str,
+    total_tokens: i64,
+) {
+    let store = crate::ai_usage_store::AIUsageStore::at_path(support_dir.join("ai-usage.sqlite3"));
+    let conn = store.connect().expect("connect ai usage store");
+    conn.execute(
+        r#"
+        UPDATE ai_history_file_usage_event
+        SET total_tokens = ?1
+        WHERE project_path = ?2 AND session_key = ?3
+        "#,
+        rusqlite::params![
+            total_tokens,
+            codux_runtime_core::path::normalize_local_path(project_dir),
+            session_key
+        ],
+    )
+    .expect("replace usage event total");
 }
 
 #[test]
-fn pet_refresh_uses_runtime_support_dir_history_store() {
+fn pet_history_rebuild_uses_claim_time_and_can_correct_experience_downward() {
     let support_dir = std::env::temp_dir().join(format!(
-        "codux-pet-runtime-history-store-{}",
+        "codux-pet-history-rebuild-{}",
         uuid::Uuid::new_v4()
     ));
-    let _ = fs::remove_dir_all(&support_dir);
     let project_dir = support_dir.join("project");
     fs::create_dir_all(&project_dir).expect("create project dir");
-    fs::write(
-        support_dir.join("state.json"),
-        json!({
-            "projects": [
-                {
-                    "id": "project-1",
-                    "name": "Project",
-                    "path": project_dir.to_string_lossy()
-                }
-            ],
-            "selectedProjectId": "project-1"
-        })
-        .to_string(),
-    )
-    .expect("write state");
+    write_pet_test_projects(
+        &support_dir,
+        &[("project-1", "Project", project_dir.as_path())],
+    );
 
-    let mut pet_snapshot = crate::pet::PetSnapshot {
-        claimed_at: Some(1),
-        species: "codux".to_string(),
-        global_normalized_total_watermark: Some(100),
-        total_normalized_tokens: 100,
+    let today_start = crate::ai_history_normalized::local_day_start_seconds(
+        crate::ai_history_normalized::now_seconds(),
+    ) as i64;
+    let claimed_at = today_start + 10;
+    let pet_snapshot = crate::pet::PetSnapshot {
+        state_version: crate::pet::PetSnapshot::default().state_version - 1,
+        claimed_at: Some(claimed_at),
+        species: "voidcat".to_string(),
+        current_experience_tokens: 9_999_999,
         ..crate::pet::PetSnapshot::default()
     };
-    pet_snapshot
-        .project_normalized_token_watermarks
-        .insert("project-1".to_string(), 100);
     fs::write(
         support_dir.join("pet-state.json"),
         serde_json::to_vec(&pet_snapshot).expect("encode pet state"),
     )
     .expect("write pet state");
-
-    let service = RuntimeService::new(PathBuf::from(&support_dir));
     write_usage_bucket(
         &support_dir,
         &project_dir,
@@ -78,7 +86,7 @@ fn pet_refresh_uses_runtime_support_dir_history_store() {
         "Project",
         "before-claim",
         100,
-        1.0,
+        (claimed_at - 1) as f64,
     );
     write_usage_bucket(
         &support_dir,
@@ -87,82 +95,353 @@ fn pet_refresh_uses_runtime_support_dir_history_store() {
         "Project",
         "after-claim",
         30,
-        10.0,
+        (claimed_at + 1) as f64,
     );
 
-    let summary = service
+    let service = RuntimeService::new(support_dir.clone());
+    let rebuilt = service
         .refresh_pet_from_indexed_history()
-        .expect("refresh pet from indexed history");
-    assert_eq!(summary.total_xp, 30);
-    assert_eq!(summary.daily_xp, 30);
-    let snapshot = service.pet_snapshot().expect("pet snapshot");
+        .expect("rebuild pet experience");
+    assert_eq!(rebuilt.total_xp, 30);
+    assert_eq!(rebuilt.daily_xp, 30);
+    let snapshot = service.pet_snapshot().expect("rebuilt pet snapshot");
     assert_eq!(
-        snapshot
-            .project_normalized_token_watermarks
-            .get("project-1"),
-        Some(&130)
+        snapshot.state_version,
+        crate::pet::PetSnapshot::default().state_version
+    );
+    assert_eq!(snapshot.memberships.len(), 1);
+    assert_eq!(snapshot.memberships[0].included_at, claimed_at);
+
+    replace_usage_event_total(&support_dir, &project_dir, "after-claim", 12);
+    let corrected = service
+        .refresh_pet_from_indexed_history()
+        .expect("correct pet experience after rebuild");
+    assert_eq!(corrected.total_xp, 12);
+    assert_eq!(corrected.daily_xp, 12);
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("repeat corrected refresh")
+            .total_xp,
+        12
     );
 
-    let summary = service
-        .refresh_pet_from_indexed_history()
-        .expect("refresh pet from indexed history again");
-    assert_eq!(summary.total_xp, 30);
-    assert_eq!(summary.daily_xp, 30);
+    let _ = fs::remove_dir_all(support_dir);
+}
 
-    let second_dir = support_dir.join("second");
-    fs::create_dir_all(&second_dir).expect("create second project dir");
+#[test]
+fn pet_experience_survives_project_id_change_and_reindex() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-pet-project-id-change-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let project_dir = support_dir.join("project");
+    fs::create_dir_all(&project_dir).expect("create project dir");
+    write_pet_test_projects(
+        &support_dir,
+        &[("project-old", "Old Name", project_dir.as_path())],
+    );
+
+    let now = crate::ai_history_normalized::now_seconds() as i64;
+    let pet_snapshot = crate::pet::PetSnapshot {
+        state_version: crate::pet::PetSnapshot::default().state_version - 1,
+        claimed_at: Some(now - 100),
+        species: "voidcat".to_string(),
+        ..crate::pet::PetSnapshot::default()
+    };
     fs::write(
-        support_dir.join("state.json"),
-        json!({
-            "projects": [
-                {
-                    "id": "project-1",
-                    "name": "Project",
-                    "path": project_dir.to_string_lossy()
-                },
-                {
-                    "id": "project-2",
-                    "name": "Second",
-                    "path": second_dir.to_string_lossy()
-                }
-            ],
-            "selectedProjectId": "project-1"
-        })
-        .to_string(),
+        support_dir.join("pet-state.json"),
+        serde_json::to_vec(&pet_snapshot).expect("encode pet state"),
     )
-    .expect("write updated state");
+    .expect("write pet state");
+    write_usage_bucket(
+        &support_dir,
+        &project_dir,
+        "project-old",
+        "Old Name",
+        "session",
+        42,
+        (now - 10) as f64,
+    );
+
+    let service = RuntimeService::new(support_dir.clone());
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("initial pet refresh")
+            .total_xp,
+        42
+    );
+
+    write_pet_test_projects(
+        &support_dir,
+        &[("project-new", "New Name", project_dir.as_path())],
+    );
+    let usage_store =
+        crate::ai_usage_store::AIUsageStore::at_path(support_dir.join("ai-usage.sqlite3"));
+    let conn = usage_store.connect().expect("connect usage store");
+    conn.execute(
+        "UPDATE ai_history_file_usage_event SET project_id = 'project-new';",
+        [],
+    )
+    .expect("simulate reindex with new project id");
+
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh after id change")
+            .total_xp,
+        42
+    );
+    let snapshot = service.pet_snapshot().expect("pet snapshot");
+    assert_eq!(snapshot.memberships.len(), 1);
+    assert_eq!(
+        snapshot.memberships[0].project_path,
+        codux_runtime_core::path::normalize_local_path(&project_dir)
+    );
+
+    let _ = fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn pet_membership_lifecycle_counts_only_included_history() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-pet-membership-lifecycle-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let first_dir = support_dir.join("first");
+    let second_dir = support_dir.join("second");
+    fs::create_dir_all(&first_dir).expect("create first project dir");
+    fs::create_dir_all(&second_dir).expect("create second project dir");
+    write_pet_test_projects(
+        &support_dir,
+        &[("project-1", "First", first_dir.as_path())],
+    );
+
+    let now = crate::ai_history_normalized::now_seconds() as i64;
+    let pet_snapshot = crate::pet::PetSnapshot {
+        state_version: crate::pet::PetSnapshot::default().state_version - 1,
+        claimed_at: Some(now - 1_000),
+        species: "voidcat".to_string(),
+        ..crate::pet::PetSnapshot::default()
+    };
+    fs::write(
+        support_dir.join("pet-state.json"),
+        serde_json::to_vec(&pet_snapshot).expect("encode pet state"),
+    )
+    .expect("write pet state");
+    write_usage_bucket(
+        &support_dir,
+        &first_dir,
+        "project-1",
+        "First",
+        "first-active",
+        20,
+        (now - 500) as f64,
+    );
+
+    let service = RuntimeService::new(support_dir.clone());
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("initial pet refresh")
+            .total_xp,
+        20
+    );
+
     write_usage_bucket(
         &support_dir,
         &second_dir,
         "project-2",
         "Second",
-        "existing-second",
+        "second-before-add",
         10_000,
-        1.0,
+        (now - 500) as f64,
     );
-
-    let summary = service
-        .refresh_pet_from_indexed_history()
-        .expect("refresh pet after adding project");
-    assert_eq!(summary.total_xp, 30);
-    assert_eq!(summary.daily_xp, 30);
+    write_pet_test_projects(
+        &support_dir,
+        &[
+            ("project-1", "First", first_dir.as_path()),
+            ("project-2", "Second", second_dir.as_path()),
+        ],
+    );
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh after adding project")
+            .total_xp,
+        20
+    );
+    let second_included_at = service
+        .pet_snapshot()
+        .expect("pet snapshot after add")
+        .memberships
+        .iter()
+        .find(|membership| {
+            membership.project_path
+                == codux_runtime_core::path::normalize_local_path(&second_dir)
+                && membership.excluded_at.is_none()
+        })
+        .expect("active second membership")
+        .included_at;
+    write_usage_bucket(
+        &support_dir,
+        &second_dir,
+        "project-2",
+        "Second",
+        "second-after-add",
+        5,
+        (second_included_at + 1) as f64,
+    );
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh with second project usage")
+            .total_xp,
+        25
+    );
 
     service
         .project_close(ProjectCloseRequest {
             project_id: "project-1".to_string(),
         })
         .expect("close first project");
-    let summary = service
-        .refresh_pet_from_indexed_history()
-        .expect("refresh pet after removing project");
-    assert_eq!(summary.total_xp, 30);
-    assert_eq!(summary.daily_xp, 30);
-    let snapshot = service.pet_snapshot().expect("pet snapshot after remove");
+    let first_excluded_at = service
+        .pet_snapshot()
+        .expect("pet snapshot after remove")
+        .memberships
+        .iter()
+        .find(|membership| {
+            membership.project_path
+                == codux_runtime_core::path::normalize_local_path(&first_dir)
+        })
+        .and_then(|membership| membership.excluded_at)
+        .expect("closed first membership");
+    write_usage_bucket(
+        &support_dir,
+        &first_dir,
+        "project-1",
+        "First",
+        "first-after-remove",
+        1_000,
+        (first_excluded_at + 1) as f64,
+    );
     assert_eq!(
-        snapshot
-            .project_normalized_token_watermarks
-            .get("project-1"),
-        Some(&130)
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh after removed project usage")
+            .total_xp,
+        25
+    );
+
+    write_pet_test_projects(
+        &support_dir,
+        &[
+            ("project-1", "First", first_dir.as_path()),
+            ("project-2", "Second", second_dir.as_path()),
+        ],
+    );
+    // Seconds-level timestamps cannot order remove → usage → re-add within one
+    // real second, so re-add the membership with an explicit later clock.
+    let first_reincluded_at = first_excluded_at + 10;
+    crate::pet::PetStore::load_or_seed(support_dir.clone())
+        .sync_memberships_at(
+            vec![
+                crate::pet::PetWorkspace {
+                    project_path: first_dir.to_string_lossy().into_owned(),
+                },
+                crate::pet::PetWorkspace {
+                    project_path: second_dir.to_string_lossy().into_owned(),
+                },
+            ],
+            Vec::new(),
+            first_reincluded_at,
+        )
+        .expect("readd first project membership");
+    write_usage_bucket(
+        &support_dir,
+        &first_dir,
+        "project-1",
+        "First",
+        "first-after-readd",
+        7,
+        (first_reincluded_at + 1) as f64,
+    );
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh after readded usage")
+            .total_xp,
+        32
+    );
+
+    let _ = fs::remove_dir_all(support_dir);
+}
+
+#[test]
+fn pet_archive_and_restore_preserve_experience() {
+    let support_dir = std::env::temp_dir().join(format!(
+        "codux-pet-archive-restore-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let project_dir = support_dir.join("project");
+    fs::create_dir_all(&project_dir).expect("create project dir");
+    write_pet_test_projects(
+        &support_dir,
+        &[("project-1", "Project", project_dir.as_path())],
+    );
+
+    let now = crate::ai_history_normalized::now_seconds() as i64;
+    let pet_snapshot = crate::pet::PetSnapshot {
+        state_version: crate::pet::PetSnapshot::default().state_version - 1,
+        claimed_at: Some(now - 1_000),
+        species: "voidcat".to_string(),
+        ..crate::pet::PetSnapshot::default()
+    };
+    fs::write(
+        support_dir.join("pet-state.json"),
+        serde_json::to_vec(&pet_snapshot).expect("encode pet state"),
+    )
+    .expect("write pet state");
+    write_usage_bucket(
+        &support_dir,
+        &project_dir,
+        "project-1",
+        "Project",
+        "active",
+        20,
+        (now - 500) as f64,
+    );
+
+    let service = RuntimeService::new(support_dir.clone());
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("initial pet refresh")
+            .total_xp,
+        20
+    );
+
+    let archived = service.archive_current_pet().expect("archive current pet");
+    let legacy_id = archived.legacy[0].id.clone();
+    assert!(archived.legacy[0]
+        .memberships
+        .iter()
+        .all(|membership| membership.excluded_at.is_some()));
+    let restored = service
+        .restore_archived_pet(PetRestoreRequest { legacy_id })
+        .expect("restore archived pet");
+    assert_eq!(restored.current_experience_tokens, 20);
+    assert!(restored.memberships.iter().any(|membership| {
+        membership.project_path == codux_runtime_core::path::normalize_local_path(&project_dir)
+            && membership.excluded_at.is_none()
+    }));
+    assert_eq!(
+        service
+            .refresh_pet_from_indexed_history()
+            .expect("refresh after restore")
+            .total_xp,
+        20
     );
 
     let _ = fs::remove_dir_all(support_dir);

@@ -183,6 +183,7 @@ impl RuntimeService {
         if result.is_ok() {
             self.remote_host
                 .broadcast_worktree_list_change(&project_id, &project_path);
+            self.sync_pet_project_memberships();
         }
         result
     }
@@ -211,6 +212,7 @@ impl RuntimeService {
         if result.is_ok() {
             self.remote_host
                 .broadcast_worktree_list_change(&project_id, &project_path);
+            self.sync_pet_project_memberships();
         }
         result
     }
@@ -236,10 +238,14 @@ impl RuntimeService {
         }
         let project_id = request.project_id.clone();
         let project_path = request.project_path.clone();
+        let removes_worktree = request.remove_branch.unwrap_or(false);
         let result = WorktreeService::new(self.support_dir.clone()).merge_from_request(request);
         if result.is_ok() {
             self.remote_host
                 .broadcast_worktree_list_change(&project_id, &project_path);
+            if removes_worktree {
+                self.sync_pet_project_memberships();
+            }
         }
         result
     }
@@ -256,7 +262,10 @@ impl RuntimeService {
         project_id: &str,
         project_path: &str,
     ) -> Result<WorktreeSummary, String> {
-        WorktreeService::new(self.support_dir.clone()).sync_from_git(project_id, project_path)
+        let summary =
+            WorktreeService::new(self.support_dir.clone()).sync_from_git(project_id, project_path)?;
+        self.sync_pet_project_memberships();
+        Ok(summary)
     }
 
     pub fn remove_worktree(

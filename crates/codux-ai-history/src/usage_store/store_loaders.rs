@@ -99,6 +99,37 @@ impl AIUsageStore {
         Ok(usage_buckets)
     }
 
+    fn load_usage_events(
+        &self,
+        conn: &Connection,
+        source: &str,
+        file_path: &str,
+        project_path: &str,
+    ) -> Result<Vec<AIUsageEvent>> {
+        let mut statement = conn.prepare(
+            r#"
+            SELECT project_id, session_key, occurred_at, total_tokens,
+                   request_count, active_duration_seconds
+            FROM ai_history_file_usage_event
+            WHERE source = ?1 AND file_path = ?2 AND project_path = ?3
+            ORDER BY event_ordinal ASC;
+            "#,
+        )?;
+        statement
+            .query_map(params![source, file_path, project_path], |row| {
+                Ok(AIUsageEvent {
+                    project_id: row.get(0)?,
+                    session_key: row.get(1)?,
+                    occurred_at: row.get(2)?,
+                    total_tokens: row.get(3)?,
+                    request_count: row.get(4)?,
+                    active_duration_seconds: row.get(5)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
     fn load_usage_amounts_by_bucket(
         &self,
         conn: &Connection,

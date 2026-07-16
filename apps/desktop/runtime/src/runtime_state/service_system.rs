@@ -479,25 +479,34 @@ impl RuntimeService {
 
     pub fn refresh_pet_from_indexed_history(&self) -> Result<PetSummary, String> {
         let store = PetStore::load_or_seed(self.support_dir.clone());
-        let current = store.snapshot()?;
-        let claimed_at = current.claimed_at;
-        let active_project_ids = self.active_project_workspace_ids();
-        let project_totals = self.active_indexed_project_totals(&active_project_ids)?;
-        let all_time_total_tokens = project_totals
-            .iter()
-            .map(|project| project.total_tokens)
-            .sum();
-        let cutoff = claimed_at.map(|value| value as f64);
-        let mut sessions = indexed_sessions_since_at(self.ai_usage_database_path(), cutoff)
+        let current = sync_pet_memberships_from_support_dir(&self.support_dir)?;
+        if current.claimed_at.is_none() {
+            return Ok(self.reload_pet());
+        }
+        let usage_store =
+            crate::ai_usage_store::AIUsageStore::at_path(self.ai_usage_database_path());
+        let conn = usage_store.connect().map_err(|error| error.to_string())?;
+        let intervals = pet_usage_intervals(&current.memberships, None);
+        let experience_tokens = usage_store
+            .normalized_tokens_in_intervals(&conn, &intervals)
             .map_err(|error| error.to_string())?;
-        sessions.retain(|session| active_project_ids.contains(&session.project_id));
-        let input = refresh_input_from_indexed_history(
-            claimed_at,
-            project_totals,
-            all_time_total_tokens,
-            sessions,
-        );
-        store.refresh(input)?;
+        let today_start = crate::ai_history_normalized::local_day_start_seconds(
+            crate::ai_history_normalized::now_seconds(),
+        ) as i64;
+        let daily_experience_tokens = usage_store
+            .normalized_tokens_in_intervals(
+                &conn,
+                &pet_usage_intervals(&current.memberships, Some(today_start)),
+            )
+            .map_err(|error| error.to_string())?;
+        let sessions = usage_store
+            .interval_sessions(&conn, &intervals)
+            .map_err(|error| error.to_string())?;
+        store.refresh(PetRefreshInput {
+            experience_tokens,
+            daily_experience_tokens,
+            computed_stats: crate::pet::pet_stats_from_history_sessions(&sessions),
+        })?;
         Ok(self.reload_pet())
     }
 
@@ -521,47 +530,21 @@ impl RuntimeService {
         &self,
         request: crate::pet::PetClaimRequest,
     ) -> Result<PetSnapshot, String> {
-        let active_project_ids = self.active_project_workspace_ids();
-        let project_totals = self.active_indexed_project_totals(&active_project_ids)?;
-        let all_time_total_tokens = project_totals
-            .iter()
-            .map(|project| project.total_tokens)
-            .sum();
         let input = PetClaimInput {
             species: request.species,
             custom_name: request.custom_name,
             custom_pet: request.custom_pet,
-            project_totals: project_totals
-                .into_iter()
-                .map(|project| PetProjectTokenTotal {
-                    project_id: project.project_id,
-                    total_tokens: project.total_tokens,
-                })
-                .collect(),
-            fallback_total_tokens: all_time_total_tokens,
+            workspaces: self.pet_workspaces(),
         };
         self.claim_pet(input)
     }
 
-    fn active_project_workspace_ids(&self) -> HashSet<String> {
-        ProjectStore::new(self.support_dir.clone())
-            .project_workspaces_snapshot()
-            .into_iter()
-            .map(|project| project.id)
-            .collect()
+    pub(super) fn sync_pet_project_memberships(&self) {
+        note_pet_project_membership_change(&self.support_dir);
     }
 
-    fn active_indexed_project_totals(
-        &self,
-        active_project_ids: &HashSet<String>,
-    ) -> Result<Vec<crate::ai_usage_store::AIUsageProjectTotal>, String> {
-        let project_totals =
-            normalized_project_totals_since_at(self.ai_usage_database_path(), None)
-                .map_err(|error| error.to_string())?;
-        Ok(filter_active_indexed_project_totals(
-            project_totals,
-            active_project_ids,
-        ))
+    fn pet_workspaces(&self) -> Vec<PetWorkspace> {
+        pet_workspaces_from_support_dir(&self.support_dir)
     }
 
     fn ai_usage_database_path(&self) -> PathBuf {
@@ -573,11 +556,18 @@ impl RuntimeService {
     }
 
     pub fn archive_current_pet(&self) -> Result<PetSnapshot, String> {
+        self.refresh_pet_from_indexed_history()?;
         PetStore::load_or_seed(self.support_dir.clone()).archive_current()
     }
 
     pub fn restore_archived_pet(&self, request: PetRestoreRequest) -> Result<PetSnapshot, String> {
-        PetStore::load_or_seed(self.support_dir.clone()).restore_archived(request)
+        // Recalibrate the displaced current pet before it is archived, so a
+        // stale XP value is never baked into its legacy record.
+        self.refresh_pet_from_indexed_history()?;
+        PetStore::load_or_seed(self.support_dir.clone())
+            .restore_archived(request, self.pet_workspaces())?;
+        self.refresh_pet_from_indexed_history()?;
+        self.pet_snapshot()
     }
 
     pub fn set_sleep_mode(&self, mode: &str) -> Result<(SettingsSummary, PowerSummary), String> {
@@ -615,12 +605,71 @@ impl RuntimeService {
     }
 }
 
-fn filter_active_indexed_project_totals(
-    project_totals: Vec<crate::ai_usage_store::AIUsageProjectTotal>,
-    active_project_ids: &HashSet<String>,
-) -> Vec<crate::ai_usage_store::AIUsageProjectTotal> {
-    project_totals
+// Shared by RuntimeService and the remote host runtime so every project
+// list mutation records pet membership boundaries.
+pub(crate) fn sync_pet_memberships_from_support_dir(
+    support_dir: &std::path::Path,
+) -> Result<PetSnapshot, String> {
+    let store = PetStore::load_or_seed(support_dir.to_path_buf());
+    let migration_paths = if store.snapshot()?.state_version
+        < crate::pet::PetSnapshot::default().state_version
+    {
+        let usage_store =
+            crate::ai_usage_store::AIUsageStore::at_path(support_dir.join("ai-usage.sqlite3"));
+        let conn = usage_store.connect().map_err(|error| error.to_string())?;
+        usage_store
+            .indexed_project_paths(&conn)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    store.sync_memberships(
+        pet_workspaces_from_support_dir(support_dir),
+        migration_paths,
+    )
+}
+
+pub(crate) fn note_pet_project_membership_change(support_dir: &std::path::Path) {
+    if let Err(error) = sync_pet_memberships_from_support_dir(support_dir) {
+        crate::runtime_trace::runtime_trace(
+            "pet",
+            &format!("project membership sync failed: {error}"),
+        );
+    }
+}
+
+fn pet_workspaces_from_support_dir(support_dir: &std::path::Path) -> Vec<PetWorkspace> {
+    ai_history_workspace_requests_from_support_dir(support_dir)
         .into_iter()
-        .filter(|project| active_project_ids.contains(&project.project_id))
+        .map(|workspace| PetWorkspace {
+            project_path: workspace.path,
+        })
+        .collect()
+}
+
+fn pet_usage_intervals(
+    memberships: &[PetProjectMembership],
+    lower_bound: Option<i64>,
+) -> Vec<crate::ai_usage_store::AIUsageInterval> {
+    memberships
+        .iter()
+        .filter_map(|membership| {
+            let included_at = lower_bound
+                .map(|bound| membership.included_at.max(bound))
+                .unwrap_or(membership.included_at);
+            if membership
+                .excluded_at
+                .is_some_and(|excluded_at| excluded_at <= included_at)
+            {
+                return None;
+            }
+            Some(crate::ai_usage_store::AIUsageInterval {
+                project_path: membership.project_path.clone(),
+                included_at,
+                excluded_at: membership.excluded_at,
+            })
+        })
         .collect()
 }

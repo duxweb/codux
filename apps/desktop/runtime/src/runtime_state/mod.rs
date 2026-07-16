@@ -8,7 +8,6 @@ use crate::{
     ai_history_normalized::{
         AIGlobalHistorySnapshot, AIHistoryProjectRequest, index_global_history_fresh_at,
         indexed_sessions_since_at, load_indexed_global_history_at, normalized_history_path,
-        normalized_project_totals_since_at,
     },
     ai_runtime::{
         AIRuntimeBridge, AIRuntimeBridgeSnapshot, AIRuntimeContextSnapshot, AIRuntimeProbeRequest,
@@ -58,9 +57,8 @@ use crate::{
     performance::{PerformanceService, PerformanceSummary},
     pet::{
         PetCatalog, PetClaimInput, PetCustomPet, PetCustomPetInstallPreview,
-        PetCustomPetInstallRequest, PetProjectTokenTotal, PetRefreshInput, PetRenameRequest,
-        PetRestoreRequest, PetService, PetSnapshot, PetStore, PetSummary,
-        refresh_input_from_indexed_history,
+        PetCustomPetInstallRequest, PetProjectMembership, PetRefreshInput, PetRenameRequest,
+        PetRestoreRequest, PetService, PetSnapshot, PetStore, PetSummary, PetWorkspace,
     },
     power::{PowerManager, PowerService, PowerSummary},
     project_activity::{ProjectActivityCoordinator, ProjectActivityEvent, ProjectActivitySnapshot},

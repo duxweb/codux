@@ -50,6 +50,8 @@ fn reads_encrypted_pet_state_summary() {
             custom_pet: None,
             custom_name: String::new(),
             total_xp: 1,
+            memberships: Vec::new(),
+            experience_base_tokens: 1,
             stats: PetStats::default(),
             persona_id: default_persona_id(),
             progress: PetProgressInfo::default(),
@@ -104,75 +106,62 @@ fn summary_resets_daily_xp_after_local_day_changes() {
 }
 
 #[test]
-fn sanitize_state_keeps_pet_xp_and_baseline_without_version_bump() {
-    let mut snapshot = PetSnapshot {
+fn sanitize_state_keeps_current_membership_model() {
+    let snapshot = PetSnapshot {
         state_version: STATE_VERSION,
         claimed_at: Some(10),
         current_experience_tokens: 42_000,
+        experience_base_tokens: 100,
         daily_experience_tokens: 120,
-        global_normalized_total_watermark: Some(99_000),
+        daily_experience_day: Some(day_index(now_seconds())),
+        memberships: vec![PetProjectMembership {
+            project_path: "/tmp/project-a".to_string(),
+            included_at: 10,
+            excluded_at: None,
+        }],
         ..PetSnapshot::default()
     };
-    snapshot
-        .project_normalized_token_watermarks
-        .insert("project-a".to_string(), 99_000);
 
     let sanitized = sanitize_state(snapshot);
 
     assert_eq!(sanitized.state_version, STATE_VERSION);
     assert_eq!(sanitized.current_experience_tokens, 42_000);
+    assert_eq!(sanitized.experience_base_tokens, 100);
     assert_eq!(sanitized.daily_experience_tokens, 120);
-    assert_eq!(sanitized.global_normalized_total_watermark, Some(99_000));
-    assert_eq!(
-        sanitized
-            .project_normalized_token_watermarks
-            .get("project-a"),
-        Some(&99_000)
-    );
+    assert_eq!(sanitized.memberships.len(), 1);
+    assert_eq!(sanitized.memberships[0].included_at, 10);
 }
 
 #[test]
-fn history_correction_rebuilds_pet_watermarks_without_resetting_xp() {
-    let mut snapshot = PetSnapshot {
-        state_version: STATE_VERSION - 1,
+fn refresh_recomputes_experience_and_allows_downward_correction() {
+    let mut snapshot = sanitize_state(PetSnapshot {
         claimed_at: Some(10),
-        current_experience_tokens: 42_000,
-        daily_experience_tokens: 120,
-        global_normalized_total_watermark: Some(99_000),
-        total_normalized_tokens: 99_000,
+        current_experience_tokens: 142_000,
+        experience_base_tokens: 2_000,
         ..PetSnapshot::default()
-    };
-    snapshot
-        .project_normalized_token_watermarks
-        .insert("project-a".to_string(), 99_000);
-
-    let mut sanitized = sanitize_state(snapshot);
-
-    assert_eq!(sanitized.current_experience_tokens, 42_000);
-    assert_eq!(sanitized.daily_experience_tokens, 120);
-    assert_eq!(sanitized.progress.total_xp, 42_000);
-    assert_eq!(sanitized.current_stats, PetStats::default());
-    assert_eq!(sanitized.stats_updated_day, None);
-    assert_eq!(sanitized.global_normalized_total_watermark, None);
-    assert!(sanitized.project_normalized_token_watermarks.is_empty());
+    });
     refresh_state(
-        &mut sanitized,
+        &mut snapshot,
         PetRefreshInput {
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-a".to_string(),
-                total_tokens: 1_000,
-            }],
-            fallback_total_tokens: 1_000,
+            experience_tokens: 3_000,
+            daily_experience_tokens: 700,
             computed_stats: PetStats::default(),
         },
     );
-    assert_eq!(sanitized.current_experience_tokens, 42_000);
-    assert_eq!(
-        sanitized
-            .project_normalized_token_watermarks
-            .get("project-a"),
-        Some(&1_000)
+    assert_eq!(snapshot.current_experience_tokens, 5_000);
+    assert_eq!(snapshot.daily_experience_tokens, 700);
+
+    refresh_state(
+        &mut snapshot,
+        PetRefreshInput {
+            experience_tokens: 1_500,
+            daily_experience_tokens: 200,
+            computed_stats: PetStats::default(),
+        },
     );
+    assert_eq!(snapshot.current_experience_tokens, 3_500);
+    assert_eq!(snapshot.daily_experience_tokens, 200);
+    assert_eq!(snapshot.progress.total_xp, 3_500);
 }
 
 #[test]
@@ -255,7 +244,7 @@ fn bundled_catalog_skips_custom_pet_io() {
 }
 
 #[test]
-fn local_pet_state_reads_legacy_hatch_tokens_as_xp() {
+fn local_legacy_state_preserves_pending_membership_migration() {
     let support_dir = temp_support_dir();
     fs::write(
         support_dir.join("pet-state.json"),
@@ -283,9 +272,16 @@ fn local_pet_state_reads_legacy_hatch_tokens_as_xp() {
     assert_eq!(snapshot.current_experience_tokens, 42_000_000);
     assert_eq!(snapshot.progress.total_xp, 42_000_000);
     assert!(snapshot.progress.level > 1);
-    assert_eq!(snapshot.global_normalized_total_watermark, None);
-    assert!(snapshot.project_normalized_token_watermarks.is_empty());
-    assert_eq!(snapshot.total_normalized_tokens, 0);
+    assert_eq!(snapshot.state_version, 8);
+    assert!(snapshot.memberships.is_empty());
+    assert!(snapshot.experience_recalibration_pending);
+    assert_eq!(snapshot.pending_project_token_watermarks.len(), 1);
+    assert!(
+        snapshot
+            .pending_project_token_watermarks
+            .contains_key("project-a")
+    );
+    assert_eq!(snapshot.experience_base_tokens, 0);
 
     fs::remove_dir_all(support_dir).unwrap();
 }
@@ -293,6 +289,7 @@ fn local_pet_state_reads_legacy_hatch_tokens_as_xp() {
 #[test]
 fn pet_store_claim_refresh_rename_archive_restore_and_persist() {
     let support_dir = temp_support_dir();
+    let project_path = support_dir.join("project").to_string_lossy().into_owned();
     let store = PetStore {
         state: Mutex::new(PetSnapshot::default()),
         state_file: support_dir.join("pet-state.dat"),
@@ -303,27 +300,20 @@ fn pet_store_claim_refresh_rename_archive_restore_and_persist() {
             species: "dragon".to_string(),
             custom_name: " Spark ".to_string(),
             custom_pet: None,
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-a".to_string(),
-                total_tokens: 100,
+            workspaces: vec![PetWorkspace {
+                project_path: project_path.clone(),
             }],
-            fallback_total_tokens: 100,
         })
         .unwrap();
     assert_eq!(claimed.species, "dragon");
     assert_eq!(claimed.custom_name, "Spark");
-    assert_eq!(
-        claimed.project_normalized_token_watermarks.get("project-a"),
-        Some(&100)
-    );
+    assert_eq!(claimed.memberships.len(), 1);
+    assert_eq!(claimed.current_experience_tokens, 0);
 
     let refreshed = store
         .refresh(PetRefreshInput {
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-a".to_string(),
-                total_tokens: 250,
-            }],
-            fallback_total_tokens: 250,
+            experience_tokens: 150,
+            daily_experience_tokens: 150,
             computed_stats: PetStats {
                 wisdom: 90,
                 chaos: 10,
@@ -349,9 +339,14 @@ fn pet_store_claim_refresh_rename_archive_restore_and_persist() {
     assert_eq!(archived.legacy.len(), 1);
 
     let restored = store
-        .restore_archived(PetRestoreRequest {
-            legacy_id: archived.legacy[0].id.clone(),
-        })
+        .restore_archived(
+            PetRestoreRequest {
+                legacy_id: archived.legacy[0].id.clone(),
+            },
+            vec![PetWorkspace {
+                project_path: project_path,
+            }],
+        )
         .unwrap();
     assert_eq!(restored.species, "dragon");
     assert_eq!(restored.custom_name, "Ember");
@@ -372,109 +367,220 @@ fn pet_store_claim_refresh_rename_archive_restore_and_persist() {
 }
 
 #[test]
-fn adding_or_removing_projects_does_not_backfill_pet_xp() {
+fn pet_store_instances_share_one_state_lock_per_file() {
+    let support_dir = temp_support_dir();
+    let first = PetStore::load_or_seed(support_dir.clone());
+    let second = PetStore::load_or_seed(support_dir.clone());
+
+    assert!(Arc::ptr_eq(&first, &second));
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn failed_pet_state_save_does_not_commit_memory_snapshot() {
+    let support_dir = temp_support_dir();
+    let store = PetStore {
+        state: Mutex::new(PetSnapshot::default()),
+        state_file: support_dir.clone(),
+    };
+
+    store
+        .claim(PetClaimInput {
+            species: "dragon".to_string(),
+            custom_name: "Spark".to_string(),
+            custom_pet: None,
+            workspaces: Vec::new(),
+        })
+        .expect_err("writing state to a directory must fail");
+
+    assert!(store.snapshot().unwrap().claimed_at.is_none());
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn membership_intervals_track_add_remove_and_readd() {
     let support_dir = temp_support_dir();
     let store = PetStore {
         state: Mutex::new(PetSnapshot::default()),
         state_file: support_dir.join("pet-state.dat"),
     };
 
-    store
-        .claim(PetClaimInput {
-            species: "dragon".to_string(),
-            custom_name: String::new(),
-            custom_pet: None,
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-a".to_string(),
-                total_tokens: 100,
-            }],
-            fallback_total_tokens: 100,
-        })
-        .unwrap();
+    let workspace_a = PetWorkspace {
+        project_path: "/tmp/project-a".to_string(),
+    };
+    let workspace_b = PetWorkspace {
+        project_path: "/tmp/project-b".to_string(),
+    };
+    let mut state = PetSnapshot {
+        state_version: STATE_VERSION - 1,
+        claimed_at: Some(10),
+        species: "dragon".to_string(),
+        ..PetSnapshot::default()
+    };
+    state.state_version = STATE_VERSION - 1;
+    *store.state.lock().unwrap() = state;
 
-    let with_added_project = store
-        .refresh(PetRefreshInput {
-            project_totals: vec![
-                PetProjectTokenTotal {
-                    project_id: "project-a".to_string(),
-                    total_tokens: 120,
-                },
-                PetProjectTokenTotal {
-                    project_id: "project-b".to_string(),
-                    total_tokens: 10_000,
-                },
-            ],
-            fallback_total_tokens: 10_120,
-            computed_stats: PetStats::default(),
-        })
+    let migrated = store
+        .sync_memberships_at(vec![workspace_a.clone()], Vec::new(), 100)
         .unwrap();
-    assert_eq!(with_added_project.current_experience_tokens, 20);
-    assert_eq!(with_added_project.daily_experience_tokens, 20);
+    assert_eq!(migrated.memberships[0].included_at, 10);
+    assert_eq!(migrated.state_version, STATE_VERSION);
+    assert!(migrated.experience_recalibration_pending);
 
-    let with_removed_project = store
+    let calibrated = store
         .refresh(PetRefreshInput {
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-b".to_string(),
-                total_tokens: 10_010,
-            }],
-            fallback_total_tokens: 10_010,
-            computed_stats: PetStats::default(),
+            experience_tokens: 50,
+            daily_experience_tokens: 50,
+            computed_stats: PetStats {
+                wisdom: 10,
+                chaos: 20,
+                night: 30,
+                stamina: 40,
+                empathy: 50,
+            },
         })
         .unwrap();
-    assert_eq!(with_removed_project.current_experience_tokens, 30);
-    assert_eq!(with_removed_project.daily_experience_tokens, 30);
-    assert_eq!(
-        with_removed_project
-            .project_normalized_token_watermarks
-            .get("project-a"),
-        Some(&120)
-    );
+    assert_eq!(calibrated.state_version, STATE_VERSION);
+    assert!(!calibrated.experience_recalibration_pending);
+    assert_eq!(calibrated.current_stats.empathy, 50);
 
-    let with_restored_project = store
-        .refresh(PetRefreshInput {
-            project_totals: vec![
-                PetProjectTokenTotal {
-                    project_id: "project-a".to_string(),
-                    total_tokens: 125,
-                },
-                PetProjectTokenTotal {
-                    project_id: "project-b".to_string(),
-                    total_tokens: 10_015,
-                },
-            ],
-            fallback_total_tokens: 10_140,
-            computed_stats: PetStats::default(),
-        })
+    let added = store
+        .sync_memberships_at(
+            vec![workspace_a.clone(), workspace_b.clone()],
+            Vec::new(),
+            200,
+        )
         .unwrap();
-    assert_eq!(with_restored_project.current_experience_tokens, 40);
-    assert_eq!(with_restored_project.daily_experience_tokens, 40);
+    assert_eq!(added.memberships[1].included_at, 200);
+
+    let removed = store
+        .sync_memberships_at(vec![workspace_b.clone()], Vec::new(), 300)
+        .unwrap();
+    assert_eq!(removed.memberships[0].excluded_at, Some(300));
+    assert_eq!(removed.memberships[1].excluded_at, None);
+
+    let readded = store
+        .sync_memberships_at(vec![workspace_a, workspace_b], Vec::new(), 400)
+        .unwrap();
+    assert_eq!(readded.memberships.len(), 3);
+    assert_eq!(readded.memberships[2].included_at, 400);
+    assert_eq!(readded.memberships[2].excluded_at, None);
 
     fs::remove_dir_all(support_dir).unwrap();
 }
 
 #[test]
+fn legacy_project_ids_migrate_to_path_membership_intervals_once() {
+    let support_dir = temp_support_dir();
+    let store = PetStore {
+        state: Mutex::new(PetSnapshot {
+            state_version: STATE_VERSION - 1,
+            claimed_at: Some(10),
+            pending_project_token_watermarks: HashMap::from([
+                ("active".to_string(), 10),
+                ("removed".to_string(), 20),
+            ]),
+            ..PetSnapshot::default()
+        }),
+        state_file: support_dir.join("pet-state.dat"),
+    };
+
+    let migrated = store
+        .sync_memberships_at(
+            vec![PetWorkspace {
+                project_path: "/tmp/active".to_string(),
+            }],
+            vec!["/tmp/active".to_string(), "/tmp/removed".to_string()],
+            100,
+        )
+        .unwrap();
+
+    assert!(migrated.pending_project_token_watermarks.is_empty());
+    assert!(migrated.memberships.iter().any(|membership| {
+        membership.project_path.ends_with("/tmp/active")
+            && membership.included_at == 10
+            && membership.excluded_at.is_none()
+    }));
+    assert!(migrated.memberships.iter().any(|membership| {
+        membership.project_path.ends_with("/tmp/removed")
+            && membership.included_at == 10
+            && membership.excluded_at == Some(100)
+    }));
+    let encoded = serde_json::to_value(&migrated).unwrap();
+    assert!(encoded.get("projectNormalizedTokenWatermarks").is_none());
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn intermediate_v11_project_id_memberships_are_rebuilt_from_paths() {
+    let support_dir = temp_support_dir();
+    let snapshot = serde_json::from_value::<PetSnapshot>(serde_json::json!({
+        "stateVersion": 11,
+        "statsModelVersion": STATS_MODEL_VERSION,
+        "claimedAt": 10,
+        "species": "dragon",
+        "customName": "Spark",
+        "currentExperienceTokens": 42,
+        "currentStats": {
+            "wisdom": 1,
+            "chaos": 2,
+            "night": 3,
+            "stamina": 4,
+            "empathy": 5
+        },
+        "statsUpdatedDay": null,
+        "memberships": [{
+            "projectId": "legacy-project-id",
+            "includedAt": 10,
+            "excludedAt": null
+        }],
+        "updatedAt": 10
+    }))
+    .unwrap();
+    let store = PetStore {
+        state: Mutex::new(sanitize_state(snapshot)),
+        state_file: support_dir.join("pet-state.dat"),
+    };
+
+    let migrated = store
+        .sync_memberships_at(
+            vec![PetWorkspace {
+                project_path: "/tmp/active".to_string(),
+            }],
+            vec!["/tmp/removed".to_string()],
+            100,
+        )
+        .unwrap();
+
+    assert_eq!(migrated.state_version, STATE_VERSION);
+    assert!(migrated.experience_recalibration_pending);
+    assert_eq!(migrated.current_experience_tokens, 42);
+    assert!(
+        migrated
+            .memberships
+            .iter()
+            .all(|membership| !membership.project_path.contains("legacy-project-id"))
+    );
+    assert!(migrated.memberships.iter().any(|membership| {
+        membership.project_path.ends_with("/tmp/active") && membership.excluded_at.is_none()
+    }));
+    assert!(migrated.memberships.iter().any(|membership| {
+        membership.project_path.ends_with("/tmp/removed") && membership.excluded_at == Some(100)
+    }));
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
 fn pet_stats_use_session_shape_without_flat_placeholder_values() {
-    let stats = pet_stats_from_sessions(&[crate::ai_history_normalized::AISessionSummary {
-        session_id: "session-1".to_string(),
-        external_session_id: None,
-        project_id: "project-a".to_string(),
-        project_name: "Project".to_string(),
-        project_path: "/tmp/project".to_string(),
-        session_title: "Short focused session".to_string(),
-        first_seen_at: 1_700_000_000.0,
-        last_seen_at: 1_700_000_900.0,
-        last_tool: Some("codex".to_string()),
-        last_model: Some("model".to_string()),
+    let stats = pet_stats_from_sessions(&[crate::ai_usage_store::AIUsageIntervalSession {
+        project_path: "/tmp/project-a".to_string(),
+        source: "codex".to_string(),
+        session_key: "session-1".to_string(),
+        first_seen_at: 1_700_000_000,
         request_count: 3,
-        total_input_tokens: 2_400,
-        total_output_tokens: 900,
         total_tokens: 3_300,
-        cached_input_tokens: 0,
-        usage_amounts: Vec::new(),
         active_duration_seconds: 900,
-        today_tokens: 3_300,
-        today_cached_input_tokens: 0,
-        today_usage_amounts: Vec::new(),
     }]);
 
     let max_trait = [
@@ -502,75 +608,18 @@ fn pet_stats_use_session_shape_without_flat_placeholder_values() {
 
 #[test]
 fn pet_stats_ignore_unmeasured_wall_clock_gaps() {
-    let stats = pet_stats_from_sessions(&[crate::ai_history_normalized::AISessionSummary {
-        session_id: "session-1".to_string(),
-        external_session_id: Some("restored-session".to_string()),
-        project_id: "project-a".to_string(),
-        project_name: "Project".to_string(),
-        project_path: "/tmp/project".to_string(),
-        session_title: "Restored session".to_string(),
-        first_seen_at: 1_700_000_000.0,
-        last_seen_at: 1_700_604_800.0,
-        last_tool: Some("codex".to_string()),
-        last_model: Some("model".to_string()),
+    let stats = pet_stats_from_sessions(&[crate::ai_usage_store::AIUsageIntervalSession {
+        project_path: "/tmp/project-a".to_string(),
+        source: "codex".to_string(),
+        session_key: "session-1".to_string(),
+        first_seen_at: 1_700_000_000,
         request_count: 10,
-        total_input_tokens: 8_000,
-        total_output_tokens: 2_000,
         total_tokens: 10_000,
-        cached_input_tokens: 0,
-        usage_amounts: Vec::new(),
         active_duration_seconds: 0,
-        today_tokens: 0,
-        today_cached_input_tokens: 0,
-        today_usage_amounts: Vec::new(),
     }]);
 
     assert_eq!(stats.chaos, 0);
     assert_eq!(stats.stamina, 0);
-}
-
-#[test]
-fn refresh_uses_all_time_project_watermarks_after_claim() {
-    let support_dir = temp_support_dir();
-    let store = PetStore {
-        state: Mutex::new(PetSnapshot::default()),
-        state_file: support_dir.join("pet-state.dat"),
-    };
-
-    store
-        .claim(PetClaimInput {
-            species: "dragon".to_string(),
-            custom_name: String::new(),
-            custom_pet: None,
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-a".to_string(),
-                total_tokens: 100,
-            }],
-            fallback_total_tokens: 100,
-        })
-        .unwrap();
-
-    let refreshed = store
-        .refresh(PetRefreshInput {
-            project_totals: vec![PetProjectTokenTotal {
-                project_id: "project-a".to_string(),
-                total_tokens: 130,
-            }],
-            fallback_total_tokens: 130,
-            computed_stats: PetStats::default(),
-        })
-        .unwrap();
-
-    assert_eq!(refreshed.current_experience_tokens, 30);
-    assert_eq!(refreshed.daily_experience_tokens, 30);
-    assert_eq!(
-        refreshed
-            .project_normalized_token_watermarks
-            .get("project-a"),
-        Some(&130)
-    );
-
-    fs::remove_dir_all(support_dir).unwrap();
 }
 
 #[test]

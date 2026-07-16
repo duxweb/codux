@@ -23,6 +23,292 @@ mod tests {
     }
 
     #[test]
+    fn schema_13_upgrade_preserves_existing_usage_events() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let conn = Connection::open(&database_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE ai_history_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO ai_history_meta VALUES ('normalized_history_schema_version', '13');
+            CREATE TABLE ai_history_file_usage_event (
+                source TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                project_path TEXT NOT NULL,
+                event_ordinal INTEGER NOT NULL,
+                session_key TEXT NOT NULL,
+                occurred_at INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, event_ordinal)
+            );
+            CREATE TABLE ai_history_project_index_state (
+                project_path TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                project_name TEXT NOT NULL,
+                indexed_at REAL NOT NULL
+            );
+            INSERT INTO ai_history_project_index_state
+                VALUES ('/old/path', 'project-a', 'Project A', 100);
+            INSERT INTO ai_history_file_usage_event
+                VALUES ('codex', 'missing.jsonl', '/old/path', 0, 'session', 110, 42);
+            "#,
+        )
+        .unwrap();
+        drop(conn);
+
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(
+                    &conn,
+                    &[AIUsageInterval {
+                        project_path: "/old/path".to_string(),
+                        included_at: 100,
+                        excluded_at: None,
+                    }],
+                )
+                .unwrap(),
+            42
+        );
+        let event: (String, i64, i64) = conn
+            .query_row(
+                "SELECT project_id, request_count, active_duration_seconds FROM ai_history_file_usage_event",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(event, ("project-a".to_string(), 0, 0));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn schema_13_upgrade_canonicalizes_preserved_event_paths() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let project_dir = root.join("project");
+        fs::create_dir_all(&project_dir).unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let aliased_path = project_dir.join("..").join("project");
+        let conn = Connection::open(&database_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE ai_history_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO ai_history_meta VALUES ('normalized_history_schema_version', '13');
+            CREATE TABLE ai_history_file_usage_event (
+                source TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                project_path TEXT NOT NULL,
+                event_ordinal INTEGER NOT NULL,
+                session_key TEXT NOT NULL,
+                occurred_at INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, event_ordinal)
+            );
+            CREATE TABLE ai_history_project_index_state (
+                project_path TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                project_name TEXT NOT NULL,
+                indexed_at REAL NOT NULL
+            );
+            "#,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_history_project_index_state VALUES (?1, 'project-a', 'Project A', 100);",
+            params![aliased_path.to_string_lossy()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO ai_history_file_usage_event VALUES ('codex', 'session.jsonl', ?1, 0, 'session', 110, 42);",
+            params![aliased_path.to_string_lossy()],
+        )
+        .unwrap();
+        drop(conn);
+
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        let stored_path: String = conn
+            .query_row(
+                "SELECT project_path FROM ai_history_file_usage_event;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_path, canonical_project_path(&project_dir.to_string_lossy()));
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(
+                    &conn,
+                    &[AIUsageInterval {
+                        project_path: project_dir.to_string_lossy().into_owned(),
+                        included_at: 0,
+                        excluded_at: None,
+                    }],
+                )
+                .unwrap(),
+            42
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn schema_13_upgrade_converts_usage_buckets_to_facts() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let conn = Connection::open(&database_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE ai_history_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO ai_history_meta VALUES ('normalized_history_schema_version', '13');
+            CREATE TABLE ai_history_file_usage_bucket (
+                source TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                project_path TEXT NOT NULL,
+                session_key TEXT NOT NULL,
+                model TEXT NOT NULL,
+                bucket_start REAL NOT NULL,
+                bucket_end REAL NOT NULL,
+                input_tokens INTEGER NOT NULL,
+                output_tokens INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                cached_input_tokens INTEGER NOT NULL,
+                request_count INTEGER NOT NULL,
+                active_duration_seconds INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, session_key, model, bucket_start)
+            );
+            CREATE TABLE ai_history_file_session_link (
+                source TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                project_path TEXT NOT NULL,
+                session_key TEXT NOT NULL,
+                external_session_id TEXT,
+                project_id TEXT NOT NULL,
+                project_name TEXT NOT NULL,
+                session_title TEXT NOT NULL,
+                first_seen_at REAL NOT NULL,
+                last_seen_at REAL NOT NULL,
+                last_model TEXT,
+                active_duration_seconds INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, session_key)
+            );
+            INSERT INTO ai_history_file_session_link VALUES
+                ('codex', 'session.jsonl', '/old/path', 'session', NULL,
+                 'project-a', 'Project A', 'Session', 100, 200, 'gpt-5', 60);
+            INSERT INTO ai_history_file_usage_bucket VALUES
+                ('codex', 'session.jsonl', '/old/path', 'session', 'gpt-5',
+                 100, 200, 30, 12, 42, 0, 3, 60);
+            "#,
+        )
+        .unwrap();
+        drop(conn);
+
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(
+                    &conn,
+                    &[AIUsageInterval {
+                        project_path: "/old/path".to_string(),
+                        included_at: 0,
+                        excluded_at: None,
+                    }],
+                )
+                .unwrap(),
+            42
+        );
+        let sessions = store
+            .interval_sessions(
+                &conn,
+                &[AIUsageInterval {
+                    project_path: "/old/path".to_string(),
+                    included_at: 0,
+                    excluded_at: None,
+                }],
+            )
+            .unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].request_count, 3);
+        assert_eq!(sessions[0].active_duration_seconds, 60);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn schema_13_upgrade_enriches_precise_events_from_buckets() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let conn = Connection::open(&database_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE ai_history_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO ai_history_meta VALUES ('normalized_history_schema_version', '13');
+            CREATE TABLE ai_history_file_usage_event (
+                source TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                project_path TEXT NOT NULL,
+                event_ordinal INTEGER NOT NULL,
+                session_key TEXT NOT NULL,
+                occurred_at INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, event_ordinal)
+            );
+            CREATE TABLE ai_history_file_usage_bucket (
+                source TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                project_path TEXT NOT NULL,
+                session_key TEXT NOT NULL,
+                model TEXT NOT NULL,
+                bucket_start REAL NOT NULL,
+                bucket_end REAL NOT NULL,
+                input_tokens INTEGER NOT NULL,
+                output_tokens INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                cached_input_tokens INTEGER NOT NULL,
+                request_count INTEGER NOT NULL,
+                active_duration_seconds INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, session_key, model, bucket_start)
+            );
+            CREATE TABLE ai_history_project_index_state (
+                project_path TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                project_name TEXT NOT NULL,
+                indexed_at REAL NOT NULL
+            );
+            INSERT INTO ai_history_project_index_state
+                VALUES ('/old/path', 'project-a', 'Project A', 100);
+            INSERT INTO ai_history_file_usage_event
+                VALUES ('codex', 'session.jsonl', '/old/path', 0, 'session', 110, 42);
+            INSERT INTO ai_history_file_usage_bucket VALUES
+                ('codex', 'session.jsonl', '/old/path', 'session', 'gpt-5',
+                 100, 200, 30, 12, 42, 0, 3, 60);
+            "#,
+        )
+        .unwrap();
+        drop(conn);
+
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        let sessions = store
+            .interval_sessions(
+                &conn,
+                &[AIUsageInterval {
+                    project_path: "/old/path".to_string(),
+                    included_at: 0,
+                    excluded_at: None,
+                }],
+            )
+            .unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].total_tokens, 42);
+        assert_eq!(sessions[0].request_count, 3);
+        assert_eq!(sessions[0].active_duration_seconds, 60);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn unchanged_file_reuses_persisted_summary() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -126,6 +412,141 @@ mod tests {
         );
 
         assert_eq!(store.global_today_normalized_tokens(&conn).unwrap(), 12_000_000);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn usage_intervals_select_exact_events_within_the_same_bucket() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        insert_usage_event(&conn, "/tmp/project-a", "session", 0, 100, 10);
+        insert_usage_event(&conn, "/tmp/project-a", "session", 1, 110, 20);
+        insert_usage_event(&conn, "/tmp/project-a", "session", 2, 120, 30);
+
+        let total = store
+            .normalized_tokens_in_intervals(
+                &conn,
+                &[AIUsageInterval {
+                    project_path: "/tmp/project-a".to_string(),
+                    included_at: 110,
+                    excluded_at: Some(120),
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(total, 20);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn overlapping_usage_intervals_do_not_double_count_events() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        insert_usage_event(&conn, "/tmp/project-a", "session", 0, 100, 10);
+        insert_usage_event(&conn, "/tmp/project-a", "session", 1, 110, 20);
+        insert_usage_event(&conn, "/tmp/project-a", "session", 2, 120, 30);
+
+        let total = store
+            .normalized_tokens_in_intervals(
+                &conn,
+                &[
+                    AIUsageInterval {
+                        project_path: "/tmp/project-a".to_string(),
+                        included_at: 100,
+                        excluded_at: Some(120),
+                    },
+                    AIUsageInterval {
+                        project_path: "/tmp/project-a".to_string(),
+                        included_at: 110,
+                        excluded_at: None,
+                    },
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(total, 60);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn interval_sessions_clip_activity_and_exclude_outside_facts() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_file_usage_event (
+                source, file_path, project_path, project_id, event_ordinal,
+                session_key, occurred_at, total_tokens, request_count,
+                active_duration_seconds
+            ) VALUES
+                ('codex', 'session.jsonl', '/old/path', 'project-a', 0, 'session', 90, 100, 1, 30),
+                ('codex', 'session.jsonl', '/old/path', 'project-a', 1, 'session', 110, 20, 1, 0),
+                ('codex', 'session.jsonl', '/old/path', 'project-a', 2, 'session', 130, 300, 1, 0)
+            "#,
+            [],
+        )
+        .unwrap();
+
+        let sessions = store
+            .interval_sessions(
+                &conn,
+                &[AIUsageInterval {
+                    project_path: "/old/path".to_string(),
+                    included_at: 100,
+                    excluded_at: Some(120),
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].first_seen_at, 100);
+        assert_eq!(sessions[0].request_count, 1);
+        assert_eq!(sessions[0].total_tokens, 20);
+        assert_eq!(sessions[0].active_duration_seconds, 20);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn interval_sessions_keep_same_session_key_separate_across_sources() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        insert_source_usage_event(
+            &conn,
+            "codex",
+            "/tmp/project-a",
+            "shared-session",
+            0,
+            100,
+            10,
+        );
+        insert_source_usage_event(
+            &conn,
+            "claude",
+            "/tmp/project-a",
+            "shared-session",
+            0,
+            110,
+            20,
+        );
+
+        let sessions = store
+            .interval_sessions(
+                &conn,
+                &[AIUsageInterval {
+                    project_path: "/tmp/project-a".to_string(),
+                    included_at: 0,
+                    excluded_at: None,
+                }],
+            )
+            .unwrap();
+
+        assert_eq!(sessions.len(), 2);
+        assert!(sessions.iter().any(|session| session.source == "codex"));
+        assert!(sessions.iter().any(|session| session.source == "claude"));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -292,6 +713,153 @@ mod tests {
     }
 
     #[test]
+    fn jsonl_rebuild_can_correct_interval_tokens_downward() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        fs::write(&file_path, "one\ntwo\n").unwrap();
+        let initial_size = fs::metadata(&file_path).unwrap().len() as i64;
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let project = test_project(&root);
+        let interval = AIUsageInterval {
+            project_path: project.path.clone(),
+            included_at: 0,
+            excluded_at: None,
+        };
+
+        store
+            .load_or_index_jsonl_file(
+                &conn,
+                "codex",
+                &file_path,
+                &project,
+                |_| JSONLParseSnapshot::default(),
+                || JSONLParseSnapshot {
+                    result: parsed_history("session", 100.0, 80, 20),
+                    last_processed_offset: initial_size,
+                    payload_json: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(&conn, std::slice::from_ref(&interval))
+                .unwrap(),
+            100
+        );
+
+        fs::write(&file_path, "one\n").unwrap();
+        let rebuilt_size = fs::metadata(&file_path).unwrap().len() as i64;
+        store
+            .load_or_index_jsonl_file(
+                &conn,
+                "codex",
+                &file_path,
+                &project,
+                |_| JSONLParseSnapshot::default(),
+                || JSONLParseSnapshot {
+                    result: parsed_history("session", 100.0, 8, 2),
+                    last_processed_offset: rebuilt_size,
+                    payload_json: None,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(&conn, &[interval])
+                .unwrap(),
+            10
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn replacing_file_after_project_id_change_keeps_path_scoped_usage() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        fs::write(&file_path, "{}\n").unwrap();
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let project = test_project(&root);
+        let first = store
+            .load_or_index_file(&conn, "codex", &file_path, &project, || {
+                parsed_history("session", 100.0, 80, 20)
+            })
+            .unwrap();
+        let mut replacement = first;
+        for event in &mut replacement.usage_events {
+            event.project_id = "project-b".to_string();
+        }
+
+        store
+            .replace_external_summary(&conn, &replacement, None)
+            .unwrap();
+
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(
+                    &conn,
+                    &[AIUsageInterval {
+                        project_path: project.path.clone(),
+                        included_at: 0,
+                        excluded_at: None,
+                    }],
+                )
+                .unwrap(),
+            100
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn removing_session_preserves_earned_usage_events() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        fs::write(&file_path, "{}\n").unwrap();
+        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let conn = store.connect().unwrap();
+        let project = test_project(&root);
+        store
+            .load_or_index_file(&conn, "codex", &file_path, &project, || {
+                parsed_history("session", 100.0, 80, 20)
+            })
+            .unwrap();
+        let snapshot = store.project_snapshot(&conn, project.clone()).unwrap();
+
+        assert!(
+            store
+                .remove_project_session(&conn, &project.path, &snapshot.sessions[0].session_id)
+                .unwrap()
+        );
+
+        assert!(
+            store
+                .project_snapshot(&conn, project.clone())
+                .unwrap()
+                .sessions
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(
+                    &conn,
+                    &[AIUsageInterval {
+                        project_path: project.path,
+                        included_at: 0,
+                        excluded_at: None,
+                    }],
+                )
+                .unwrap(),
+            100
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn project_snapshot_groups_sessions_by_external_session_id() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -418,33 +986,57 @@ mod tests {
                 &[retained_path],
             )
             .unwrap();
+        let project_path = project.path.clone();
         let snapshot = store.project_snapshot(&conn, project).unwrap();
 
         assert_eq!(snapshot.project_summary.project_total_tokens, 20);
         assert_eq!(snapshot.sessions.len(), 1);
+        assert_eq!(
+            store
+                .normalized_tokens_in_intervals(
+                    &conn,
+                    &[AIUsageInterval {
+                        project_path,
+                        included_at: 0,
+                        excluded_at: None,
+                    }],
+                )
+                .unwrap(),
+            120
+        );
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn global_store_retains_only_current_project_and_worktree_paths() {
+    fn global_scope_filters_projects_without_deleting_history() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
-        let store = AIUsageStore::at_path(root.join("ai-usage.sqlite3"));
+        let database_path = root.join("ai-usage.sqlite3");
+        let store = AIUsageStore::at_path(database_path.clone());
         let conn = store.connect().unwrap();
         insert_usage_bucket(&conn, "/tmp/project-a", "project", 10_000.0, 100);
         insert_usage_bucket(&conn, "/tmp/project-a-worktree", "worktree", 10_000.0, 200);
         insert_usage_bucket(&conn, "/tmp/removed-project", "removed", 10_000.0, 9_999);
+        drop(conn);
 
-        store
-            .retain_project_paths(
-                &conn,
-                &["/tmp/project-a".to_string(), "/tmp/project-a-worktree".to_string()],
-            )
+        let snapshot = load_indexed_global_history_at(
+            database_path,
+            vec![AIHistoryProjectRequest {
+                id: "project-a".to_string(),
+                name: "Project A".to_string(),
+                path: "/tmp/project-a".to_string(),
+            }],
+        )
+        .unwrap()
             .unwrap();
-        let totals = store.indexed_global_project_totals(&conn).unwrap();
+        assert_eq!(snapshot.total_tokens, 100);
 
-        assert_eq!(totals.len(), 2);
-        assert_eq!(totals.iter().map(|item| item.total_tokens).sum::<i64>(), 300);
-        assert!(totals.iter().all(|item| item.project_path != "/tmp/removed-project"));
+        let conn = store.connect().unwrap();
+        let totals = store.indexed_global_project_totals(&conn).unwrap();
+        assert_eq!(totals.len(), 3);
+        assert_eq!(
+            totals.iter().map(|item| item.total_tokens).sum::<i64>(),
+            10_299
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -537,6 +1129,7 @@ mod tests {
         output_tokens: i64,
     ) -> ParsedHistory {
         ParsedHistory {
+            sessions: Vec::new(),
             events: vec![HistoryEvent {
                 source: "claude".to_string(),
                 session_id: session_id.to_string(),
@@ -566,6 +1159,25 @@ mod tests {
         bucket_start: f64,
         total_tokens: i64,
     ) {
+        insert_source_usage_bucket(
+            conn,
+            "codex",
+            project_path,
+            session_key,
+            bucket_start,
+            total_tokens,
+        );
+    }
+
+    fn insert_source_usage_bucket(
+        conn: &Connection,
+        source: &str,
+        project_path: &str,
+        session_key: &str,
+        bucket_start: f64,
+        total_tokens: i64,
+    ) {
+        let file_path = format!("{source}-{session_key}.jsonl");
         conn.execute(
             r#"
             INSERT INTO ai_history_file_session_link (
@@ -580,8 +1192,8 @@ mod tests {
                 last_model = excluded.last_model
             "#,
             params![
-                "codex",
-                "session.jsonl",
+                source,
+                file_path,
                 project_path,
                 session_key,
                 session_key,
@@ -605,8 +1217,8 @@ mod tests {
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
             params![
-                "codex",
-                "session.jsonl",
+                source,
+                file_path,
                 project_path,
                 session_key,
                 "gpt-5",
@@ -622,4 +1234,56 @@ mod tests {
         )
         .unwrap();
     }
+
+    fn insert_usage_event(
+        conn: &Connection,
+        project_path: &str,
+        session_key: &str,
+        event_ordinal: i64,
+        occurred_at: i64,
+        total_tokens: i64,
+    ) {
+        insert_source_usage_event(
+            conn,
+            "codex",
+            project_path,
+            session_key,
+            event_ordinal,
+            occurred_at,
+            total_tokens,
+        );
+    }
+
+    fn insert_source_usage_event(
+        conn: &Connection,
+        source: &str,
+        project_path: &str,
+        session_key: &str,
+        event_ordinal: i64,
+        occurred_at: i64,
+        total_tokens: i64,
+    ) {
+        let file_path = format!("{source}-{session_key}.jsonl");
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_file_usage_event (
+                source, file_path, project_path, project_id, event_ordinal,
+                session_key, occurred_at, total_tokens, request_count,
+                active_duration_seconds
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0)
+            "#,
+            params![
+                source,
+                file_path,
+                project_path,
+                "project-a",
+                event_ordinal,
+                session_key,
+                occurred_at,
+                total_tokens
+            ],
+        )
+        .unwrap();
+    }
+
 }

@@ -132,7 +132,7 @@ fn write_usage_bucket(
 ) {
     let store = crate::ai_usage_store::AIUsageStore::at_path(support_dir.join("ai-usage.sqlite3"));
     let conn = store.connect().expect("connect ai usage store");
-    let project_path = project_dir.to_string_lossy().to_string();
+    let project_path = codux_runtime_core::path::normalize_local_path(project_dir);
     conn.execute(
         r#"
             INSERT INTO ai_history_file_session_link (
@@ -170,7 +170,7 @@ fn write_usage_bucket(
         rusqlite::params![
             "codex",
             "session.jsonl",
-            project_dir.to_string_lossy().to_string(),
+            project_path,
             session_key,
             "gpt-5",
             bucket_start,
@@ -184,4 +184,36 @@ fn write_usage_bucket(
         ],
     )
     .expect("insert usage bucket");
+    let event_ordinal = conn
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(event_ordinal), -1) + 1
+            FROM ai_history_file_usage_event
+            WHERE source = ?1 AND file_path = ?2 AND project_path = ?3
+            "#,
+            rusqlite::params!["codex", "session.jsonl", project_path],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("next usage event ordinal");
+    conn.execute(
+        r#"
+            INSERT INTO ai_history_file_usage_event (
+                source, file_path, project_path, project_id, event_ordinal,
+                session_key, occurred_at, total_tokens, request_count,
+                active_duration_seconds
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, 60)
+            "#,
+        rusqlite::params![
+            "codex",
+            "session.jsonl",
+            project_path,
+            project_id,
+            event_ordinal,
+            session_key,
+            bucket_start as i64,
+            total_tokens
+        ],
+    )
+    .expect("insert usage event");
 }

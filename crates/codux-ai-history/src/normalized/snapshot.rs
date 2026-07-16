@@ -2,6 +2,7 @@ impl ParsedHistory {
     fn merge(&mut self, other: ParsedHistory) {
         self.entries.extend(other.entries);
         self.events.extend(other.events);
+        self.sessions.extend(other.sessions);
     }
 }
 
@@ -9,6 +10,27 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
     let today_start = local_day_start_seconds(now_seconds());
     let active_duration_by_key = active_duration_by_history_key(&parsed.events);
     let mut sessions_by_key: HashMap<String, SessionAccumulator> = HashMap::new();
+
+    for metadata in &parsed.sessions {
+        let key = history_key(&metadata.source, &metadata.session_id);
+        let session = sessions_by_key
+            .entry(key)
+            .or_insert_with(|| SessionAccumulator {
+                source: metadata.source.clone(),
+                session_id: metadata.session_id.clone(),
+                first_seen_at: metadata.timestamp,
+                last_seen_at: metadata.timestamp,
+                ..Default::default()
+            });
+        session.external_session_id = metadata
+            .external_session_id
+            .clone()
+            .or(session.external_session_id.clone());
+        session.title = metadata.session_title.clone().or(session.title.clone());
+        session.model = metadata.model.clone().or(session.model.clone());
+        session.first_seen_at = min_nonzero(session.first_seen_at, metadata.timestamp);
+        session.last_seen_at = session.last_seen_at.max(metadata.timestamp);
+    }
 
     for event in &parsed.events {
         let key = history_key(&event.source, &event.session_id);

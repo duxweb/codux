@@ -1646,8 +1646,17 @@ impl CoduxApp {
             return false;
         };
         let previous_level = self.state.pet.level;
+        let recalibrated = result.pet_snapshot.as_ref().is_some_and(|snapshot| {
+            self.pet_snapshot.experience_recalibration_pending
+                && !snapshot.experience_recalibration_pending
+        });
         self.state.pet = pet;
-        self.note_pet_level_transition(previous_level);
+        if recalibrated {
+            self.pet_level_up = None;
+            self.note_pet_recalibration();
+        } else {
+            self.note_pet_level_transition(previous_level);
+        }
         if let Some(snapshot) = result.pet_snapshot.clone() {
             self.pet_snapshot = snapshot;
         }

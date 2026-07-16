@@ -87,7 +87,7 @@ pub fn desktop_pet_sync_visibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pet::{PetProjectTokenTotal, PetRefreshInput};
+    use crate::pet::PetRefreshInput;
     use uuid::Uuid;
 
     #[test]
@@ -107,11 +107,7 @@ mod tests {
                     species: "dragon".to_string(),
                     custom_name: " Spark ".to_string(),
                     custom_pet: None,
-                    project_totals: vec![PetProjectTokenTotal {
-                        project_id: "project-a".to_string(),
-                        total_tokens: 100,
-                    }],
-                    fallback_total_tokens: 100,
+                    workspaces: Vec::new(),
                 })
                 .expect("seed claimed pet");
         }
@@ -144,11 +140,8 @@ mod tests {
 
         let refreshed = service
             .refresh_pet(PetRefreshInput {
-                project_totals: vec![PetProjectTokenTotal {
-                    project_id: "project-a".to_string(),
-                    total_tokens: 250,
-                }],
-                fallback_total_tokens: 250,
+                experience_tokens: 250,
+                daily_experience_tokens: 150,
                 computed_stats: Default::default(),
             })
             .expect("refresh pet directly");

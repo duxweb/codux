@@ -1,5 +1,5 @@
 #[test]
-fn project_close_keeps_pet_baseline() {
+fn project_close_closes_pet_membership() {
     let support_dir = std::env::temp_dir().join(format!(
         "codux-project-close-pet-baseline-{}",
         uuid::Uuid::new_v4()
@@ -28,18 +28,23 @@ fn project_close_keeps_pet_baseline() {
         .to_string(),
     )
     .expect("write state");
-    let mut pet_snapshot = crate::pet::PetSnapshot {
+    let pet_snapshot = crate::pet::PetSnapshot {
         claimed_at: Some(1),
         species: "codux".to_string(),
-        global_normalized_total_watermark: Some(30),
+        memberships: vec![
+            crate::pet::PetProjectMembership {
+                project_path: codux_runtime_core::path::normalize_local_path(&first_dir),
+                included_at: 1,
+                excluded_at: None,
+            },
+            crate::pet::PetProjectMembership {
+                project_path: codux_runtime_core::path::normalize_local_path(&second_dir),
+                included_at: 1,
+                excluded_at: None,
+            },
+        ],
         ..crate::pet::PetSnapshot::default()
     };
-    pet_snapshot
-        .project_normalized_token_watermarks
-        .insert("project-1".to_string(), 10);
-    pet_snapshot
-        .project_normalized_token_watermarks
-        .insert("project-2".to_string(), 20);
     fs::write(
         support_dir.join("pet-state.json"),
         serde_json::to_vec(&pet_snapshot).expect("encode pet"),
@@ -54,15 +59,14 @@ fn project_close_keeps_pet_baseline() {
         })
         .expect("close first project");
     let pet = service.pet_snapshot().expect("pet snapshot after close");
-    assert_eq!(
-        pet.project_normalized_token_watermarks.get("project-1"),
-        Some(&10)
-    );
-    assert_eq!(
-        pet.project_normalized_token_watermarks.get("project-2"),
-        Some(&20)
-    );
-    assert_eq!(pet.global_normalized_total_watermark, Some(30));
+    assert!(pet.memberships.iter().any(|membership| {
+        membership.project_path == codux_runtime_core::path::normalize_local_path(&first_dir)
+            && membership.excluded_at.is_some()
+    }));
+    assert!(pet.memberships.iter().any(|membership| {
+        membership.project_path == codux_runtime_core::path::normalize_local_path(&second_dir)
+            && membership.excluded_at.is_none()
+    }));
 
     let _ = fs::remove_dir_all(support_dir);
 }
@@ -167,18 +171,23 @@ fn project_close_cleans_workspace_cache_for_root_and_worktrees() {
         )
         .expect("save obsolete git ui state");
 
-    let mut pet_snapshot = crate::pet::PetSnapshot {
+    let pet_snapshot = crate::pet::PetSnapshot {
         claimed_at: Some(1),
         species: "codux".to_string(),
-        global_normalized_total_watermark: Some(30),
+        memberships: vec![
+            crate::pet::PetProjectMembership {
+                project_path: codux_runtime_core::path::normalize_local_path(&project_dir),
+                included_at: 1,
+                excluded_at: None,
+            },
+            crate::pet::PetProjectMembership {
+                project_path: codux_runtime_core::path::normalize_local_path(&worktree_dir),
+                included_at: 1,
+                excluded_at: None,
+            },
+        ],
         ..crate::pet::PetSnapshot::default()
     };
-    pet_snapshot
-        .project_normalized_token_watermarks
-        .insert("project-1".to_string(), 10);
-    pet_snapshot
-        .project_normalized_token_watermarks
-        .insert("worktree-1".to_string(), 20);
     fs::write(
         support_dir.join("pet-state.json"),
         serde_json::to_vec(&pet_snapshot).expect("encode pet"),
@@ -218,15 +227,14 @@ fn project_close_cleans_workspace_cache_for_root_and_worktrees() {
         None
     );
     let pet = service.pet_snapshot().expect("pet snapshot");
-    assert_eq!(
-        pet.project_normalized_token_watermarks.get("project-1"),
-        Some(&10)
-    );
-    assert_eq!(
-        pet.project_normalized_token_watermarks.get("worktree-1"),
-        Some(&20)
-    );
-    assert_eq!(pet.global_normalized_total_watermark, Some(30));
+    assert!(pet.memberships.iter().any(|membership| {
+        membership.project_path == codux_runtime_core::path::normalize_local_path(&project_dir)
+            && membership.excluded_at.is_some()
+    }));
+    assert!(pet.memberships.iter().any(|membership| {
+        membership.project_path == codux_runtime_core::path::normalize_local_path(&worktree_dir)
+            && membership.excluded_at.is_some()
+    }));
 
     let _ = fs::remove_dir_all(support_dir);
 }

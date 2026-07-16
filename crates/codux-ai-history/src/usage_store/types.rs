@@ -13,6 +13,35 @@ pub struct AIExternalFileSummary {
     pub file_size: i64,
     pub project_path: String,
     pub usage_buckets: Vec<AIUsageBucket>,
+    pub usage_events: Vec<AIUsageEvent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AIUsageEvent {
+    pub project_id: String,
+    pub session_key: String,
+    pub occurred_at: i64,
+    pub total_tokens: i64,
+    pub request_count: i64,
+    pub active_duration_seconds: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AIUsageInterval {
+    pub project_path: String,
+    pub included_at: i64,
+    pub excluded_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AIUsageIntervalSession {
+    pub project_path: String,
+    pub source: String,
+    pub session_key: String,
+    pub first_seen_at: i64,
+    pub request_count: i64,
+    pub total_tokens: i64,
+    pub active_duration_seconds: i64,
 }
 
 #[derive(Debug, Clone)]
