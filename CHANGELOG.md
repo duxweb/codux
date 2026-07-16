@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-07-16
+
 ### Changed
 
 - WSL Settings now shows the installed Codux Runtime version and stdio protocol, including the protocol required by the current desktop build when an update is needed.
@@ -11,6 +13,9 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Fixed memory extraction failures after upgrading an existing database that predates the `memory_entries.module_key` column.
+- Fixed cross-platform path identity for local, WSL, remote, and Windows device paths across projects, files, Git, worktrees, terminals, AI history, and memory.
+- Fixed mobile terminal history duplication, stale fragments, blank regions, and inconsistent restores after scrolling, resizing, or rapidly switching projects, worktrees, and running terminals.
+- Fixed remote terminal baselines so retained history, lifecycle watermarks, and the visible screen are captured atomically without increasing scrollback limits or replaying already-covered live output.
 
 ## [2.0.1] - 2026-07-15
 

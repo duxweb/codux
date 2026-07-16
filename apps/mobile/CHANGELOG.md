@@ -4,6 +4,17 @@ Important changes to this project are documented here.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-07-16
+
+### Changed
+
+- Aligned mobile terminal restoration with the shared atomic baseline and output-watermark protocol used by desktop and headless Agent hosts.
+
+### Fixed
+
+- Fixed duplicated terminal history, stale fragments, blank regions, and inconsistent screen restores after scrolling, resizing, folding or unfolding a device, and rapidly switching projects, worktrees, or running terminals.
+- Fixed cached terminal switching so existing sessions are reused without unconditionally replaying their full baseline; uncached or sequence-gapped sessions still request an authoritative baseline.
+
 ## [2.0.0] - 2026-07-13
 
 ### Added
