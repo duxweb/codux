@@ -779,12 +779,12 @@ void main() {
       );
       expect(log, contains('bind session=session-2 project=project-2'));
       expect(log, isNot(contains('request terminal.buffer session=session-2')));
-      final subscribePayload = _lastTerminalBaselineSubscribePayload(
+      final subscribePayload = _lastTerminalSubscribePayload(
         sent,
         sessionId: 'session-2',
       );
       expect(subscribePayload?['resource'], RemoteResourceType.terminals);
-      expect(subscribePayload?['baseline'], isTrue);
+      expect(subscribePayload?.containsKey('baseline'), isFalse);
       expect(
         _lastTerminalProjectSubscribePayload(sent, 'project-2'),
         isNotNull,
@@ -2453,6 +2453,20 @@ Map? _lastTerminalBaselineSubscribePayload(
 }) {
   for (final envelope in sent.reversed) {
     if (!_isTerminalBaselineSubscribe(envelope)) continue;
+    final payload = envelope['payload'];
+    if (payload is! Map) continue;
+    if (sessionId != null && envelope['sessionId'] != sessionId) continue;
+    return payload;
+  }
+  return null;
+}
+
+Map? _lastTerminalSubscribePayload(
+  List<Map<String, dynamic>> sent, {
+  String? sessionId,
+}) {
+  for (final envelope in sent.reversed) {
+    if (!_isTerminalSubscribe(envelope)) continue;
     final payload = envelope['payload'];
     if (payload is! Map) continue;
     if (sessionId != null && envelope['sessionId'] != sessionId) continue;
