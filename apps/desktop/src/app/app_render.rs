@@ -133,8 +133,6 @@ impl Render for CoduxApp {
         }
 
         if self.window_mode == AppWindowMode::MemoryManager {
-            let memory_queue_active = self.state.memory_manager.extraction.queued > 0
-                || self.state.memory_manager.extraction.running > 0;
             let root = div()
                 .size_full()
                 .text_color(cx.theme().foreground)
@@ -148,7 +146,8 @@ impl Render for CoduxApp {
                         selected_project_id: self.memory_manager_project_id.as_deref(),
                         selected_memory_entry_id: self.selected_memory_entry_id.as_deref(),
                         selected_memory_summary_id: self.selected_memory_summary_id.as_deref(),
-                        memory_processing: self.memory_processing || memory_queue_active,
+                        memory_processing: self.memory_processing
+                            || self.state.memory_manager.extraction.running > 0,
                         memory_refreshing: self.memory_manager_refreshing,
                         project_profile_refreshing: self.memory_project_profile_refreshing,
                         language: &self.state.settings.language,

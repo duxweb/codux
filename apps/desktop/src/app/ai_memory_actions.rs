@@ -5,6 +5,15 @@ use crate::app::app_events::{
 
 const MAX_AUTOMATIC_MEMORY_PROCESS_TASKS: usize = 10;
 
+fn should_process_queued_memory_extraction(
+    memory_processing: bool,
+    provider_available: bool,
+    pending: i64,
+    running: i64,
+) -> bool {
+    !memory_processing && provider_available && (pending > 0 || running > 0)
+}
+
 impl CoduxApp {
     pub(super) fn schedule_ai_index_progress_expiry(
         &self,
@@ -105,12 +114,14 @@ impl CoduxApp {
     }
 
     pub(super) fn process_queued_memory_extraction_async(&mut self, cx: &mut Context<Self>) {
-        if self.memory_processing {
-            return;
-        }
         let pending = self.state.memory_manager.extraction.queued.max(0);
         let running = self.state.memory_manager.extraction.running.max(0);
-        if pending == 0 && running == 0 {
+        if !should_process_queued_memory_extraction(
+            self.memory_processing,
+            self.runtime_service.automatic_memory_extraction_available(),
+            pending,
+            running,
+        ) {
             return;
         }
 
@@ -1439,5 +1450,23 @@ impl CoduxApp {
                 .first()
                 .map(|session| session.terminal_id.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod automatic_queue_tests {
+    use super::should_process_queued_memory_extraction;
+
+    #[test]
+    fn automatic_queue_waits_for_an_available_provider() {
+        assert!(!should_process_queued_memory_extraction(false, false, 1, 0));
+        assert!(should_process_queued_memory_extraction(false, true, 1, 0));
+    }
+
+    #[test]
+    fn automatic_queue_requires_work_and_prevents_reentry() {
+        assert!(!should_process_queued_memory_extraction(false, true, 0, 0));
+        assert!(!should_process_queued_memory_extraction(true, true, 1, 0));
+        assert!(should_process_queued_memory_extraction(false, true, 0, 1));
     }
 }
