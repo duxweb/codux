@@ -103,7 +103,7 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|tool| tool["id"] == "kimi" && tool["memoryInjection"] == "kimiAgentFile")
+            .any(|tool| tool["id"] == "kimi" && tool["memoryInjection"] == "none")
     );
     let codewhale_driver = launch_config["tools"]
         .as_array()

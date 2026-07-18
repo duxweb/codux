@@ -91,7 +91,6 @@ fn tool_memory_injection_strategy(tool: &str) -> Option<&'static str> {
         AIRuntimeMemoryInjectionDriver::ClaudeAppendSystemPrompt => {
             Some("claudeAppendSystemPrompt")
         }
-        AIRuntimeMemoryInjectionDriver::KimiAgentFile => Some("kimiAgentFile"),
         AIRuntimeMemoryInjectionDriver::OpenCodeSystemTransform => Some("opencodeSystemTransform"),
     }
 }
@@ -1348,10 +1347,7 @@ mod tests {
             Some("opencodeSystemTransform")
         );
         assert_eq!(tool_memory_injection_strategy("codewhale"), None);
-        assert_eq!(
-            tool_memory_injection_strategy("kimi-code"),
-            Some("kimiAgentFile")
-        );
+        assert_eq!(tool_memory_injection_strategy("kimi-code"), None);
         assert_eq!(tool_memory_injection_strategy("unknown"), None);
     }
 

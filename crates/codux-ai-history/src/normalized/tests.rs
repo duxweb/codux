@@ -1679,6 +1679,111 @@ runtime launch context
     }
 
     #[test]
+    fn parses_current_kimi_index_and_incremental_turn_usage() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let other_project_path = root.join("project-b").to_string_lossy().to_string();
+        let share_dir = root.join(".kimi-code");
+        let session_dir = share_dir.join("sessions/project-key/session-current");
+        let other_session_dir = share_dir.join("sessions/other-key/session-other");
+        let agent_dir = session_dir.join("agents/main");
+        let other_agent_dir = other_session_dir.join("agents/main");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::create_dir_all(&other_agent_dir).unwrap();
+        fs::write(
+            session_dir.join("state.json"),
+            serde_json::json!({ "title": "Current Kimi Session" }).to_string(),
+        )
+        .unwrap();
+        fs::write(
+            agent_dir.join("wire.jsonl"),
+            [
+                serde_json::json!({
+                    "type": "config.update",
+                    "modelAlias": "kimi-code/k3",
+                    "thinkingEffort": "on",
+                    "time": 1_784_382_046_042_i64
+                })
+                .to_string(),
+                serde_json::json!({
+                    "type": "turn.prompt",
+                    "input": [{ "type": "text", "text": "hello current kimi" }],
+                    "time": 1_784_382_046_992_i64
+                })
+                .to_string(),
+                serde_json::json!({
+                    "type": "usage.record",
+                    "model": "kimi-code/k3",
+                    "usage": {
+                        "inputOther": 10,
+                        "output": 5,
+                        "inputCacheRead": 20,
+                        "inputCacheCreation": 3
+                    },
+                    "usageScope": "turn",
+                    "time": 1_784_382_081_647_i64
+                })
+                .to_string(),
+                serde_json::json!({
+                    "type": "usage.record",
+                    "model": "kimi-code/k3",
+                    "usage": {
+                        "inputOther": 4,
+                        "output": 2,
+                        "inputCacheRead": 30,
+                        "inputCacheCreation": 1
+                    },
+                    "usageScope": "turn",
+                    "time": 1_784_382_082_647_i64
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        fs::write(other_agent_dir.join("wire.jsonl"), "{}\n").unwrap();
+        fs::write(
+            share_dir.join("session_index.jsonl"),
+            [
+                serde_json::json!({
+                    "sessionId": "session-current",
+                    "sessionDir": session_dir.display().to_string(),
+                    "workDir": project_path
+                })
+                .to_string(),
+                serde_json::json!({
+                    "sessionId": "session-other",
+                    "sessionDir": other_session_dir.display().to_string(),
+                    "workDir": other_project_path
+                })
+                .to_string(),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 21);
+        assert_eq!(snapshot.project_summary.project_cached_input_tokens, 54);
+        assert_eq!(snapshot.sessions.len(), 1);
+        assert_eq!(snapshot.sessions[0].external_session_id.as_deref(), Some("session-current"));
+        assert_eq!(snapshot.sessions[0].last_model.as_deref(), Some("kimi-code/k3"));
+        assert_eq!(snapshot.sessions[0].request_count, 1);
+        assert_eq!(snapshot.sessions[0].total_input_tokens, 14);
+        assert_eq!(snapshot.sessions[0].total_output_tokens, 7);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn agy_history_uses_antigravity_conversation_db_only() {
         let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
         let project_path = root.join("project-a").to_string_lossy().to_string();

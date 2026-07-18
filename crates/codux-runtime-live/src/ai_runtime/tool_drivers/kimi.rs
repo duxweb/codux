@@ -27,7 +27,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     hook: AIRuntimeToolHookDriver::None,
     probe: Some(probe_kimi_runtime),
     resource_paths: Some(resource_paths),
-    memory_injection: AIRuntimeMemoryInjectionDriver::KimiAgentFile,
+    memory_injection: AIRuntimeMemoryInjectionDriver::None,
     lifecycle_hook_format: AIRuntimeLifecycleHookFormat::None,
     lifecycle_hooks: &[],
     lifecycle_config: None,

@@ -49,7 +49,7 @@ pub(crate) fn probe_kimi_runtime(
         tool: "kimi".to_string(),
         external_session_id: session_id,
         transcript_path: Some(wire_path.display().to_string()),
-        model: None,
+        model: parsed.model,
         assistant_preview: None,
         input_tokens: parsed.input_tokens,
         output_tokens: parsed.output_tokens,
@@ -79,10 +79,15 @@ struct KimiWireState {
     cached_input_tokens: i64,
     total_tokens: i64,
     pending_request: bool,
+    model: Option<String>,
+    uses_flat_records: bool,
 }
 
 impl KimiWireState {
     fn response_state(&self) -> Option<String> {
+        if self.uses_flat_records {
+            return None;
+        }
         if self.last_turn_begin_at > self.last_turn_end_at {
             Some("responding".to_string())
         } else if self.last_turn_end_at > 0.0 {
@@ -116,6 +121,9 @@ fn parse_kimi_wire(path: &Path) -> Option<KimiWireState> {
         let timestamp = kimi_row_timestamp(&row);
         if let Some(timestamp) = timestamp {
             state.updated_at = state.updated_at.max(timestamp);
+        }
+        if parse_flat_kimi_record(&row, timestamp, &mut state) {
+            continue;
         }
         // The first line is `{"type":"metadata",...}`. Runtime records are
         // either persisted envelopes (`{"message":{"type","payload"}}`) or
@@ -176,7 +184,7 @@ fn parse_kimi_wire(path: &Path) -> Option<KimiWireState> {
                     state.input_tokens = input;
                     state.output_tokens = output;
                     state.cached_input_tokens = cache_read + cache_creation;
-                    state.total_tokens = input + output + cache_read + cache_creation;
+                    state.total_tokens = input + output;
                 }
             }
             "ApprovalRequest" | "QuestionRequest" => {
@@ -201,6 +209,49 @@ fn parse_kimi_wire(path: &Path) -> Option<KimiWireState> {
 
     state.pending_request = !pending.is_empty();
     Some(state)
+}
+
+fn parse_flat_kimi_record(row: &Value, timestamp: Option<f64>, state: &mut KimiWireState) -> bool {
+    let Some(event) = row.get("type").and_then(|value| value.as_str()) else {
+        return false;
+    };
+    match event {
+        "config.update" | "llm.request" => {
+            state.uses_flat_records = true;
+            state.model = kimi_model(row).or_else(|| state.model.clone());
+        }
+        "turn.prompt" | "turn.steer" | "turn.cancel" => {
+            state.uses_flat_records = true;
+        }
+        "usage.record" => {
+            state.uses_flat_records = true;
+            state.model = kimi_model(row).or_else(|| state.model.clone());
+            if row.get("usageScope").and_then(|value| value.as_str()) == Some("turn") {
+                let usage = row.get("usage").unwrap_or(&Value::Null);
+                let input = kimi_i64(usage, &["inputOther"]);
+                let output = kimi_i64(usage, &["output"]);
+                let cached = kimi_i64(usage, &["inputCacheRead"])
+                    .saturating_add(kimi_i64(usage, &["inputCacheCreation"]));
+                state.input_tokens = state.input_tokens.saturating_add(input);
+                state.output_tokens = state.output_tokens.saturating_add(output);
+                state.cached_input_tokens = state.cached_input_tokens.saturating_add(cached);
+                state.total_tokens = state.total_tokens.saturating_add(input + output);
+            }
+        }
+        _ => return false,
+    }
+    if let Some(timestamp) = timestamp {
+        state.updated_at = state.updated_at.max(timestamp);
+    }
+    true
+}
+
+fn kimi_model(value: &Value) -> Option<String> {
+    value
+        .get("modelAlias")
+        .or_else(|| value.get("model"))
+        .and_then(|value| value.as_str())
+        .and_then(|value| normalized_string(Some(value)))
 }
 
 fn parse_kimi_state(path: &Path) -> Option<KimiWireState> {
@@ -325,7 +376,7 @@ mod tests {
         assert_eq!(parsed.input_tokens, 100);
         assert_eq!(parsed.output_tokens, 20);
         assert_eq!(parsed.cached_input_tokens, 12);
-        assert_eq!(parsed.total_tokens, 132);
+        assert_eq!(parsed.total_tokens, 120);
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -381,6 +432,25 @@ mod tests {
         let parsed = parse_kimi_wire(&path).expect("parsed");
         assert!(parsed.response_state().is_none());
         assert_eq!(parsed.updated_at, 1_782_631_267.748);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn current_flat_wire_reports_model_and_incremental_usage_without_status() {
+        let (dir, path) = write_wire(&[
+            r#"{"type":"metadata","protocol_version":"1.6"}"#,
+            r#"{"type":"config.update","modelAlias":"kimi-code/k3","thinkingEffort":"on","time":1784381967042}"#,
+            r#"{"type":"turn.prompt","input":[{"type":"text","text":"hello"}],"time":1784382046992}"#,
+            r#"{"type":"usage.record","model":"kimi-code/k3","usage":{"inputOther":10,"output":5,"inputCacheRead":20,"inputCacheCreation":3},"usageScope":"turn","time":1784382081647}"#,
+            r#"{"type":"usage.record","model":"kimi-code/k3","usage":{"inputOther":4,"output":2,"inputCacheRead":30,"inputCacheCreation":1},"usageScope":"turn","time":1784382082647}"#,
+        ]);
+        let parsed = parse_kimi_wire(&path).expect("parsed");
+        assert_eq!(parsed.response_state(), None);
+        assert_eq!(parsed.model.as_deref(), Some("kimi-code/k3"));
+        assert_eq!(parsed.input_tokens, 14);
+        assert_eq!(parsed.output_tokens, 7);
+        assert_eq!(parsed.cached_input_tokens, 54);
+        assert_eq!(parsed.total_tokens, 21);
         let _ = fs::remove_dir_all(dir);
     }
 

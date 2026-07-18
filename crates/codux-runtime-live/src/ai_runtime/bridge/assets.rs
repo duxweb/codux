@@ -367,7 +367,7 @@ case "$cmd" in
     case "${TOOL_NAME:-}" in
       codex) printf '%s\n' codexDeveloperInstructions ;;
       claude|claude-code|reclaude) printf '%s\n' claudeAppendSystemPrompt ;;
-      kimi|kimi-code) printf '%s\n' kimiAgentFile ;;
+      kimi|kimi-code) printf '%s\n' none ;;
       opencode|mimo) printf '%s\n' opencodeSystemTransform ;;
     esac
     ;;

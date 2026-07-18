@@ -515,57 +515,6 @@ apply_codex_memory_developer_instructions() {
   log_line "codex instructions injected path=${memory_agents} chars=${#memory_instructions}"
 }
 
-apply_kimi_memory_agent_file() {
-  tool_uses_memory_injection "kimiAgentFile" || return 0
-  case "${launch_args[1]:-}" in
-    login|logout|info|export|mcp|plugin|vis|web|term|acp|__background-task-worker|__web-worker)
-      log_line "kimi instructions skipped: subcommand=${launch_args[1]}"
-      return 0
-      ;;
-  esac
-  case "${launch_args[1]:-}" in
-    --help|-h|--version|-V)
-    log_line "kimi instructions skipped: metadata invocation"
-    return 0
-      ;;
-  esac
-  if has_exact_arg "--agent-file" "${launch_args[@]}" || has_prefix_arg "--agent-file=" "${launch_args[@]}" || has_exact_arg "--agent" "${launch_args[@]}" || has_prefix_arg "--agent=" "${launch_args[@]}"; then
-    log_line "kimi instructions skipped: agent override already provided"
-    return 0
-  fi
-  local prompt_file
-  prompt_file="$(memory_prompt_file || true)"
-  if [[ -z "${prompt_file}" ]]; then
-    log_line "kimi instructions skipped: prompt file missing"
-    return 0
-  fi
-  local prompt
-  prompt="$(<"${prompt_file}")"
-  if [[ -z "${prompt}" ]]; then
-    log_line "kimi instructions skipped: prompt empty path=${prompt_file}"
-    return 0
-  fi
-  local agent_key="${DMUX_SESSION_ID:-default}"
-  agent_key="${agent_key//[^A-Za-z0-9_.-]/_}"
-  local agent_dir="${wrapper_dir}/managed-kimi-agent/${agent_key}"
-  local agent_file="${agent_dir}/agent.yaml"
-  /bin/mkdir -p -- "${agent_dir}"
-  {
-    print -r -- "version: 1"
-    print -r -- "agent:"
-    print -r -- "  extend: default"
-    print -r -- "  name: \"\""
-    print -r -- "  system_prompt_args:"
-    print -r -- "    ROLE_ADDITIONAL: |"
-    local line
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      print -r -- "      ${line}"
-    done < "${prompt_file}"
-  } >| "${agent_file}"
-  launch_args=(--agent-file "${agent_file}" "${launch_args[@]}")
-  log_line "kimi instructions injected path=${prompt_file} agent=${agent_file} chars=${#prompt}"
-}
-
 apply_append_system_prompt_memory_instructions() {
   local strategy="$1"
   local label="$2"
@@ -925,12 +874,11 @@ fi
 if [[ "$tool_name" == "kimi" || "$tool_name" == "kimi-code" ]]; then
   launch_args=("$@")
   apply_configured_model_arg
-  apply_kimi_memory_agent_file
   launch_model="$(extract_model_target "${launch_args[@]}" || true)"
   resume_target=""
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
-  run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+  run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" TERM_PROGRAM=ghostty DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
 

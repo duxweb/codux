@@ -321,60 +321,6 @@ function Get-Memory-Prompt-File {
   return $promptFile
 }
 
-function Apply-Kimi-Memory-Agent-File([string[]]$Args) {
-  if ($memoryInjectionStrategy -ne "kimiAgentFile") { return $Args }
-  if ($Args.Count -gt 0) {
-    switch -Regex ($Args[0]) {
-      '^(login|logout|info|export|mcp|plugin|vis|web|term|acp|__background-task-worker|__web-worker)$' {
-        Write-Live-Log "kimi instructions skipped: subcommand=$($Args[0])"
-        return $Args
-      }
-    }
-  }
-  if ($Args.Count -gt 0 -and ($Args[0] -eq "--help" -or $Args[0] -eq "-h" -or $Args[0] -eq "--version" -or $Args[0] -eq "-V")) {
-    Write-Live-Log "kimi instructions skipped: metadata invocation"
-    return $Args
-  }
-  if ((Has-Option-Value $Args @("--agent-file")) -or (Has-Option-Value $Args @("--agent"))) {
-    Write-Live-Log "kimi instructions skipped: agent override already provided"
-    return $Args
-  }
-  $promptFile = Get-Memory-Prompt-File
-  if ([string]::IsNullOrWhiteSpace($promptFile)) {
-    Write-Live-Log "kimi instructions skipped: prompt file missing"
-    return $Args
-  }
-  try {
-    $prompt = Get-Content -LiteralPath $promptFile -Raw
-    if ([string]::IsNullOrWhiteSpace($prompt)) {
-      Write-Live-Log "kimi instructions skipped: prompt empty path=$promptFile"
-      return $Args
-    }
-    $agentKey = if ([string]::IsNullOrWhiteSpace($env:DMUX_SESSION_ID)) { "default" } else { $env:DMUX_SESSION_ID }
-    $agentKey = [Regex]::Replace($agentKey, "[^A-Za-z0-9_.-]", "_")
-    $agentDir = Join-Path (Join-Path $wrapperDir "managed-kimi-agent") $agentKey
-    $agentFile = Join-Path $agentDir "agent.yaml"
-    New-Item -ItemType Directory -Force -Path $agentDir | Out-Null
-    $lines = @(
-      "version: 1",
-      "agent:",
-      "  extend: default",
-      "  name: `"`"",
-      "  system_prompt_args:",
-      "    ROLE_ADDITIONAL: |"
-    )
-    foreach ($line in ($prompt -split "`r?`n", -1)) {
-      $lines += "      $line"
-    }
-    [System.IO.File]::WriteAllText($agentFile, ($lines -join "`n"), [System.Text.UTF8Encoding]::new($false))
-    Write-Live-Log "kimi instructions injected path=$promptFile agent=$agentFile chars=$($prompt.Length)"
-    return @("--agent-file", $agentFile) + $Args
-  } catch {
-    Write-Live-Log "kimi instructions skipped: failed to write agent file error=$($_.Exception.Message)"
-    return $Args
-  }
-}
-
 function Apply-Append-System-Prompt([string[]]$Args, [string]$Strategy, [string]$Label) {
   if ($memoryInjectionStrategy -ne $Strategy) { return $Args }
   if (Has-Option-Value $Args @("--append-system-prompt")) {
@@ -697,10 +643,6 @@ if ($permissionMode -eq "fullAccess") {
   }
 }
 
-if ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
-  $launchArgs = Apply-Kimi-Memory-Agent-File $launchArgs
-}
-
 if ($memoryInjectionStrategy -eq "claudeAppendSystemPrompt" -and
     -not (Has-Option-Value $launchArgs @("--append-system-prompt"))) {
   $promptFile = $env:DMUX_AI_MEMORY_PROMPT_FILE
@@ -736,6 +678,10 @@ if ($Tool -eq "opencode" -or $Tool -eq "mimo") {
     $env:OPENCODE_CONFIG_DIR = $openCodeConfigDir
   }
   $env:DMUX_ACTIVE_AI_TOOL = $Tool
+}
+
+if ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
+  $env:TERM_PROGRAM = "ghostty"
 }
 
 Apply-Managed-Lifecycle-Env $Tool

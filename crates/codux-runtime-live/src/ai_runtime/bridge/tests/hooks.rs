@@ -333,7 +333,7 @@ fn codewhale_wrapper_applies_configured_model_and_resume_session() {
 
 #[cfg(not(windows))]
 #[test]
-fn kimi_wrapper_applies_configured_model_and_memory_agent_file() {
+fn kimi_wrapper_applies_model_and_enables_native_progress() {
     use std::os::unix::fs::PermissionsExt;
     use std::process::Command;
 
@@ -344,7 +344,11 @@ fn kimi_wrapper_applies_configured_model_and_memory_agent_file() {
     let real_bin = dir.join("real-bin");
     fs::create_dir_all(&real_bin).unwrap();
     let fake_kimi = real_bin.join("kimi");
-    fs::write(&fake_kimi, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+    fs::write(
+        &fake_kimi,
+        "#!/bin/sh\nprintf 'TERM_PROGRAM=%s\\n' \"${TERM_PROGRAM:-}\"\nprintf '%s\\n' \"$@\"\n",
+    )
+    .unwrap();
     let mut permissions = fs::metadata(&fake_kimi).unwrap().permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&fake_kimi, permissions).unwrap();
@@ -384,17 +388,11 @@ fn kimi_wrapper_applies_configured_model_and_memory_agent_file() {
     let args = String::from_utf8_lossy(&output.stdout);
     assert!(args.lines().any(|arg| arg == "--model"), "{args}");
     assert!(args.lines().any(|arg| arg == "kimi-k2"), "{args}");
-    assert!(args.lines().any(|arg| arg == "--agent-file"), "{args}");
-    let agent_path = args
-        .lines()
-        .skip_while(|arg| *arg != "--agent-file")
-        .nth(1)
-        .expect("agent file argument");
-    let agent = fs::read_to_string(agent_path).unwrap();
-    assert!(agent.contains("extend: default"));
-    assert!(agent.contains("ROLE_ADDITIONAL: |"));
-    assert!(agent.contains("Use Kimi memory."));
-    assert!(agent.contains("Second line."));
+    assert!(
+        args.lines().any(|arg| arg == "TERM_PROGRAM=ghostty"),
+        "{args}"
+    );
+    assert!(!args.contains("--agent-file"), "{args}");
     assert!(!args.lines().any(|arg| arg == "--approval-mode"), "{args}");
     assert!(!args.lines().any(|arg| arg == "yolo"), "{args}");
     assert!(args.lines().any(|arg| arg == "hello"), "{args}");

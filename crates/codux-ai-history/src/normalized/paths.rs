@@ -133,8 +133,65 @@ fn codewhale_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
 }
 
 fn kimi_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
-    let sessions_dir = home.join(".kimi-code").join("sessions");
-    let mut matched = recursive_files(&sessions_dir, "jsonl")
+    let share_dir = home.join(".kimi-code");
+    let index_path = share_dir.join("session_index.jsonl");
+    let mut matched = if index_path.exists() {
+        kimi_session_paths_from_index(project_path, &share_dir, &index_path)
+    } else {
+        kimi_legacy_session_paths(project_path, &share_dir.join("sessions"))
+    };
+    matched.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
+    matched
+}
+
+fn kimi_session_paths_from_index(
+    project_path: &str,
+    share_dir: &Path,
+    index_path: &Path,
+) -> Vec<PathBuf> {
+    let mut matched = Vec::new();
+    let _ = for_each_jsonl_line(index_path, 0, |line, _| {
+        let Ok(row) = serde_json::from_str::<Value>(line) else {
+            return true;
+        };
+        let work_dir = row
+            .get("workDir")
+            .or_else(|| row.get("workdir"))
+            .or_else(|| row.get("cwd"))
+            .and_then(|value| value.as_str());
+        if !paths_equivalent(work_dir, project_path) {
+            return true;
+        }
+        let Some(session_dir) = row
+            .get("sessionDir")
+            .or_else(|| row.get("session_dir"))
+            .and_then(|value| value.as_str())
+            .and_then(normalized_string)
+            .map(PathBuf::from)
+        else {
+            return true;
+        };
+        let session_dir = if session_dir.is_absolute() {
+            session_dir
+        } else {
+            share_dir.join(session_dir)
+        };
+        let direct_wire = session_dir.join("wire.jsonl");
+        let wire_path = if direct_wire.exists() {
+            direct_wire
+        } else {
+            session_dir.join("agents").join("main").join("wire.jsonl")
+        };
+        if wire_path.exists() && !matched.contains(&wire_path) {
+            matched.push(wire_path);
+        }
+        true
+    });
+    matched
+}
+
+fn kimi_legacy_session_paths(project_path: &str, sessions_dir: &Path) -> Vec<PathBuf> {
+    recursive_files(sessions_dir, "jsonl")
         .into_iter()
         .filter(|path| {
             path.file_name()
@@ -143,9 +200,7 @@ fn kimi_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
                 .unwrap_or(false)
         })
         .filter(|path| kimi_wire_belongs_to_project(path, project_path))
-        .collect::<Vec<_>>();
-    matched.sort_by_key(|path| std::cmp::Reverse(file_modified_millis(path).unwrap_or(0)));
-    matched
+        .collect()
 }
 
 fn kimi_wire_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
@@ -157,11 +212,22 @@ fn kimi_wire_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
 }
 
 fn kimi_state_for_wire(file_path: &Path) -> Option<PathBuf> {
-    file_path
-        .parent()?
-        .parent()?
-        .parent()
-        .map(|path| path.join("state.json"))
+    kimi_session_dir_for_wire(file_path).map(|path| path.join("state.json"))
+}
+
+fn kimi_session_dir_for_wire(file_path: &Path) -> Option<&Path> {
+    let parent = file_path.parent()?;
+    if parent.file_name().and_then(|name| name.to_str()) == Some("main")
+        && parent
+            .parent()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            == Some("agents")
+    {
+        parent.parent()?.parent()
+    } else {
+        Some(parent)
+    }
 }
 
 fn codewhale_file_belongs_to_project(file_path: &Path, project_path: &str) -> bool {
