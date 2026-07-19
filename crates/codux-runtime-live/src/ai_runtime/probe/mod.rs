@@ -5,6 +5,7 @@ pub(crate) mod codex;
 mod common;
 pub(crate) mod kimi;
 pub(crate) mod kiro;
+pub(crate) mod omp;
 pub(crate) mod opencode;
 pub(crate) mod paths;
 mod preview;

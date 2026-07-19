@@ -20,6 +20,8 @@ pub fn session_restore_command(session: &AISessionSummary) -> String {
         format!("claude --resume {quoted_id}")
     } else if tool.contains("agy") || tool.contains("antigravity") {
         format!("agy resume {quoted_id}")
+    } else if tool == "omp" || tool.contains("oh my pi") {
+        format!("omp --resume {quoted_id}")
     } else if tool.contains("opencode") {
         format!("opencode --session {quoted_id}")
     } else if tool.contains("mimo") {

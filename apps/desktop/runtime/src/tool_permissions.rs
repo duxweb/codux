@@ -11,6 +11,7 @@ pub struct ToolPermissionsSummary {
     pub codex: String,
     pub claude_code: String,
     pub agy: String,
+    pub omp: String,
     pub opencode: String,
     pub kiro: String,
     pub codewhale: String,
@@ -19,6 +20,7 @@ pub struct ToolPermissionsSummary {
     pub codex_model: String,
     pub claude_code_model: String,
     pub agy_model: String,
+    pub omp_model: String,
     pub opencode_model: String,
     pub kiro_model: String,
     pub codewhale_model: String,
@@ -39,6 +41,8 @@ struct AIRuntimeToolSettings {
     #[serde(default = "default_permission_mode")]
     agy: String,
     #[serde(default = "default_permission_mode")]
+    omp: String,
+    #[serde(default = "default_permission_mode")]
     opencode: String,
     #[serde(default = "default_permission_mode")]
     kiro: String,
@@ -54,6 +58,8 @@ struct AIRuntimeToolSettings {
     claude_code_model: String,
     #[serde(default)]
     agy_model: String,
+    #[serde(default)]
+    omp_model: String,
     #[serde(default)]
     opencode_model: String,
     #[serde(default)]
@@ -74,6 +80,7 @@ impl Default for AIRuntimeToolSettings {
             codex: default_permission_mode(),
             claude_code: default_permission_mode(),
             agy: default_permission_mode(),
+            omp: default_permission_mode(),
             opencode: default_permission_mode(),
             kiro: default_permission_mode(),
             codewhale: default_permission_mode(),
@@ -82,6 +89,7 @@ impl Default for AIRuntimeToolSettings {
             codex_model: String::new(),
             claude_code_model: String::new(),
             agy_model: String::new(),
+            omp_model: String::new(),
             opencode_model: String::new(),
             kiro_model: String::new(),
             codewhale_model: String::new(),
@@ -157,6 +165,7 @@ fn summary_from_settings(
         &settings.codex,
         &settings.claude_code,
         &settings.agy,
+        &settings.omp,
         &settings.opencode,
         &settings.kiro,
         &settings.codewhale,
@@ -172,6 +181,7 @@ fn summary_from_settings(
         codex: settings.codex,
         claude_code: settings.claude_code,
         agy: settings.agy,
+        omp: settings.omp,
         opencode: settings.opencode,
         kiro: settings.kiro,
         codewhale: settings.codewhale,
@@ -180,6 +190,7 @@ fn summary_from_settings(
         codex_model: settings.codex_model,
         claude_code_model: settings.claude_code_model,
         agy_model: settings.agy_model,
+        omp_model: settings.omp_model,
         opencode_model: settings.opencode_model,
         kiro_model: settings.kiro_model,
         codewhale_model: settings.codewhale_model,
@@ -195,6 +206,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.codex = sanitize_permission_mode(&settings.codex);
     settings.claude_code = sanitize_permission_mode(&settings.claude_code);
     settings.agy = sanitize_permission_mode(&settings.agy);
+    settings.omp = sanitize_permission_mode(&settings.omp);
     settings.opencode = sanitize_permission_mode(&settings.opencode);
     settings.kiro = default_permission_mode();
     settings.codewhale = sanitize_permission_mode(&settings.codewhale);
@@ -203,6 +215,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.codex_model = sanitize_model(&settings.codex_model);
     settings.claude_code_model = sanitize_model(&settings.claude_code_model);
     settings.agy_model = sanitize_model(&settings.agy_model);
+    settings.omp_model = sanitize_model(&settings.omp_model);
     settings.opencode_model = sanitize_model(&settings.opencode_model);
     settings.kiro_model = sanitize_model(&settings.kiro_model);
     settings.codewhale_model = sanitize_model(&settings.codewhale_model);
@@ -286,12 +299,14 @@ mod tests {
                         "codex": "fullAccess",
                         "claudeCode": "bad",
                         "agy": "fullAccess",
+                        "omp": "fullAccess",
                         "opencode": "default",
                         "kiro": "fullAccess",
                         "codewhale": "fullAccess",
                         "kimi": "fullAccess",
                         "mimo": "fullAccess",
                         "codexModel": " gpt-5.5 ",
+                        "ompModel": " anthropic/claude-sonnet-4-5 ",
                         "codewhaleModel": " deepseek-chat ",
                         "kimiModel": " kimi-k2 ",
                         "mimoModel": " kimi-k2 ",
@@ -313,15 +328,19 @@ mod tests {
             serde_json::from_str::<Value>(&fs::read_to_string(output_path).unwrap()).unwrap();
 
         assert!(summary.available);
-        assert_eq!(summary.full_access_count, 4);
+        assert_eq!(summary.full_access_count, 5);
         assert_eq!(summary.claude_code, "default");
         assert_eq!(summary.kiro, "default");
         assert_eq!(summary.kimi, "default");
         assert_eq!(summary.codex_model, "gpt-5.5");
+        assert_eq!(summary.omp, "fullAccess");
+        assert_eq!(summary.omp_model, "anthropic/claude-sonnet-4-5");
         assert_eq!(summary.codewhale_model, "deepseek-chat");
         assert_eq!(summary.kimi_model, "kimi-k2");
         assert_eq!(summary.mimo_model, "kimi-k2");
         assert_eq!(written["codex"], "fullAccess");
+        assert_eq!(written["omp"], "fullAccess");
+        assert_eq!(written["ompModel"], "anthropic/claude-sonnet-4-5");
         assert_eq!(written["codewhale"], "fullAccess");
         assert_eq!(written["codewhaleModel"], "deepseek-chat");
         assert_eq!(written["kiro"], "default");

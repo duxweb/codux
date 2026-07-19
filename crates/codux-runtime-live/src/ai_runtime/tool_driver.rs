@@ -108,7 +108,7 @@ pub enum AIRuntimeLifecycleHookFormat {
 pub enum AIRuntimeMemoryInjectionDriver {
     None,
     CodexDeveloperInstructions,
-    ClaudeAppendSystemPrompt,
+    AppendSystemPrompt,
     #[serde(rename = "opencodeSystemTransform")]
     OpenCodeSystemTransform,
 }
@@ -276,6 +276,7 @@ mod tests {
         assert_eq!(canonical_tool_name("claude-code"), Some("claude"));
         assert_eq!(canonical_tool_name("reclaude"), Some("claude"));
         assert_eq!(canonical_tool_name("agy"), Some("agy"));
+        assert_eq!(canonical_tool_name("omp"), Some("omp"));
         assert_eq!(canonical_tool_name("codewhale"), Some("codewhale"));
         assert_eq!(canonical_tool_name("kimi-code"), Some("kimi"));
         assert_eq!(canonical_tool_name("mimo"), Some("mimo"));
@@ -494,6 +495,7 @@ mod tests {
             .find(|tool| tool.id == "codewhale")
             .unwrap();
         let kimi = config.tools.iter().find(|tool| tool.id == "kimi").unwrap();
+        let omp = config.tools.iter().find(|tool| tool.id == "omp").unwrap();
 
         assert_eq!(
             codex.memory_injection,
@@ -501,13 +503,17 @@ mod tests {
         );
         assert_eq!(
             claude.memory_injection,
-            AIRuntimeMemoryInjectionDriver::ClaudeAppendSystemPrompt
+            AIRuntimeMemoryInjectionDriver::AppendSystemPrompt
         );
         assert_eq!(
             codewhale.memory_injection,
             AIRuntimeMemoryInjectionDriver::None
         );
         assert_eq!(kimi.memory_injection, AIRuntimeMemoryInjectionDriver::None);
+        assert_eq!(
+            omp.memory_injection,
+            AIRuntimeMemoryInjectionDriver::AppendSystemPrompt
+        );
         assert!(
             codewhale
                 .lifecycle_hooks
@@ -524,7 +530,7 @@ mod tests {
     fn active_drivers_do_not_use_legacy_global_hook_configs() {
         for driver in ai_runtime_tool_drivers() {
             match driver.id {
-                "codex" | "claude" | "kimi" | "kiro" | "agy" => {
+                "codex" | "claude" | "kimi" | "kiro" | "agy" | "omp" => {
                     assert!(
                         matches!(driver.hook, AIRuntimeToolHookDriver::None),
                         "{} must not modify global CLI hook configs",

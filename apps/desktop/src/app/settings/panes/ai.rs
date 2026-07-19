@@ -77,6 +77,27 @@ pub(super) fn settings_ai_pane(
                     "settings.ai.tool.configuration_format",
                     "%@ Configuration",
                 )
+                .replace("%@", "Oh My Pi"),
+                tool_key: "omp",
+                model_key: "ompModel",
+                permission: &permissions.omp,
+                model: &permissions.omp_model,
+                placeholder: "anthropic/claude-sonnet-4-5",
+                include_permission: true,
+                include_codex_effort: false,
+                codex_effort: &permissions.codex_effort,
+                language,
+            },
+            window,
+            cx,
+        ),
+        settings_runtime_tool_block(
+            RuntimeToolBlockInput {
+                label: settings_text(
+                    language,
+                    "settings.ai.tool.configuration_format",
+                    "%@ Configuration",
+                )
                 .replace("%@", "Claude Code"),
                 tool_key: "claudeCode",
                 model_key: "claudeCodeModel",

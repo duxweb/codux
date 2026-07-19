@@ -62,6 +62,11 @@ impl AIRuntimeBridge {
             &wrapper_dir.join("tool-wrapper.sh"),
             true,
         )?;
+        stage_runtime_asset(
+            "scripts/wrappers/managed-config/omp.yml",
+            &wrapper_dir.join("managed-config/omp.yml"),
+            false,
+        )?;
         self.stage_wrapper_helper(&wrapper_dir)?;
         self.stage_tool_launch_driver_config(&wrapper_dir)?;
         self.stage_tool_lifecycle_configs(&wrapper_dir)?;
@@ -366,7 +371,7 @@ case "$cmd" in
   tool-memory-injection)
     case "${TOOL_NAME:-}" in
       codex) printf '%s\n' codexDeveloperInstructions ;;
-      claude|claude-code|reclaude) printf '%s\n' claudeAppendSystemPrompt ;;
+      claude|claude-code|reclaude|omp) printf '%s\n' appendSystemPrompt ;;
       kimi|kimi-code) printf '%s\n' none ;;
       opencode|mimo) printf '%s\n' opencodeSystemTransform ;;
     esac
@@ -377,6 +382,8 @@ case "$cmd" in
       codexModel) sed -n 's/.*"codexModel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
       claudeCode) sed -n 's/.*"claudeCode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
       claudeCodeModel) sed -n 's/.*"claudeCodeModel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
+      omp) sed -n 's/.*"omp"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
+      ompModel) sed -n 's/.*"ompModel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
       kimi) sed -n 's/.*"kimi"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
       kimiModel) sed -n 's/.*"kimiModel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;
       kiro) sed -n 's/.*"kiro"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${CONFIG_PATH}" | head -n 1 ;;

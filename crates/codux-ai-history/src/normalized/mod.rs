@@ -12,6 +12,8 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use crate::omp_session::{OmpSessionRole, parse_omp_session};
+
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 include!("types.rs");
@@ -20,6 +22,7 @@ include!("snapshot.rs");
 include!("parsers_claude_codex.rs");
 include!("parsers_codewhale.rs");
 include!("parsers_other.rs");
+include!("parsers_omp.rs");
 include!("usage.rs");
 include!("title.rs");
 include!("paths.rs");

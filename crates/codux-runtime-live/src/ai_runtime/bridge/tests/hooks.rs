@@ -196,6 +196,314 @@ fn claude_wrapper_keeps_runtime_injection_for_resume() {
     fs::remove_dir_all(dir).unwrap();
 }
 
+#[cfg(not(windows))]
+#[test]
+fn omp_wrapper_applies_runtime_settings_and_native_progress_config() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-omp-wrapper-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_omp = real_bin.join("omp");
+    fs::write(
+        &fake_omp,
+        "#!/bin/sh\nprintf 'external=%s\\n' \"${DMUX_EXTERNAL_SESSION_ID:-}\"\nprintf 'model=%s\\n' \"${DMUX_ACTIVE_AI_MODEL:-}\"\nprintf '%s\\n' \"$@\"\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_omp).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_omp, permissions).unwrap();
+
+    let permissions_file = dir.join("tool-permissions.json");
+    fs::write(
+        &permissions_file,
+        serde_json::json!({
+            "omp": "fullAccess",
+            "ompModel": "anthropic/claude-sonnet-4-5"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let prompt_file = dir.join("memory-prompt.txt");
+    fs::write(&prompt_file, "Use OMP memory.").unwrap();
+    let binding_dir = dir.join("bindings");
+    let project_dir = dir.join("project");
+    fs::create_dir_all(&project_dir).unwrap();
+    let session_dir = project_dir.join("omp-sessions");
+    fs::create_dir_all(&session_dir).unwrap();
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+
+    let output = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args([
+            "--resume",
+            "session-1",
+            "--session-dir",
+            "omp-sessions",
+            "--cwd",
+            "ignored",
+            "--cwd",
+            "project",
+            "--config",
+            "/tmp/user-omp.yml",
+        ])
+        .current_dir(&dir)
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_SESSION_INSTANCE_ID", "instance-1")
+        .env("DMUX_PROJECT_ID", "project-1")
+        .env("DMUX_PROJECT_NAME", "Project")
+        .env("DMUX_PROJECT_PATH", &dir)
+        .env("DMUX_SESSION_TITLE", "Oh My Pi")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_AI_RUNTIME_BINDING_DIR", &binding_dir)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "wrapper should execute fake omp, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        args.lines().any(|arg| arg == "external=session-1"),
+        "{args}"
+    );
+    assert!(
+        args.lines()
+            .any(|arg| arg == "model=anthropic/claude-sonnet-4-5"),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "--model"), "{args}");
+    assert!(
+        args.lines().any(|arg| arg == "anthropic/claude-sonnet-4-5"),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "--approval-mode"), "{args}");
+    assert!(args.lines().any(|arg| arg == "yolo"), "{args}");
+    assert!(
+        args.lines().any(|arg| arg == "--append-system-prompt"),
+        "{args}"
+    );
+    assert!(args.lines().any(|arg| arg == "Use OMP memory."), "{args}");
+    assert!(args.lines().any(|arg| arg == "/tmp/user-omp.yml"), "{args}");
+    assert!(
+        args.lines()
+            .any(|arg| arg.ends_with("managed-config/omp.yml")),
+        "{args}"
+    );
+
+    let binding: serde_json::Value =
+        serde_json::from_slice(&fs::read(binding_dir.join("terminal-1-omp.json")).unwrap())
+            .unwrap();
+    assert_eq!(binding["externalSessionId"].as_str(), Some("session-1"));
+    assert_eq!(binding["sessionOrigin"].as_str(), Some("restored"));
+    assert!(codux_runtime_core::path::optional_local_path_equals(
+        binding["transcriptPath"].as_str(),
+        session_dir.to_str().unwrap(),
+    ));
+    assert_eq!(
+        binding["model"].as_str(),
+        Some("anthropic/claude-sonnet-4-5")
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(not(windows))]
+#[test]
+fn omp_wrapper_preserves_explicit_args_and_passthrough_commands() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!("codux-omp-wrapper-{}", Uuid::new_v4()));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_omp = real_bin.join("omp");
+    fs::write(&fake_omp, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+    let mut permissions = fs::metadata(&fake_omp).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_omp, permissions).unwrap();
+
+    let permissions_file = dir.join("tool-permissions.json");
+    fs::write(
+        &permissions_file,
+        serde_json::json!({
+            "omp": "fullAccess",
+            "ompModel": "configured-model"
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let prompt_file = dir.join("memory-prompt.txt");
+    fs::write(&prompt_file, "Managed prompt").unwrap();
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+
+    let output = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args([
+            "--model",
+            "user-model",
+            "--approval-mode",
+            "write",
+            "--append-system-prompt",
+            "User prompt",
+            "--config",
+            "/tmp/user-omp.yml",
+            "hello",
+        ])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(args.lines().any(|arg| arg == "user-model"), "{args}");
+    assert!(args.lines().any(|arg| arg == "write"), "{args}");
+    assert!(args.lines().any(|arg| arg == "User prompt"), "{args}");
+    assert!(!args.lines().any(|arg| arg == "configured-model"), "{args}");
+    assert!(!args.lines().any(|arg| arg == "Managed prompt"), "{args}");
+    assert!(!args.lines().any(|arg| arg == "yolo"), "{args}");
+
+    let passthrough = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args(["usage", "--json"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+    assert!(passthrough.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&passthrough.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        vec!["usage", "--json"]
+    );
+
+    let profiled_passthrough = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args(["--profile", "work", "usage", "--json"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+    assert!(profiled_passthrough.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&profiled_passthrough.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        vec!["--profile", "work", "usage", "--json"]
+    );
+
+    let configured_passthrough = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args(["--config", "/tmp/user-omp.yml", "usage", "--json"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+    assert!(configured_passthrough.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&configured_passthrough.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        vec!["--config", "/tmp/user-omp.yml", "usage", "--json"]
+    );
+
+    let short_version = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .arg("-v")
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+    assert!(short_version.status.success());
+    assert_eq!(String::from_utf8_lossy(&short_version.stdout).trim(), "-v");
+
+    for metadata_arg in ["-v", "--help"] {
+        let profiled_metadata = Command::new(bridge.wrapper_bin_dir().join("omp"))
+            .args(["--profile", "work", metadata_arg])
+            .env("PATH", &search_path)
+            .env("DMUX_ORIGINAL_PATH", &search_path)
+            .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+            .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+            .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+            .output()
+            .unwrap();
+        assert!(profiled_metadata.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&profiled_metadata.stdout)
+                .lines()
+                .collect::<Vec<_>>(),
+            vec!["--profile", "work", metadata_arg]
+        );
+    }
+
+    let plan_passthrough = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args(["--plan", "--profile", "work", "usage", "--json"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+    assert!(plan_passthrough.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&plan_passthrough.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        vec!["--plan", "--profile", "work", "usage", "--json"]
+    );
+
+    let profiled_launch = Command::new(bridge.wrapper_bin_dir().join("omp"))
+        .args(["--profile", "work"])
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env("DMUX_AI_MEMORY_PROMPT_FILE", &prompt_file)
+        .env("DMUX_ACTIVE_AI_RESOLVED_PATH", &fake_omp)
+        .output()
+        .unwrap();
+    assert!(profiled_launch.status.success());
+    let profiled_launch_args = String::from_utf8_lossy(&profiled_launch.stdout);
+    assert!(
+        profiled_launch_args
+            .lines()
+            .any(|arg| arg == "configured-model"),
+        "{profiled_launch_args}"
+    );
+    assert!(
+        profiled_launch_args
+            .lines()
+            .any(|arg| arg == "Managed prompt"),
+        "{profiled_launch_args}"
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn bridge_prepare_strips_codux_hooks_and_keeps_user_hooks() {
     let dir = std::env::temp_dir().join(format!("codux-ai-bridge-file-{}", Uuid::new_v4()));

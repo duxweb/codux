@@ -7,6 +7,7 @@ mod codex;
 mod kimi;
 mod kiro;
 mod mimo;
+mod omp;
 mod opencode;
 
 // Note: agy (Antigravity) is tracked through its current SQLite conversation
@@ -19,5 +20,6 @@ pub const AI_RUNTIME_TOOL_DRIVERS: &[AIRuntimeToolDriver] = &[
     codewhale::DRIVER,
     kimi::DRIVER,
     mimo::DRIVER,
+    omp::DRIVER,
     agy::DRIVER,
 ];

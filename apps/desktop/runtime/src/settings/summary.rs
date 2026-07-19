@@ -433,10 +433,11 @@ fn provider_summary(value: &Value) -> Option<AIProviderSummary> {
 }
 
 fn runtime_tool_count(value: &Value) -> usize {
-    const TOOL_KEYS: [&str; 8] = [
+    const TOOL_KEYS: [&str; 9] = [
         "codex",
         "claudeCode",
         "agy",
+        "omp",
         "opencode",
         "kiro",
         "codewhale",

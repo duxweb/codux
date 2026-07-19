@@ -6,6 +6,7 @@
 pub mod agy_db;
 pub mod indexer;
 pub mod normalized;
+pub mod omp_session;
 pub mod paths;
 pub mod trace;
 pub mod usage_store;

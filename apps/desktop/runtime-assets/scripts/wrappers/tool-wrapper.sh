@@ -191,8 +191,68 @@ restore_working_directory() {
 
 is_passthrough_invocation() {
   local first="${1:-}"
+  if [[ "${tool_name}" == "omp" ]]; then
+    while [[ $# -gt 0 ]]; do
+      first="$1"
+      case "${first}" in
+        --)
+          return 1
+          ;;
+        --alias|--alias=*)
+          return 0
+          ;;
+        --cwd|--config|--mode|--fork|--provider|--model|--smol|--slow|--prewalk-into|--plan-yolo-into|--max-time|--api-key|--system-prompt|--append-system-prompt|--provider-session-id|--prompt-cache-key|--session-dir|--models|--tools|--thinking|--export|--hook|--extension|-e|--plugin-dir|--skills|--approval-mode|--profile)
+          [[ $# -ge 2 ]] || return 0
+          shift 2
+          continue
+          ;;
+        --plan)
+          shift
+          if [[ $# -gt 0 && "$1" != -* ]]; then
+            shift
+          fi
+          continue
+          ;;
+        --resume|-r|--session)
+          shift
+          if [[ $# -gt 0 && "$1" != -* && -n "$1" ]]; then
+            shift
+          fi
+          continue
+          ;;
+        --help|-h|--version|-v)
+          return 0
+          ;;
+        --allow-home|--continue|-c|--no-session|--no-tools|--no-lsp|--no-pty|--hide-thinking|--advisor|--prewalk|--no-prewalk|--plan-yolo|--print|-p|--print-thoughts|--no-extensions|--no-skills|--no-rules|--no-title|--auto-approve|--yolo)
+          shift
+          continue
+          ;;
+        --*=*)
+          shift
+          continue
+          ;;
+        --*)
+          shift
+          if [[ $# -gt 0 && "$1" != -* ]]; then
+            shift
+          fi
+          continue
+          ;;
+        -*)
+          shift
+          continue
+          ;;
+      esac
+      break
+    done
+    case "${first}" in
+      acp|agents|auth-broker|auth-gateway|bench|commit|completions|__complete|config|dry-balance|gallery|gc|grep|grievances|install|join|models|plugin|read|say|search|q|setup|shell|ssh|stats|tiny-models|token|ttsr|update|usage|worktree|wt)
+        return 0
+        ;;
+    esac
+  fi
   case "${first}" in
-    --help|-h|help|--version|-V|version|features|--features|auth|login|logout|doctor|update|upgrade|config|info|export|mcp|plugin|vis|web|term|acp|app-server|__background-task-worker|__web-worker)
+    --help|-h|help|--version|-V|-v|version|features|--features|auth|login|logout|doctor|update|upgrade|config|info|export|mcp|plugin|vis|web|term|acp|app-server|__background-task-worker|__web-worker)
       return 0
       ;;
   esac
@@ -285,6 +345,9 @@ configured_permission_mode() {
     agy)
       config_key="agy"
       ;;
+    omp)
+      config_key="omp"
+      ;;
     kimi|kimi-code)
       config_key="kimi"
       ;;
@@ -324,6 +387,9 @@ configured_tool_model() {
       ;;
     agy)
       config_key="agyModel"
+      ;;
+    omp)
+      config_key="ompModel"
       ;;
     kimi|kimi-code)
       config_key="kimiModel"
@@ -381,7 +447,7 @@ apply_configured_model_arg() {
     codex)
       launch_args=("--model=${configured_model}" "${launch_args[@]}")
       ;;
-    claude|claude-code|reclaude|agy|kimi|kimi-code|opencode|mimo|codewhale)
+    claude|claude-code|reclaude|agy|omp|kimi|kimi-code|opencode|mimo|codewhale)
       launch_args=(--model "${configured_model}" "${launch_args[@]}")
       ;;
   esac
@@ -673,6 +739,42 @@ extract_model_target() {
   return 1
 }
 
+extract_omp_session_dir() {
+  local previous=""
+  local value=""
+  local launch_dir="${PWD:A}"
+  local cwd_value=""
+  for arg in "$@"; do
+    case "${previous}" in
+      --cwd)
+        cwd_value="${arg}"
+        ;;
+      --session-dir)
+        value="$arg"
+        ;;
+    esac
+    case "$arg" in
+      --cwd=*)
+        cwd_value="${arg#--cwd=}"
+        ;;
+      --session-dir=*)
+        value="${arg#--session-dir=}"
+        ;;
+    esac
+    previous="$arg"
+  done
+  if [[ -n "${cwd_value}" ]]; then
+    [[ "${cwd_value}" == /* ]] && launch_dir="${cwd_value:A}" || launch_dir="${launch_dir}/${cwd_value}"
+  fi
+  [[ -n "${value}" ]] || return 1
+  if [[ "${value}" == /* ]]; then
+    print -r -- "${value:A}"
+  else
+    local path="${launch_dir}/${value}"
+    print -r -- "${path:A}"
+  fi
+}
+
 write_claude_session_map() {
   [[ -n "${DMUX_CLAUDE_SESSION_MAP_DIR:-}" && -n "${DMUX_SESSION_ID:-}" && -n "${1:-}" ]] || return 0
   local external_session_id="$1"
@@ -768,7 +870,6 @@ if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" || "$tool_name" 
     claude_launch_path="${managed_system_first_path}"
     claude_maxproc="${DMUX_CLAUDE_MAXPROC:-2048}"
     apply_process_limit_cap "${claude_maxproc}"
-    claude_memory_prompt_file="$(memory_prompt_file || true)"
     launch_args=("$@")
     apply_configured_model_arg
     if [[ "${local_permission_mode}" == "fullAccess" ]] \
@@ -778,24 +879,7 @@ if [[ "$tool_name" == "claude" || "$tool_name" == "claude-code" || "$tool_name" 
       && ! has_prefix_arg "--permission-mode=" "${launch_args[@]}"; then
       launch_args=(--dangerously-skip-permissions "${launch_args[@]}")
     fi
-    if tool_uses_memory_injection "claudeAppendSystemPrompt" \
-      && [[ -n "${claude_memory_prompt_file}" ]] \
-      && ! has_exact_arg "--append-system-prompt" "${launch_args[@]}" \
-      && ! has_prefix_arg "--append-system-prompt=" "${launch_args[@]}"; then
-      claude_memory_prompt="$(<"${claude_memory_prompt_file}")"
-      if [[ -n "${claude_memory_prompt}" ]]; then
-        launch_args=(--append-system-prompt "${claude_memory_prompt}" "${launch_args[@]}")
-        log_line "claude instructions injected path=${claude_memory_prompt_file} chars=${#claude_memory_prompt}"
-      else
-        log_line "claude instructions skipped: prompt empty path=${claude_memory_prompt_file}"
-      fi
-    elif tool_uses_memory_injection "claudeAppendSystemPrompt"; then
-      if [[ -z "${claude_memory_prompt_file}" ]]; then
-        log_line "claude instructions skipped: prompt file missing"
-      else
-        log_line "claude instructions skipped: append-system-prompt already provided"
-      fi
-    fi
+    apply_append_system_prompt_memory_instructions "appendSystemPrompt" "claude"
     skip_session_id=false
     launch_model="$(extract_model_target "${launch_args[@]}" || true)"
     for arg in "${launch_args[@]}"; do
@@ -868,6 +952,28 @@ if [[ "$tool_name" == "agy" ]]; then
   resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
   write_runtime_binding "${resume_target}" "${launch_model}" "" "$(runtime_session_origin_for_resume "${resume_target}")"
   run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
+  exit $?
+fi
+
+if [[ "$tool_name" == "omp" ]]; then
+  local_permission_mode="$(configured_permission_mode || true)"
+  launch_args=("$@")
+  apply_configured_model_arg
+  apply_append_system_prompt_memory_instructions "appendSystemPrompt" "omp"
+  if [[ "${local_permission_mode}" == "fullAccess" ]] \
+    && ! has_exact_arg "--approval-mode" "${launch_args[@]}" \
+    && ! has_prefix_arg "--approval-mode=" "${launch_args[@]}" \
+    && ! has_exact_arg "--auto-approve" "${launch_args[@]}" \
+    && ! has_exact_arg "--yolo" "${launch_args[@]}"; then
+    launch_args=(--approval-mode yolo "${launch_args[@]}")
+  fi
+  launch_args+=(--config "${wrapper_dir}/managed-config/omp.yml")
+  launch_model="$(extract_model_target "${launch_args[@]}" || true)"
+  resume_target=""
+  resume_target="$(extract_resume_target "${launch_args[@]}" || true)"
+  session_dir="$(extract_omp_session_dir "${launch_args[@]}" || true)"
+  write_runtime_binding "${resume_target}" "${launch_model}" "${session_dir}" "$(runtime_session_origin_for_resume "${resume_target}")"
+  run_wrapped_ai_command "${resume_target}" "${launch_model}" "" env PATH="$runtime_path" DMUX_EXTERNAL_SESSION_ID="${resume_target}" DMUX_ACTIVE_AI_MODEL="${launch_model}" "$real_bin" "${launch_args[@]}"
   exit $?
 fi
 

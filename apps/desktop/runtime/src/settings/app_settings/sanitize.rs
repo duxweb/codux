@@ -196,6 +196,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
     settings.codex = sanitize_tool_permission_mode(&settings.codex);
     settings.claude_code = sanitize_tool_permission_mode(&settings.claude_code);
     settings.agy = sanitize_tool_permission_mode(&settings.agy);
+    settings.omp = sanitize_tool_permission_mode(&settings.omp);
     settings.opencode = sanitize_tool_permission_mode(&settings.opencode);
     settings.kiro = default_ai_tool_permission_mode();
     settings.codewhale = sanitize_tool_permission_mode(&settings.codewhale);
@@ -209,6 +210,7 @@ fn sanitize_runtime_tool_settings(mut settings: AIRuntimeToolSettings) -> AIRunt
         .take(160)
         .collect();
     settings.agy_model = settings.agy_model.trim().chars().take(160).collect();
+    settings.omp_model = settings.omp_model.trim().chars().take(160).collect();
     settings.opencode_model = settings.opencode_model.trim().chars().take(160).collect();
     settings.kiro_model = settings.kiro_model.trim().chars().take(160).collect();
     settings.codewhale_model = settings.codewhale_model.trim().chars().take(160).collect();

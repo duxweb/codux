@@ -8,6 +8,19 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
     bridge.stage_assets().unwrap();
 
     assert!(bridge.managed_hook_script().is_file());
+    let zsh_hook = fs::read_to_string(
+        dir.join("root")
+            .join("scripts/shell-hooks/dmux-ai-hook.zsh"),
+    )
+    .unwrap();
+    assert!(zsh_hook.contains("omp() { _dmux_exec_wrapped_tool omp"));
+    assert!(zsh_hook.contains("reclaude|omp|opencode"));
+    let powershell_hook = fs::read_to_string(
+        dir.join("root")
+            .join("scripts/shell-hooks/dmux-ai-hook.ps1"),
+    )
+    .unwrap();
+    assert!(powershell_hook.contains("'reclaude', 'omp', 'opencode'"));
     #[cfg(not(windows))]
     {
         fs::write(bridge.wrapper_bin_dir().join("kiro"), "stale").unwrap();
@@ -20,6 +33,7 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
         assert!(bridge.wrapper_bin_dir().join("kimi").is_file());
         assert!(bridge.wrapper_bin_dir().join("kimi-code").is_file());
         assert!(bridge.wrapper_bin_dir().join("mimo").is_file());
+        assert!(bridge.wrapper_bin_dir().join("omp").is_file());
     }
     #[cfg(windows)]
     {
@@ -45,6 +59,7 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
         assert!(bridge.wrapper_bin_dir().join("kimi.ps1").is_file());
         assert!(bridge.wrapper_bin_dir().join("kimi-code.ps1").is_file());
         assert!(bridge.wrapper_bin_dir().join("mimo.ps1").is_file());
+        assert!(bridge.wrapper_bin_dir().join("omp.ps1").is_file());
         assert!(!bridge.wrapper_bin_dir().join("codex.cmd").exists());
     }
     assert!(
@@ -82,17 +97,37 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
             .join("scripts/wrappers/managed-env/codewhale.ps1")
             .is_file()
     );
+    let omp_config = dir
+        .join("root")
+        .join("scripts/wrappers/managed-config/omp.yml");
+    assert!(omp_config.is_file());
+    assert!(
+        fs::read_to_string(omp_config)
+            .unwrap()
+            .contains("showProgress: true")
+    );
     let launch_config: serde_json::Value = serde_json::from_slice(
         &fs::read(dir.join("root").join("scripts/wrappers/tool-drivers.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(launch_config["tools"][0]["id"].as_str(), Some("codex"));
-    assert!(launch_config["tools"].as_array().unwrap().iter().any(
-        |tool| tool["id"] == "claude" && tool["memoryInjection"] == "claudeAppendSystemPrompt"
-    ));
+    assert!(
+        launch_config["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["id"] == "claude" && tool["memoryInjection"] == "appendSystemPrompt")
+    );
     assert!(launch_config["tools"].as_array().unwrap().iter().any(
         |tool| tool["id"] == "opencode" && tool["memoryInjection"] == "opencodeSystemTransform"
     ));
+    assert!(
+        launch_config["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["id"] == "omp" && tool["memoryInjection"] == "appendSystemPrompt")
+    );
     assert!(
         launch_config["tools"].as_array().unwrap().iter().any(
             |tool| tool["id"] == "mimo" && tool["memoryInjection"] == "opencodeSystemTransform"

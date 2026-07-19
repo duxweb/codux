@@ -1794,4 +1794,112 @@ runtime launch context
         assert!(agy_session_paths(&project_path, &root).is_empty());
         let _ = fs::remove_dir_all(root);
     }
+
+    #[test]
+    fn aggregates_omp_incremental_usage_cost_and_current_title() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = root.join("project-a").to_string_lossy().to_string();
+        let sessions = root.join(".omp/agent/sessions/-project-a");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(
+            sessions.join("session.jsonl"),
+            [
+                serde_json::json!({
+                    "type": "title",
+                    "v": 1,
+                    "title": "Current OMP title",
+                    "updatedAt": "2026-07-19T01:04:00Z",
+                    "pad": ""
+                }),
+                serde_json::json!({
+                    "type": "session",
+                    "version": 3,
+                    "id": "omp-session-1",
+                    "timestamp": "2026-07-19T01:00:00Z",
+                    "cwd": project_path,
+                    "title": "Stale title"
+                }),
+                serde_json::json!({
+                    "type": "message",
+                    "timestamp": "2026-07-19T01:00:01Z",
+                    "message": { "role": "user" }
+                }),
+                serde_json::json!({
+                    "type": "message",
+                    "timestamp": "2026-07-19T01:00:02Z",
+                    "message": {
+                        "role": "assistant",
+                        "provider": "anthropic",
+                        "model": "claude-sonnet-4-5",
+                        "usage": {
+                            "input": 3,
+                            "output": 191,
+                            "cacheRead": 5,
+                            "cacheWrite": 1684,
+                            "cost": { "total": 0.009189 }
+                        }
+                    }
+                }),
+                serde_json::json!({
+                    "type": "message",
+                    "timestamp": "2026-07-19T01:00:03Z",
+                    "message": {
+                        "role": "assistant",
+                        "provider": "anthropic",
+                        "model": "claude-sonnet-4-5",
+                        "usage": {
+                            "input": 7,
+                            "output": 11,
+                            "cacheRead": 13,
+                            "cacheWrite": 17,
+                            "cost": { "total": 0.01 }
+                        }
+                    }
+                }),
+            ]
+            .into_iter()
+            .map(|row| row.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        )
+        .unwrap();
+
+        let snapshot = load_project_history_without_store(
+            AIHistoryProjectRequest {
+                id: "project-1".to_string(),
+                name: "Project".to_string(),
+                path: project_path,
+            },
+            &root,
+            &mut |_, _| {},
+        );
+
+        assert_eq!(snapshot.project_summary.project_total_tokens, 212);
+        assert_eq!(snapshot.project_summary.project_cached_input_tokens, 1_719);
+        assert_eq!(snapshot.sessions.len(), 1);
+        let session = &snapshot.sessions[0];
+        assert_eq!(session.external_session_id.as_deref(), Some("omp-session-1"));
+        assert_eq!(session.session_title, "Current OMP title");
+        assert_eq!(session.last_tool.as_deref(), Some("omp"));
+        assert_eq!(session.last_model.as_deref(), Some("claude-sonnet-4-5"));
+        assert_eq!(session.request_count, 1);
+        assert_eq!(session.total_input_tokens, 10);
+        assert_eq!(session.total_output_tokens, 202);
+        assert_eq!(session.cached_input_tokens, 1_719);
+        assert_eq!(session.usage_amounts[0].unit, "USD");
+        assert!((session.usage_amounts[0].value - 0.019189).abs() < 0.000_000_1);
+        assert!(
+            snapshot
+                .tool_breakdown
+                .iter()
+                .any(|item| item.key == "omp" && item.total_tokens == 212)
+        );
+        assert!(
+            snapshot
+                .model_breakdown
+                .iter()
+                .any(|item| item.key == "claude-sonnet-4-5" && item.total_tokens == 212)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
 }

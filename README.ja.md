@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>AI コーディングのための高性能ターミナル：デスクトップ、スマホ、サーバーをひとつのワークスペースへ</b><br/>
-  <b>Rust + GPUI</b> で作られた Codux は、Codex、Claude Code、8 種類以上の AI コーディング CLI を統合し、ライブ状態、トークン分析、ローカルメモリ、認証情報を隔離した SSH / データベースアクセス、長時間実行中の agent 作業をどこからでも引き継げる暗号化デバイスリンクを提供します。
+  <b>Rust + GPUI</b> で作られた Codux は、Codex、Claude Code、9 種類以上の AI コーディング CLI を統合し、ライブ状態、トークン分析、ローカルメモリ、認証情報を隔離した SSH / データベースアクセス、長時間実行中の agent 作業をどこからでも引き継げる暗号化デバイスリンクを提供します。
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ AI コーディング CLI は非常に強力ですが、制御を失いやすい
 
 | AI コーディングで起きがちな問題 | Codux が提供するもの |
 | :--- | :--- |
-| AI CLI ごとに状態が分かれる | Codex、Claude Code、OpenCode、Kiro CLI、Kimi Code、CodeWhale、MiMo Code、Agy を横断するプロジェクト中心のビュー。 |
+| AI CLI ごとに状態が分かれる | Codex、Claude Code、Oh My Pi、OpenCode、Kiro CLI、Kimi Code、CodeWhale、MiMo Code、Agy を横断するプロジェクト中心のビュー。 |
 | 長時間の agent 実行を再開しにくい | ライブ状態、ローカル履歴、セッション復元、worktree に追従するコンテキスト。 |
 | 並行作業が衝突する | worktree ファーストのモデル。各タスクが専用のターミナル、Git 状態、ファイル、AI セッションを持ちます。 |
 | トークン消費が見えない | ツール、モデル、プロジェクト、worktree、日付ごとの使用量を可視化。表計算は不要です。 |
@@ -89,6 +89,7 @@ Codux は非侵襲の wrapper とツールごとの adapter を使います。Co
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | Codex | ✓ | ✓ | ✓ | ✓ | developer instructions 経由で対応 |
 | Claude Code / reclaude | ✓ | ✓ | ✓ | ✓ | `--append-system-prompt` 経由で対応 |
+| Oh My Pi | ネイティブ OSC 経由で対応 | ✓ | ✓ | ✓ | `--append-system-prompt` 経由で対応 |
 | OpenCode | ✓ | ✓ | ✓ | ✓ | 管理プラグイン設定経由で対応 |
 | MiMo Code | ✓ | ✓ | ✓ | ✓ | 管理プラグイン設定経由で対応 |
 | Kimi Code | ✓ | ✓ | ✓ | — | 管理 `--agent-file` 経由で対応 |

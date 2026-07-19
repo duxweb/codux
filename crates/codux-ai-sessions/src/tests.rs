@@ -37,6 +37,13 @@ fn restore_command_uses_interactive_session_flags() {
         "opencode --session ses_0f1e6192effe3vkDd6vSiCMDrF"
     );
 
+    session.source = "omp".to_string();
+    session.external_session_id = Some("omp-session".to_string());
+    assert_eq!(
+        session_restore_command(&session),
+        "omp --resume omp-session"
+    );
+
     session.source = "mimo".to_string();
     session.external_session_id = None;
     assert_eq!(

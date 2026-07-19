@@ -30,7 +30,7 @@ impl Default for SettingsSummary {
             git_commit_language: "application".to_string(),
             git_commit_style_rules: String::new(),
             git_commit_style_rules_chars: 0,
-            runtime_tool_count: 8,
+            runtime_tool_count: 9,
             memory_enabled: true,
             memory_automatic_injection_enabled: true,
             memory_automatic_extraction_enabled: true,

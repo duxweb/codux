@@ -6,7 +6,7 @@ $env:DMUX_PS_HOOK_INSTALLED = "1"
 
 $global:CoduxOsc133Running = $false
 $global:CoduxAiTools = @(
-  'codex', 'claude', 'claude-code', 'reclaude', 'opencode', 'agy',
+  'codex', 'claude', 'claude-code', 'reclaude', 'omp', 'opencode', 'agy',
   'kiro-cli', 'codewhale', 'kimi', 'kimi-code', 'mimo'
 )
 

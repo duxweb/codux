@@ -144,6 +144,17 @@ fn kimi_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
     matched
 }
 
+fn omp_session_paths(project_path: &str, home: &Path) -> Vec<PathBuf> {
+    crate::omp_session::omp_session_paths(home)
+        .into_iter()
+        .filter(|path| {
+            parse_omp_session(path)
+                .and_then(|session| session.cwd)
+                .is_some_and(|cwd| paths_equivalent(Some(&cwd), project_path))
+        })
+        .collect()
+}
+
 fn kimi_session_paths_from_index(
     project_path: &str,
     share_dir: &Path,

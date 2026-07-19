@@ -13,10 +13,11 @@ pub(in crate::app) fn ai_session_restore_command(session: &AISessionSummary) -> 
     codux_runtime::ai_history::session_restore_command(session)
 }
 
-pub(in crate::app) const AI_SESSION_FORK_TARGETS: [AISessionForkTarget; 8] = [
+pub(in crate::app) const AI_SESSION_FORK_TARGETS: [AISessionForkTarget; 9] = [
     AISessionForkTarget::Codex,
     AISessionForkTarget::Claude,
     AISessionForkTarget::Agy,
+    AISessionForkTarget::Omp,
     AISessionForkTarget::OpenCode,
     AISessionForkTarget::Kiro,
     AISessionForkTarget::CodeWhale,
@@ -33,6 +34,7 @@ pub(in crate::app) fn ai_session_fork_command(
         AISessionForkTarget::Codex => format!("codex {prompt}"),
         AISessionForkTarget::Claude => format!("claude {prompt}"),
         AISessionForkTarget::Agy => format!("agy {prompt}"),
+        AISessionForkTarget::Omp => format!("omp {prompt}"),
         AISessionForkTarget::OpenCode => format!("opencode run {prompt}"),
         AISessionForkTarget::Kiro => format!("kiro-cli {prompt}"),
         AISessionForkTarget::CodeWhale => format!("codewhale {prompt}"),

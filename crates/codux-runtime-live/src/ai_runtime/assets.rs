@@ -145,6 +145,20 @@ const RUNTIME_ASSETS: &[(&str, &[u8])] = &[
         include_bytes!("../../../../apps/desktop/runtime-assets/scripts/wrappers/bin/opencode.ps1"),
     ),
     (
+        "scripts/wrappers/bin/omp",
+        include_bytes!("../../../../apps/desktop/runtime-assets/scripts/wrappers/bin/omp"),
+    ),
+    (
+        "scripts/wrappers/bin/omp.ps1",
+        include_bytes!("../../../../apps/desktop/runtime-assets/scripts/wrappers/bin/omp.ps1"),
+    ),
+    (
+        "scripts/wrappers/managed-config/omp.yml",
+        include_bytes!(
+            "../../../../apps/desktop/runtime-assets/scripts/wrappers/managed-config/omp.yml"
+        ),
+    ),
+    (
         "scripts/wrappers/codux-ssh-expect.exp",
         include_bytes!(
             "../../../../apps/desktop/runtime-assets/scripts/wrappers/codux-ssh-expect.exp"

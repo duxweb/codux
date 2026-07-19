@@ -127,6 +127,7 @@ function Tool-Config-Key([string]$Name) {
     "claude-code" { "claudeCode" }
     "reclaude" { "claudeCode" }
     "agy" { "agy" }
+    "omp" { "omp" }
     "kimi" { "kimi" }
     "kimi-code" { "kimi" }
     "opencode" { "opencode" }
@@ -144,6 +145,7 @@ function Tool-Model-Key([string]$Name) {
     "claude-code" { "claudeCodeModel" }
     "reclaude" { "claudeCodeModel" }
     "agy" { "agyModel" }
+    "omp" { "ompModel" }
     "kimi" { "kimiModel" }
     "kimi-code" { "kimiModel" }
     "opencode" { "opencodeModel" }
@@ -259,6 +261,39 @@ function Extract-Resume-Target([string[]]$Args) {
   return ""
 }
 
+function Extract-Omp-Session-Directory([string[]]$Args) {
+  $value = ""
+  $launchDirectory = (Get-Location).Path
+  $cwdValue = ""
+  for ($index = 0; $index -lt $Args.Count; $index++) {
+    $arg = $Args[$index]
+    if ($arg -eq "--cwd" -and $index + 1 -lt $Args.Count) {
+      $cwdValue = $Args[$index + 1]
+    }
+    if ($arg.StartsWith("--cwd=", [StringComparison]::Ordinal)) {
+      $cwdValue = $arg.Substring("--cwd=".Length)
+    }
+    if ($arg -eq "--session-dir" -and $index + 1 -lt $Args.Count) {
+      $value = $Args[$index + 1]
+    }
+    if ($arg.StartsWith("--session-dir=", [StringComparison]::Ordinal)) {
+      $value = $arg.Substring("--session-dir=".Length)
+    }
+  }
+  if (-not [string]::IsNullOrWhiteSpace($cwdValue)) {
+    $launchDirectory = if ([IO.Path]::IsPathRooted($cwdValue)) { $cwdValue } else { Join-Path $launchDirectory $cwdValue }
+  }
+  if ([string]::IsNullOrWhiteSpace($value)) { return "" }
+  try {
+    if ([IO.Path]::IsPathRooted($value)) {
+      return [IO.Path]::GetFullPath($value)
+    }
+    return [IO.Path]::GetFullPath((Join-Path $launchDirectory $value))
+  } catch {
+    return $value
+  }
+}
+
 function Is-Metadata-Invocation([string[]]$CommandArgs) {
   if ($CommandArgs.Count -eq 0) { return $false }
   foreach ($arg in $CommandArgs) {
@@ -274,8 +309,59 @@ function Is-Metadata-Invocation([string[]]$CommandArgs) {
 
 function Is-Passthrough-Invocation([string[]]$CommandArgs) {
   if ($CommandArgs.Count -eq 0) { return $false }
+  if ($Tool -eq "omp") {
+    $command = ""
+    for ($index = 0; $index -lt $CommandArgs.Count; $index++) {
+      $arg = $CommandArgs[$index]
+      if ($arg -eq "--") { return $false }
+      if ($arg -eq "--alias" -or $arg.StartsWith("--alias=", [StringComparison]::Ordinal)) {
+        return $true
+      }
+      if ($arg -match '^(--help|-h|--version|-v)$') { return $true }
+      if ($arg -match '^(--cwd|--config|--mode|--fork|--provider|--model|--smol|--slow|--prewalk-into|--plan-yolo-into|--max-time|--api-key|--system-prompt|--append-system-prompt|--provider-session-id|--prompt-cache-key|--session-dir|--models|--tools|--thinking|--export|--hook|--extension|-e|--plugin-dir|--skills|--approval-mode|--profile)$') {
+        if ($index + 1 -ge $CommandArgs.Count) { return $true }
+        $index++
+        continue
+      }
+      if ($arg -eq "--plan") {
+        if ($index + 1 -lt $CommandArgs.Count -and
+            -not $CommandArgs[$index + 1].StartsWith("-")) {
+          $index++
+        }
+        continue
+      }
+      if ($arg -match '^(--resume|-r|--session)$') {
+        if ($index + 1 -lt $CommandArgs.Count -and
+            -not $CommandArgs[$index + 1].StartsWith("-") -and
+            -not [string]::IsNullOrEmpty($CommandArgs[$index + 1])) {
+          $index++
+        }
+        continue
+      }
+      if ($arg -match '^(--allow-home|--continue|-c|--no-session|--no-tools|--no-lsp|--no-pty|--hide-thinking|--advisor|--prewalk|--no-prewalk|--plan-yolo|--print|-p|--print-thoughts|--no-extensions|--no-skills|--no-rules|--no-title|--auto-approve|--yolo)$') {
+        continue
+      }
+      if ($arg.StartsWith("--") -and $arg.Contains("=")) {
+        continue
+      }
+      if ($arg.StartsWith("--")) {
+        if ($index + 1 -lt $CommandArgs.Count -and -not $CommandArgs[$index + 1].StartsWith("-")) {
+          $index++
+        }
+        continue
+      }
+      if ($arg.StartsWith("-")) {
+        continue
+      }
+      $command = $arg
+      break
+    }
+    if ($command -match '^(acp|agents|auth-broker|auth-gateway|bench|commit|completions|__complete|config|dry-balance|gallery|gc|grep|grievances|install|join|models|plugin|read|say|search|q|setup|shell|ssh|stats|tiny-models|token|ttsr|update|usage|worktree|wt)$') {
+      return $true
+    }
+  }
   switch -Regex ($CommandArgs[0]) {
-    '^(--help|-h|help|--version|-V|version|features|--features|auth|login|logout|doctor|update|upgrade|config|info|export|mcp|plugin|vis|web|term|acp|app-server|__background-task-worker|__web-worker)$' { return $true }
+    '^(--help|-h|help|--version|-V|-v|version|features|--features|auth|login|logout|doctor|update|upgrade|config|info|export|mcp|plugin|vis|web|term|acp|app-server|__background-task-worker|__web-worker)$' { return $true }
   }
   return $false
 }
@@ -630,6 +716,12 @@ if ($permissionMode -eq "fullAccess") {
         -not (Has-Arg $launchArgs "-y")) {
       $launchArgs = @("--approval-mode", "yolo") + $launchArgs
     }
+  } elseif ($Tool -eq "omp") {
+    if (-not (Has-Option-Value $launchArgs @("--approval-mode")) -and
+        -not (Has-Arg $launchArgs "--auto-approve") -and
+        -not (Has-Arg $launchArgs "--yolo")) {
+      $launchArgs = @("--approval-mode", "yolo") + $launchArgs
+    }
   } elseif ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
     # Kimi Code uses the generic model flag, but its permission flags differ from agy.
   } elseif ($Tool -eq "opencode" -or $Tool -eq "mimo") {
@@ -643,26 +735,17 @@ if ($permissionMode -eq "fullAccess") {
   }
 }
 
-if ($memoryInjectionStrategy -eq "claudeAppendSystemPrompt" -and
-    -not (Has-Option-Value $launchArgs @("--append-system-prompt"))) {
-  $promptFile = $env:DMUX_AI_MEMORY_PROMPT_FILE
-  if (-not [string]::IsNullOrWhiteSpace($promptFile) -and (Test-Path -LiteralPath $promptFile)) {
-    $prompt = Get-Content -LiteralPath $promptFile -Raw
-    if (-not [string]::IsNullOrWhiteSpace($prompt)) {
-      $launchArgs = @("--append-system-prompt", $prompt) + $launchArgs
-      Write-Live-Log "claude instructions injected path=$promptFile chars=$($prompt.Length)"
-    } else {
-      Write-Live-Log "claude instructions skipped: prompt empty path=$promptFile"
-    }
-  } else {
-    Write-Live-Log "claude instructions skipped: prompt file missing"
-  }
-} elseif ($memoryInjectionStrategy -eq "claudeAppendSystemPrompt") {
-  Write-Live-Log "claude instructions skipped: append-system-prompt already provided"
+if ($memoryInjectionStrategy -eq "appendSystemPrompt") {
+  $launchArgs = Apply-Append-System-Prompt $launchArgs "appendSystemPrompt" $Tool
+}
+
+if ($Tool -eq "omp") {
+  $launchArgs += @("--config", (Join-Path $wrapperDir "managed-config\omp.yml"))
 }
 
 $launchModel = if ($Tool -eq "kiro-cli") { $configuredModel } else { Extract-Model $launchArgs }
 $resumeTarget = Extract-Resume-Target $launchArgs
+$transcriptPath = if ($Tool -eq "omp") { Extract-Omp-Session-Directory $launchArgs } else { "" }
 $bindingExternalSessionId = if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) { $resumeTarget } else { $env:DMUX_EXTERNAL_SESSION_ID }
 $bindingSessionOrigin = if (-not [string]::IsNullOrWhiteSpace($resumeTarget)) { "restored" } else { "" }
 $env:DMUX_ACTIVE_AI_MODEL = $launchModel
@@ -687,7 +770,7 @@ if ($Tool -eq "kimi" -or $Tool -eq "kimi-code") {
 Apply-Managed-Lifecycle-Env $Tool
 
 $launchDir = ""
-Write-Runtime-Binding $bindingExternalSessionId $launchModel "" $bindingSessionOrigin
+Write-Runtime-Binding $bindingExternalSessionId $launchModel $transcriptPath $bindingSessionOrigin
 Invoke-Real-Binary $realBin $launchArgs $runtimePath $launchDir
 $exitCode = if ($null -eq $script:DMUX_WRAPPER_EXIT_CODE) { 0 } else { $script:DMUX_WRAPPER_EXIT_CODE }
 Emit-Wrapper-SessionEnd

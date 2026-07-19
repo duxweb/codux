@@ -4,10 +4,13 @@ use crate::{
 };
 use serde_json::Value;
 use std::{
+    collections::HashSet,
     fs,
     io::{BufRead, BufReader, Seek},
     path::{Path, PathBuf},
 };
+
+use codux_ai_history::omp_session::{omp_session_dirs, omp_session_paths, parse_omp_session};
 
 pub(crate) fn find_codex_rollout_path(
     project_path: &str,
@@ -440,6 +443,103 @@ pub(crate) fn agy_runtime_resource_paths(
     paths
 }
 
+pub(crate) fn select_omp_session_path(
+    project_path: &str,
+    external_session_id: Option<&str>,
+    transcript_path: Option<&str>,
+    started_at: Option<f64>,
+    occupied_external_session_ids: &HashSet<String>,
+) -> Option<PathBuf> {
+    let files = omp_session_files(transcript_path);
+    select_omp_session_path_from(
+        files,
+        project_path,
+        external_session_id,
+        started_at,
+        occupied_external_session_ids,
+    )
+}
+
+fn omp_session_files(transcript_path: Option<&str>) -> Vec<PathBuf> {
+    let Some(path) = normalized_string(transcript_path).map(PathBuf::from) else {
+        return omp_session_paths(&home_dir());
+    };
+    if path.is_file() {
+        vec![path]
+    } else {
+        directory_files(&path, "jsonl")
+    }
+}
+
+fn select_omp_session_path_from(
+    files: Vec<PathBuf>,
+    project_path: &str,
+    external_session_id: Option<&str>,
+    started_at: Option<f64>,
+    occupied_external_session_ids: &HashSet<String>,
+) -> Option<PathBuf> {
+    if let Some(external_session_id) = external_session_id.and_then(normalized_record_value) {
+        let direct_path = PathBuf::from(external_session_id);
+        if direct_path.is_file()
+            && parse_omp_session(&direct_path)
+                .and_then(|session| session.cwd)
+                .is_some_and(|cwd| paths_equivalent(Some(&cwd), project_path))
+        {
+            return Some(direct_path);
+        }
+        if let Some(path) = files.iter().find(|path| {
+            parse_omp_session(path).is_some_and(|session| {
+                session.id.as_deref() == Some(external_session_id)
+                    && paths_equivalent(session.cwd.as_deref(), project_path)
+            })
+        }) {
+            return Some(path.clone());
+        }
+    }
+
+    files
+        .into_iter()
+        .filter(|path| file_modified_after_start(path, started_at))
+        .filter(|path| {
+            parse_omp_session(path).is_some_and(|session| {
+                paths_equivalent(session.cwd.as_deref(), project_path)
+                    && session
+                        .id
+                        .as_ref()
+                        .is_none_or(|id| !occupied_external_session_ids.contains(id))
+            })
+        })
+        .max_by_key(|path| file_modified_millis(path).unwrap_or(0))
+}
+
+pub(crate) fn omp_runtime_resource_paths(
+    project_path: Option<&str>,
+    external_session_id: Option<&str>,
+    transcript_path: Option<&str>,
+    started_at: Option<f64>,
+) -> Vec<PathBuf> {
+    if let Some(project_path) = normalized_string(project_path)
+        && let Some(path) = select_omp_session_path(
+            &project_path,
+            external_session_id,
+            transcript_path,
+            started_at,
+            &HashSet::new(),
+        )
+    {
+        return vec![path];
+    }
+    if let Some(path) = normalized_string(transcript_path).map(PathBuf::from) {
+        return vec![path];
+    }
+    omp_session_dirs(&home_dir())
+}
+
+fn normalized_record_value(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
 fn normalized_record_id(id: &str) -> Option<&str> {
     let trimmed = id.trim();
     if trimmed.is_empty() || trimmed != id {
@@ -674,6 +774,77 @@ fn collect_recursive_files(dir: &Path, extension: &str, files: &mut Vec<PathBuf>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn omp_session_selection_respects_project_start_and_ownership() {
+        let dir = std::env::temp_dir().join(format!("codux-omp-paths-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let first = dir.join("first.jsonl");
+        let second = dir.join("second.jsonl");
+        write_omp_session(&first, "occupied", "/tmp/project");
+        write_omp_session(&second, "available", "/tmp/project");
+        let occupied = HashSet::from(["occupied".to_string()]);
+
+        let selected = select_omp_session_path_from(
+            vec![first, second.clone()],
+            "/tmp/project",
+            None,
+            Some(0.0),
+            &occupied,
+        );
+
+        assert_eq!(selected.as_deref(), Some(second.as_path()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn omp_exact_resume_id_ignores_launch_time() {
+        let dir = std::env::temp_dir().join(format!("codux-omp-paths-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("session.jsonl");
+        write_omp_session(&path, "resume-id", "/tmp/project");
+
+        let selected = select_omp_session_path_from(
+            vec![path.clone()],
+            "/tmp/project",
+            Some("resume-id"),
+            Some(4_000_000_000.0),
+            &HashSet::new(),
+        );
+
+        assert_eq!(selected.as_deref(), Some(path.as_path()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn omp_custom_session_directory_is_the_only_selection_source() {
+        let dir = std::env::temp_dir().join(format!("codux-omp-paths-{}", uuid::Uuid::new_v4()));
+        let custom = dir.join("custom");
+        fs::create_dir_all(&custom).unwrap();
+        let path = custom.join("session.jsonl");
+        write_omp_session(&path, "custom-id", "/tmp/project");
+
+        let selected = select_omp_session_path_from(
+            omp_session_files(Some(custom.to_string_lossy().as_ref())),
+            "/tmp/project",
+            None,
+            Some(0.0),
+            &HashSet::new(),
+        );
+
+        assert_eq!(selected.as_deref(), Some(path.as_path()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    fn write_omp_session(path: &Path, id: &str, cwd: &str) {
+        fs::write(
+            path,
+            format!(
+                "{{\"type\":\"session\",\"version\":3,\"id\":\"{id}\",\"timestamp\":\"2026-07-19T01:00:00Z\",\"cwd\":\"{cwd}\"}}\n"
+            ),
+        )
+        .unwrap();
+    }
 
     #[test]
     fn codex_session_id_from_rollout_uses_file_name() {

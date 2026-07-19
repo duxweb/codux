@@ -142,6 +142,8 @@ pub struct AIRuntimeToolSettings {
     #[serde(default = "default_ai_tool_permission_mode")]
     pub agy: String,
     #[serde(default = "default_ai_tool_permission_mode")]
+    pub omp: String,
+    #[serde(default = "default_ai_tool_permission_mode")]
     pub opencode: String,
     #[serde(default = "default_ai_tool_permission_mode")]
     pub kiro: String,
@@ -157,6 +159,8 @@ pub struct AIRuntimeToolSettings {
     pub claude_code_model: String,
     #[serde(default)]
     pub agy_model: String,
+    #[serde(default)]
+    pub omp_model: String,
     #[serde(default)]
     pub opencode_model: String,
     #[serde(default)]

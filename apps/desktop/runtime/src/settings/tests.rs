@@ -206,6 +206,7 @@ mod tests {
                   "codex": "default",
                   "claudeCode": "default",
                   "agy": "default",
+                  "omp": "default",
                   "opencode": "default",
                   "kiro": "default",
                   "codewhale": "default",
@@ -214,6 +215,7 @@ mod tests {
                   "codexModel": "",
                   "claudeCodeModel": "",
                   "agyModel": "",
+                  "ompModel": "",
                   "opencodeModel": "",
                   "kiroModel": "",
                   "codewhaleModel": "",
@@ -283,7 +285,7 @@ mod tests {
             summary.git_commit_style_rules_chars,
             "Keep scope clear.".chars().count()
         );
-        assert_eq!(summary.runtime_tool_count, 8);
+        assert_eq!(summary.runtime_tool_count, 9);
         assert_eq!(summary.memory_extraction_idle_delay_seconds, "300");
         assert_eq!(summary.memory_session_extraction_cooldown_seconds, "900");
         assert_eq!(summary.memory_max_index_sessions, "20");
@@ -789,23 +791,35 @@ mod tests {
         let summary = service
             .set_runtime_tool_permission("codex", "fullAccess")
             .expect("set codex permission");
-        assert_eq!(summary.runtime_tool_count, 8);
+        assert_eq!(summary.runtime_tool_count, 9);
+
+        service
+            .set_runtime_tool_permission("omp", "fullAccess")
+            .expect("set omp permission");
+        service
+            .set_runtime_tool_model("ompModel", "anthropic/claude-sonnet-4-5")
+            .expect("set omp model");
 
         let summary = service
             .set_runtime_tool_model("codexModel", "gpt-5.6")
             .expect("set codex model");
-        assert_eq!(summary.runtime_tool_count, 8);
+        assert_eq!(summary.runtime_tool_count, 9);
 
         let summary = service
             .set_codex_effort("xhigh")
             .expect("set codex effort");
-        assert_eq!(summary.runtime_tool_count, 8);
+        assert_eq!(summary.runtime_tool_count, 9);
 
         let tool_permissions = crate::tool_permissions::ToolPermissionsService::new(support_dir.clone())
             .summary();
         assert_eq!(tool_permissions.codex, "fullAccess");
         assert_eq!(tool_permissions.codex_model, "gpt-5.6");
         assert_eq!(tool_permissions.codex_effort, "xhigh");
+        assert_eq!(tool_permissions.omp, "fullAccess");
+        assert_eq!(
+            tool_permissions.omp_model,
+            "anthropic/claude-sonnet-4-5"
+        );
 
         crate::config::flush_all_config_writes();
         let saved = fs::read_to_string(support_dir.join("settings.json")).expect("saved settings");
@@ -818,6 +832,14 @@ mod tests {
         assert_eq!(tools.get("codex").and_then(|value| value.as_str()), Some("fullAccess"));
         assert_eq!(tools.get("codexModel").and_then(|value| value.as_str()), Some("gpt-5.6"));
         assert_eq!(tools.get("codexEffort").and_then(|value| value.as_str()), Some("xhigh"));
+        assert_eq!(
+            tools.get("omp").and_then(|value| value.as_str()),
+            Some("fullAccess")
+        );
+        assert_eq!(
+            tools.get("ompModel").and_then(|value| value.as_str()),
+            Some("anthropic/claude-sonnet-4-5")
+        );
 
         fs::remove_dir_all(support_dir).ok();
     }

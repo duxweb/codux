@@ -146,6 +146,7 @@ _dmux_define_tool_shims() {
   claude() { _dmux_exec_wrapped_tool claude "$@"; }
   claude-code() { _dmux_exec_wrapped_tool claude-code "$@"; }
   reclaude() { _dmux_exec_wrapped_tool reclaude "$@"; }
+  omp() { _dmux_exec_wrapped_tool omp "$@"; }
   opencode() { _dmux_exec_wrapped_tool opencode "$@"; }
   agy() { _dmux_exec_wrapped_tool agy "$@"; }
   kiro-cli() { _dmux_exec_wrapped_tool kiro-cli "$@"; }
@@ -175,7 +176,7 @@ _dmux_resolve_tool_from_command() {
     esac
     candidate="${candidate:t}"
     case "${candidate}" in
-      codex|claude|claude-code|reclaude|opencode|agy|kiro-cli|codewhale|kimi|kimi-code|mimo)
+      codex|claude|claude-code|reclaude|omp|opencode|agy|kiro-cli|codewhale|kimi|kimi-code|mimo)
         print -r -- "${candidate}"
         return 0
         ;;

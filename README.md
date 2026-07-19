@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>The high-performance AI coding terminal — desktop, phone, and server, one workspace</b><br/>
-  Built with <b>Rust + GPUI</b>, Codux unifies Codex, Claude Code, and 8+ AI coding CLIs with live agent status, token analytics, local memory, credential-isolated SSH &amp; database access, and encrypted device links for taking over long-running agent work from anywhere.
+  Built with <b>Rust + GPUI</b>, Codux unifies Codex, Claude Code, and 9+ AI coding CLIs with live agent status, token analytics, local memory, credential-isolated SSH &amp; database access, and encrypted device links for taking over long-running agent work from anywhere.
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@ AI coding CLIs are incredibly powerful — and incredibly easy to lose control o
 
 | When AI coding gets messy | Codux gives you |
 | :------------------------ | :-------------- |
-| Every AI CLI has its own state | One project-aware view across Codex, Claude Code, OpenCode, Kiro CLI, Kimi Code, CodeWhale, MiMo Code, and Agy. |
+| Every AI CLI has its own state | One project-aware view across Codex, Claude Code, Oh My Pi, OpenCode, Kiro CLI, Kimi Code, CodeWhale, MiMo Code, and Agy. |
 | Long agent runs are hard to resume | Live status, local history, session restore, and context that follows each worktree. |
 | Parallel tasks collide | A worktree-first model where every task keeps its own terminals, Git state, files, and AI sessions. |
 | Token spend is a black box | Usage by tool, model, project, worktree, and day — no spreadsheets. |
@@ -89,6 +89,7 @@ Codux uses non-invasive wrappers and per-tool adapters. It does not write projec
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | Codex | ✓ | ✓ | ✓ | ✓ | ✓ via developer instructions |
 | Claude Code / reclaude | ✓ | ✓ | ✓ | ✓ | ✓ via `--append-system-prompt` |
+| Oh My Pi | ✓ via native OSC | ✓ | ✓ | ✓ | ✓ via `--append-system-prompt` |
 | OpenCode | ✓ | ✓ | ✓ | ✓ | ✓ via managed plugin config |
 | MiMo Code | ✓ | ✓ | ✓ | ✓ | ✓ via managed plugin config |
 | Kimi Code | ✓ | ✓ | ✓ | — | ✓ via managed `--agent-file` |

@@ -732,6 +732,7 @@ fn ai_session_fork_command_reads_prompt_file_for_all_targets() {
     assert!(ai_session_fork_command(AISessionForkTarget::Codex, path).starts_with("codex "));
     assert!(ai_session_fork_command(AISessionForkTarget::Claude, path).starts_with("claude "));
     assert!(ai_session_fork_command(AISessionForkTarget::Agy, path).starts_with("agy "));
+    assert!(ai_session_fork_command(AISessionForkTarget::Omp, path).starts_with("omp "));
     assert!(
         ai_session_fork_command(AISessionForkTarget::OpenCode, path).starts_with("opencode run ")
     );
