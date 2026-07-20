@@ -1,6 +1,153 @@
 use super::*;
 
 #[cfg(unix)]
+fn scoped_terminal_config(
+    terminal_id: &str,
+    root: &Path,
+    worktree_id: &str,
+    command: &str,
+) -> TerminalPtyConfig {
+    TerminalPtyConfig {
+        terminal_id: Some(terminal_id.to_string()),
+        root_project_id: Some("project-1".to_string()),
+        root_project_path: Some(root.display().to_string()),
+        project_id: Some(worktree_id.to_string()),
+        project_name: Some("Project".to_string()),
+        worktree_id: Some(worktree_id.to_string()),
+        cwd: Some(root.display().to_string()),
+        shell: Some("/bin/sh".to_string()),
+        command: Some(command.to_string()),
+        ..Default::default()
+    }
+}
+
+#[cfg(unix)]
+fn agent_worktree_control() -> (PathBuf, Arc<crate::agent_worktree::AgentWorktreeControl>) {
+    let root =
+        std::env::temp_dir().join(format!("codux-terminal-agent-worktree-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).expect("create control root");
+    let ai_runtime = Arc::new(crate::ai_runtime::AIRuntimeBridge::with_runtime_paths(
+        root.join("runtime-root"),
+        root.join("runtime-temp"),
+        root.join("home"),
+    ));
+    let control = crate::agent_worktree::AgentWorktreeControl::start(&root, ai_runtime)
+        .expect("start agent worktree control");
+    (root, control)
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_manager_injects_and_revokes_agent_worktree_capability() {
+    let (root, control) = agent_worktree_control();
+    let manager = TerminalManager::new();
+    manager.bind_agent_worktree_control(Arc::clone(&control));
+    let terminal_id = format!("test-agent-worktree-env-{}", Uuid::new_v4());
+    let config = scoped_terminal_config(
+        &terminal_id,
+        &root,
+        "worktree-1",
+        "printf '%s|%s\\n' \"$CODUX_WORKTREE_CONTROL_ADDRESS\" \"$CODUX_WORKTREE_CONTROL_CAPABILITY\"; sleep 30",
+    );
+
+    let (session, output) = manager
+        .attach_or_create_with_context(config, None, Arc::new(|_| true))
+        .expect("spawn scoped terminal");
+    let capability = control
+        .terminal_capability(&terminal_id)
+        .expect("terminal capability");
+    let expected = format!("{}|{}", control.address(), capability);
+    let text = recv_until_contains(&output, &expected, Duration::from_secs(2));
+    assert!(text.contains(&expected), "terminal environment: {text:?}");
+
+    manager
+        .kill_and_wait(&terminal_id, Duration::from_secs(2))
+        .expect("close terminal");
+    assert!(!control.has_terminal_capability(&terminal_id));
+    assert!(!control.has_capability(&capability));
+    assert!(session.has_exited());
+    fs::remove_dir_all(root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_manager_revokes_capability_on_natural_exit_and_spawn_failure() {
+    let (root, control) = agent_worktree_control();
+    let manager = TerminalManager::new();
+    manager.bind_agent_worktree_control(Arc::clone(&control));
+    let exit_id = format!("test-agent-worktree-exit-{}", Uuid::new_v4());
+    let (session, _) = manager
+        .attach_or_create_with_context(
+            scoped_terminal_config(&exit_id, &root, "worktree-1", "exit 0"),
+            None,
+            Arc::new(|_| true),
+        )
+        .expect("spawn short-lived terminal");
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline && !session.has_exited() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(session.has_exited());
+    assert!(!control.has_terminal_capability(&exit_id));
+
+    let failed_id = format!("test-agent-worktree-failed-{}", Uuid::new_v4());
+    let mut failed = scoped_terminal_config(&failed_id, &root, "worktree-1", "exit 0");
+    failed.shell = Some(root.join("missing-shell").display().to_string());
+    assert!(
+        manager
+            .attach_or_create_with_context(failed, None, Arc::new(|_| true))
+            .is_err()
+    );
+    assert!(!control.has_terminal_capability(&failed_id));
+    fs::remove_dir_all(root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn replaced_terminal_exit_cannot_revoke_new_capability() {
+    let (root, control) = agent_worktree_control();
+    let second_root = root.join("second");
+    fs::create_dir_all(&second_root).expect("create replacement cwd");
+    let manager = TerminalManager::new();
+    manager.bind_agent_worktree_control(Arc::clone(&control));
+    let terminal_id = format!("test-agent-worktree-replace-{}", Uuid::new_v4());
+    let (first, _) = manager
+        .attach_or_create_with_context(
+            scoped_terminal_config(&terminal_id, &root, "worktree-1", "sleep 30"),
+            None,
+            Arc::new(|_| true),
+        )
+        .expect("spawn first terminal");
+    let first_capability = control
+        .terminal_capability(&terminal_id)
+        .expect("first capability");
+
+    let (second, _) = manager
+        .attach_or_create_with_context(
+            scoped_terminal_config(&terminal_id, &second_root, "worktree-2", "sleep 30"),
+            None,
+            Arc::new(|_| true),
+        )
+        .expect("replace terminal");
+    let second_capability = control
+        .terminal_capability(&terminal_id)
+        .expect("second capability");
+    assert_ne!(first_capability, second_capability);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline && !first.has_exited() {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(first.has_exited());
+    assert!(control.has_capability(&second_capability));
+    assert!(control.has_terminal_capability(&terminal_id));
+
+    manager
+        .kill_and_wait(second.id(), Duration::from_secs(2))
+        .expect("close replacement terminal");
+    fs::remove_dir_all(root).ok();
+}
+
+#[cfg(unix)]
 #[test]
 fn terminal_manager_reuses_session_and_broadcasts_to_subscribers() {
     let manager = TerminalManager::new();
@@ -248,6 +395,7 @@ fn terminal_manager_uses_context_session_cwd_for_identity() {
     fs::create_dir_all(&worktree_cwd).unwrap();
     let context = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: project_cwd.clone(),
         project_id: "worktree-context".to_string(),
         project_name: "Context Worktree".to_string(),
         project_path: project_cwd.clone(),

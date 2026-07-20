@@ -330,6 +330,10 @@ tool_permission_settings_path() {
 }
 
 configured_permission_mode() {
+  if [[ "${CODUX_AGENT_WORKTREE_AUTONOMOUS:-}" == "1" ]]; then
+    print -r -- "fullAccess"
+    return 0
+  fi
   local config_path
   config_path="$(tool_permission_settings_path)"
   [[ -f "${config_path}" ]] || return 0

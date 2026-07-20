@@ -22,12 +22,22 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
                 last_seen_at: metadata.timestamp,
                 ..Default::default()
             });
-        session.external_session_id = metadata
-            .external_session_id
-            .clone()
-            .or(session.external_session_id.clone());
-        session.title = metadata.session_title.clone().or(session.title.clone());
-        session.model = metadata.model.clone().or(session.model.clone());
+        stable_optional_string(
+            &mut session.external_session_id,
+            metadata.external_session_id.as_deref(),
+        );
+        update_session_string(
+            &mut session.title,
+            &mut session.title_at,
+            metadata.session_title.as_deref(),
+            metadata.timestamp,
+        );
+        update_session_string(
+            &mut session.model,
+            &mut session.model_at,
+            metadata.model.as_deref(),
+            metadata.timestamp,
+        );
         session.first_seen_at = min_nonzero(session.first_seen_at, metadata.timestamp);
         session.last_seen_at = session.last_seen_at.max(metadata.timestamp);
     }
@@ -78,12 +88,22 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
                 last_seen_at: entry.timestamp,
                 ..Default::default()
             });
-        session.external_session_id = entry
-            .external_session_id
-            .clone()
-            .or(session.external_session_id.clone());
-        session.title = entry.session_title.clone().or(session.title.clone());
-        session.model = entry.model.clone().or(session.model.clone());
+        stable_optional_string(
+            &mut session.external_session_id,
+            entry.external_session_id.as_deref(),
+        );
+        update_session_string(
+            &mut session.title,
+            &mut session.title_at,
+            entry.session_title.as_deref(),
+            entry.timestamp,
+        );
+        update_session_string(
+            &mut session.model,
+            &mut session.model_at,
+            entry.model.as_deref(),
+            entry.timestamp,
+        );
         session.first_seen_at = min_nonzero(session.first_seen_at, entry.timestamp);
         session.last_seen_at = session.last_seen_at.max(entry.timestamp);
         session.input_tokens += entry.input_tokens;
@@ -253,7 +273,7 @@ fn build_snapshot(project: AIHistoryProjectRequest, parsed: ParsedHistory) -> AI
             }
         })
         .collect::<Vec<_>>();
-    sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
+    sort_sessions_recent_first(&mut sessions);
 
     let latest_session = sessions.first().cloned();
     sessions.truncate(RECENT_HISTORY_SESSION_LIMIT);

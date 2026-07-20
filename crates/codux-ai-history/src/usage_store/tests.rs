@@ -84,6 +84,74 @@ mod tests {
     }
 
     #[test]
+    fn schema_upgrade_preserves_source_fallback_timestamp() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let conn = Connection::open(&database_path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE ai_history_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO ai_history_meta VALUES ('normalized_history_schema_version', '14');
+            CREATE TABLE ai_history_file_state (
+                source TEXT NOT NULL, file_path TEXT NOT NULL, project_path TEXT NOT NULL,
+                file_modified_at REAL NOT NULL,
+                PRIMARY KEY (source, file_path, project_path)
+            );
+            CREATE TABLE ai_history_file_session_link (
+                source TEXT NOT NULL, file_path TEXT NOT NULL, project_path TEXT NOT NULL,
+                session_key TEXT NOT NULL, external_session_id TEXT, project_id TEXT NOT NULL,
+                project_name TEXT NOT NULL, session_title TEXT NOT NULL,
+                first_seen_at REAL NOT NULL, last_seen_at REAL NOT NULL, last_model TEXT,
+                active_duration_seconds INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, session_key)
+            );
+            CREATE TABLE ai_history_file_usage_bucket (
+                source TEXT NOT NULL, file_path TEXT NOT NULL, project_path TEXT NOT NULL,
+                session_key TEXT NOT NULL, model TEXT NOT NULL, bucket_start REAL NOT NULL,
+                bucket_end REAL NOT NULL, input_tokens INTEGER NOT NULL,
+                output_tokens INTEGER NOT NULL, total_tokens INTEGER NOT NULL,
+                cached_input_tokens INTEGER NOT NULL, request_count INTEGER NOT NULL,
+                active_duration_seconds INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, session_key, model, bucket_start)
+            );
+            CREATE TABLE ai_history_file_usage_event (
+                source TEXT NOT NULL, file_path TEXT NOT NULL, project_path TEXT NOT NULL,
+                project_id TEXT NOT NULL, event_ordinal INTEGER NOT NULL,
+                session_key TEXT NOT NULL, occurred_at INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL, request_count INTEGER NOT NULL,
+                active_duration_seconds INTEGER NOT NULL,
+                PRIMARY KEY (source, file_path, project_path, event_ordinal)
+            );
+            CREATE TABLE ai_history_project_index_state (
+                project_path TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+                project_name TEXT NOT NULL, indexed_at REAL NOT NULL
+            );
+            INSERT INTO ai_history_file_state VALUES
+                ('claude', 'session.jsonl', '/tmp/project', 900);
+            INSERT INTO ai_history_file_session_link VALUES
+                ('claude', 'session.jsonl', '/tmp/project', 'session', NULL,
+                 'project', 'Project', 'Session', 100, 200, NULL, 0);
+            "#,
+        )
+        .unwrap();
+        drop(conn);
+
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        let fallback: f64 = conn
+            .query_row(
+                "SELECT fallback_timestamp FROM ai_history_source_identity;",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(fallback, 100.0);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn schema_13_upgrade_canonicalizes_preserved_event_paths() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         let project_dir = root.join("project");
@@ -651,6 +719,155 @@ mod tests {
     }
 
     #[test]
+    fn jsonl_missing_timestamps_keep_the_first_persisted_fallback() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        fs::write(&file_path, "one\n").unwrap();
+        let initial_size = fs::metadata(&file_path).unwrap().len() as i64;
+        let database_path = root.join("ai-usage.sqlite3");
+        let store = AIUsageStore::at_path(database_path.clone());
+        let conn = store.connect().unwrap();
+        let project = test_project(&root);
+
+        let first = store
+            .load_or_index_jsonl_file(
+                &conn,
+                "claude",
+                &file_path,
+                &project,
+                |_| JSONLParseSnapshot::default(),
+                || JSONLParseSnapshot {
+                    result: parsed_history("session", 0.0, 10, 5),
+                    last_processed_offset: initial_size,
+                    payload_json: None,
+                },
+            )
+            .unwrap();
+        let first_seen_at = first.usage_buckets[0].first_seen_at;
+        drop(conn);
+
+        fs::write(&file_path, "one\ntwo\n").unwrap();
+        let updated_size = fs::metadata(&file_path).unwrap().len() as i64;
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        let second = store
+            .load_or_index_jsonl_file(
+                &conn,
+                "claude",
+                &file_path,
+                &project,
+                |_| JSONLParseSnapshot {
+                    result: parsed_history("session", 0.0, 20, 10),
+                    last_processed_offset: updated_size,
+                    payload_json: None,
+                },
+                JSONLParseSnapshot::default,
+            )
+            .unwrap();
+
+        assert!(first_seen_at > 0.0);
+        assert_eq!(second.usage_buckets[0].first_seen_at, first_seen_at);
+        assert!(
+            second
+                .usage_buckets
+                .iter()
+                .all(|bucket| bucket.first_seen_at == first_seen_at)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reopened_store_rebuild_keeps_session_facts_byte_stable() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.json");
+        fs::write(&file_path, "one\n").unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let project = test_project(&root);
+
+        let store = AIUsageStore::at_path(database_path.clone());
+        let conn = store.connect().unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &file_path, &project, || {
+                unstamped_history(false)
+            })
+            .unwrap();
+        let first = serde_json::to_vec(&store.project_snapshot(&conn, project.clone()).unwrap().sessions)
+            .unwrap();
+        let first_modified = modified_seconds(&fs::metadata(&file_path).unwrap());
+        drop(conn);
+        drop(store);
+
+        let second_modified = (0..100)
+            .find_map(|_| {
+                fs::write(&file_path, "two\n").unwrap();
+                let modified = modified_seconds(&fs::metadata(&file_path).unwrap());
+                if !same_timestamp(modified, first_modified) {
+                    Some(modified)
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    None
+                }
+            })
+            .expect("source mtime should change");
+        assert!(!same_timestamp(second_modified, first_modified));
+
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &file_path, &project, || {
+                unstamped_history(true)
+            })
+            .unwrap();
+        let second =
+            serde_json::to_vec(&store.project_snapshot(&conn, project).unwrap().sessions).unwrap();
+
+        assert_eq!(second, first);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restored_source_reuses_its_persisted_fallback_identity() {
+        let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.json");
+        fs::write(&file_path, "one\n").unwrap();
+        let database_path = root.join("ai-usage.sqlite3");
+        let project = test_project(&root);
+        let store = AIUsageStore::at_path(database_path.clone());
+        let conn = store.connect().unwrap();
+
+        store
+            .load_or_index_file(&conn, "claude", &file_path, &project, || {
+                unstamped_history(false)
+            })
+            .unwrap();
+        let first = serde_json::to_vec(&store.project_snapshot(&conn, project.clone()).unwrap().sessions)
+            .unwrap();
+        fs::remove_file(&file_path).unwrap();
+        store
+            .remove_missing_source_files(&conn, "claude", &project.path, &[])
+            .unwrap();
+        drop(conn);
+        drop(store);
+
+        fs::write(&file_path, "restored\n").unwrap();
+        let store = AIUsageStore::at_path(database_path);
+        let conn = store.connect().unwrap();
+        store
+            .load_or_index_file(&conn, "claude", &file_path, &project, || {
+                unstamped_history(true)
+            })
+            .unwrap();
+        let second =
+            serde_json::to_vec(&store.project_snapshot(&conn, project).unwrap().sessions).unwrap();
+
+        assert_eq!(second, first);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn jsonl_truncation_promotes_to_rebuild() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -915,6 +1132,54 @@ mod tests {
     }
 
     #[test]
+    fn project_snapshot_metadata_is_independent_of_link_order() {
+        let project = AIHistoryProjectRequest {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: "/tmp/project".to_string(),
+        };
+        let links = vec![
+            test_session_link("file-a", "logical", "Alpha", "model-a"),
+            test_session_link("file-b", "logical", "Beta", "model-b"),
+        ];
+        let buckets = vec![
+            test_stored_bucket("file-a", "model-a", 10),
+            test_stored_bucket("file-b", "model-b", 20),
+        ];
+        let mut reversed_links = links.clone();
+        reversed_links.reverse();
+        let mut reversed_buckets = buckets.clone();
+        reversed_buckets.reverse();
+
+        let forward = build_snapshot_from_rows(project.clone(), links, buckets);
+        let reverse = build_snapshot_from_rows(project, reversed_links, reversed_buckets);
+
+        assert_eq!(
+            serde_json::to_value(&forward.sessions).unwrap(),
+            serde_json::to_value(&reverse.sessions).unwrap()
+        );
+        assert_eq!(forward.project_summary.current_model, reverse.project_summary.current_model);
+    }
+
+    #[test]
+    fn logical_session_merge_is_independent_of_input_order() {
+        let sessions = vec![
+            test_session_summary("Alpha", "project-a", "model-a", 10),
+            test_session_summary("Beta", "project-b", "model-b", 20),
+        ];
+        let mut reversed = sessions.clone();
+        reversed.reverse();
+
+        let forward = merge_logical_sessions(sessions);
+        let reverse = merge_logical_sessions(reversed);
+
+        assert_eq!(
+            serde_json::to_value(&forward).unwrap(),
+            serde_json::to_value(&reverse).unwrap()
+        );
+    }
+
+    #[test]
     fn project_snapshot_uses_measured_active_duration_only() {
         let root = std::env::temp_dir().join(format!("codux-ai-usage-store-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
@@ -1149,6 +1414,145 @@ mod tests {
                 reasoning_output_tokens: 0,
                 usage_amounts: Vec::new(),
             }],
+        }
+    }
+
+    fn unstamped_history(reversed: bool) -> ParsedHistory {
+        let mut entries = vec![
+            HistoryEntry {
+                source: "claude".to_string(),
+                session_id: "session-a".to_string(),
+                external_session_id: Some("external-z".to_string()),
+                session_title: Some("Alpha".to_string()),
+                timestamp: 0.0,
+                model: Some("model-a".to_string()),
+                input_tokens: 10,
+                output_tokens: 5,
+                cached_input_tokens: 2,
+                reasoning_output_tokens: 0,
+                usage_amounts: Vec::new(),
+            },
+            HistoryEntry {
+                source: "claude".to_string(),
+                session_id: "session-a".to_string(),
+                external_session_id: Some("external-a".to_string()),
+                session_title: Some("Zeta".to_string()),
+                timestamp: 0.0,
+                model: Some("model-z".to_string()),
+                input_tokens: 20,
+                output_tokens: 10,
+                cached_input_tokens: 4,
+                reasoning_output_tokens: 0,
+                usage_amounts: Vec::new(),
+            },
+            HistoryEntry {
+                source: "claude".to_string(),
+                session_id: "session-b".to_string(),
+                external_session_id: Some("external-b".to_string()),
+                session_title: Some("Beta".to_string()),
+                timestamp: 0.0,
+                model: Some("model-b".to_string()),
+                input_tokens: 30,
+                output_tokens: 15,
+                cached_input_tokens: 6,
+                reasoning_output_tokens: 0,
+                usage_amounts: Vec::new(),
+            },
+        ];
+        let mut events = vec![
+            HistoryEvent {
+                source: "claude".to_string(),
+                session_id: "session-a".to_string(),
+                timestamp: 0.0,
+                kind: HistoryEventKind::Request,
+            },
+            HistoryEvent {
+                source: "claude".to_string(),
+                session_id: "session-b".to_string(),
+                timestamp: 0.0,
+                kind: HistoryEventKind::Request,
+            },
+        ];
+        if reversed {
+            entries.reverse();
+            events.reverse();
+        }
+        ParsedHistory {
+            entries,
+            events,
+            sessions: Vec::new(),
+        }
+    }
+
+    fn test_session_link(
+        session_key: &str,
+        external_session_id: &str,
+        title: &str,
+        model: &str,
+    ) -> NormalizedSessionLinkRow {
+        NormalizedSessionLinkRow {
+            source: "opencode".to_string(),
+            file_path: format!("{session_key}.jsonl"),
+            session_key: session_key.to_string(),
+            external_session_id: Some(external_session_id.to_string()),
+            project_id: "project-1".to_string(),
+            project_name: "Project".to_string(),
+            session_title: title.to_string(),
+            first_seen_at: 100.0,
+            last_seen_at: 200.0,
+            last_model: Some(model.to_string()),
+            active_duration_seconds: 60,
+        }
+    }
+
+    fn test_stored_bucket(
+        session_key: &str,
+        model: &str,
+        total_tokens: i64,
+    ) -> StoredUsageBucketRow {
+        StoredUsageBucketRow {
+            source: "opencode".to_string(),
+            session_key: session_key.to_string(),
+            model: Some(model.to_string()),
+            bucket_start: 0.0,
+            bucket_end: 1_800.0,
+            input_tokens: total_tokens,
+            output_tokens: 0,
+            total_tokens,
+            cached_input_tokens: 0,
+            request_count: 1,
+            active_duration_seconds: 60,
+            usage_amounts: Vec::new(),
+        }
+    }
+
+    fn test_session_summary(
+        title: &str,
+        project_id: &str,
+        model: &str,
+        total_tokens: i64,
+    ) -> AISessionSummary {
+        AISessionSummary {
+            session_id: "logical-session".to_string(),
+            external_session_id: Some("logical-session".to_string()),
+            project_id: project_id.to_string(),
+            project_name: project_id.to_string(),
+            project_path: "/tmp/project".to_string(),
+            session_title: title.to_string(),
+            first_seen_at: 100.0,
+            last_seen_at: 200.0,
+            last_tool: Some("opencode".to_string()),
+            last_model: Some(model.to_string()),
+            request_count: 1,
+            total_input_tokens: total_tokens,
+            total_output_tokens: 0,
+            total_tokens,
+            cached_input_tokens: 0,
+            usage_amounts: Vec::new(),
+            active_duration_seconds: 60,
+            today_tokens: 0,
+            today_cached_input_tokens: 0,
+            today_usage_amounts: Vec::new(),
         }
     }
 

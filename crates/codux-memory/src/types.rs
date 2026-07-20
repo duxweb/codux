@@ -179,6 +179,7 @@ pub struct MemoryLaunchArtifacts {
 #[derive(Clone, Debug)]
 pub struct MemoryLaunchRequest {
     pub project_id: String,
+    pub workspace_id: Option<String>,
     pub project_name: String,
     pub workspace_path: Option<String>,
     pub settings: MemoryConfig,

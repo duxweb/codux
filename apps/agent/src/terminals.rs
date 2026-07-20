@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-type TransportSlot = Arc<Mutex<Option<Arc<dyn RemoteTransport>>>>;
+pub(crate) type TransportSlot = Arc<Mutex<Option<Arc<dyn RemoteTransport>>>>;
 const STALE_OUTPUT_SEQ_LAG: i64 = 8;
 
 #[derive(Clone, Copy, Debug)]
@@ -299,7 +299,7 @@ fn reply(
     send(transport, device_id, envelope, false);
 }
 
-fn list_payload(driver: &TerminalManager, fanout_state: &TerminalFanout) -> Value {
+pub(crate) fn list_payload(driver: &TerminalManager, fanout_state: &TerminalFanout) -> Value {
     let terminals = driver
         .list()
         .into_iter()
@@ -323,6 +323,89 @@ fn terminal_payload(
         payload["worktreeId"] = json!(worktree_id);
     }
     payload
+}
+
+pub(crate) fn create_terminal(
+    driver: &Arc<TerminalManager>,
+    transport: &TransportSlot,
+    fanout_state: &TerminalFanout,
+    mut config: TerminalPtyConfig,
+    project_id: Option<&str>,
+) -> Result<codux_terminal_core::TerminalSessionSnapshot, String> {
+    let data_dir = crate::projects::agent_data_dir();
+    let runtime_root = codux_runtime_live::runtime_paths::runtime_root_dir();
+    config.support_dir = Some(data_dir.clone());
+    config.runtime_root = Some(runtime_root.clone());
+    config.tool_permissions_file = Some(data_dir.join("tool_permissions.json"));
+    crate::memory::prepare_terminal_launch_context(&mut config, &data_dir, &runtime_root)?;
+    if config.terminal_id.is_none() {
+        config.terminal_id = Some(uuid::Uuid::new_v4().to_string());
+    }
+    if let (Some(session_id), Some(project_id)) = (config.terminal_id.as_deref(), project_id) {
+        fanout_state.set_session_project(session_id, project_id);
+    }
+
+    let driver_for_emit = Arc::clone(driver);
+    let transport_for_emit = Arc::clone(transport);
+    let fanout_for_emit = fanout_state.clone();
+    let project_id_for_emit = project_id.map(str::to_string);
+    let event_order = Arc::new(Mutex::new(()));
+    let event_order_for_emit = Arc::clone(&event_order);
+    let emit = Arc::new(move |event: TerminalEvent| {
+        let _guard = event_order_for_emit
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        handle_agent_terminal_event(
+            &driver_for_emit,
+            &transport_for_emit,
+            &fanout_for_emit,
+            project_id_for_emit.as_deref(),
+            event,
+        )
+    });
+    let event_key = config
+        .terminal_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(|terminal_id| format!("remote-terminal:{terminal_id}"));
+    let session_id = if let Some(event_key) = event_key {
+        driver.create_with_event_key(config, event_key, emit)
+    } else {
+        driver.create_with_sink(config, emit)
+    }
+    .map_err(|error| error.to_string())?;
+
+    let _guard = event_order
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let terminal = driver
+        .list()
+        .into_iter()
+        .find(|terminal| terminal.id == session_id && terminal.is_running)
+        .ok_or_else(|| {
+            fanout_state.clear_session(&session_id);
+            "Created terminal is unavailable.".to_string()
+        })?;
+    if let Some(project_id) = project_id {
+        fanout_state.set_session_project(&session_id, project_id);
+    }
+    Ok(terminal)
+}
+
+pub(crate) fn broadcast_terminal_list(
+    driver: &TerminalManager,
+    transport: &TransportSlot,
+    fanout_state: &TerminalFanout,
+) {
+    send(
+        transport,
+        None,
+        json!({
+            "type": REMOTE_TERMINAL_LIST,
+            "payload": list_payload(driver, fanout_state),
+        }),
+        false,
+    );
 }
 
 fn baseline_viewport(payload: &Value) -> Option<BaselineViewport> {
@@ -770,6 +853,12 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                 .and_then(Value::as_u64)
                 .map(|v| v as u16),
             root_project_id: project_id.clone(),
+            root_project_path: payload
+                .get("rootProjectPath")
+                .or_else(|| payload.get("projectPath"))
+                .or_else(|| payload.get("cwd"))
+                .and_then(Value::as_str)
+                .map(str::to_string),
             project_id: worktree_id.clone(),
             worktree_id,
             project_name: payload
@@ -797,22 +886,6 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
                 .get("tool")
                 .and_then(Value::as_str)
                 .map(str::to_string),
-            support_dir: Some(crate::projects::agent_data_dir()),
-            runtime_root: Some(codux_runtime_live::runtime_paths::runtime_root_dir()),
-            tool_permissions_file: Some(
-                crate::projects::agent_data_dir().join("tool_permissions.json"),
-            ),
-            memory_workspace_root: Some(crate::projects::agent_data_dir().join("memory")),
-            memory_prompt_file: Some(
-                crate::projects::agent_data_dir()
-                    .join("memory")
-                    .join("AI_MEMORY.md"),
-            ),
-            memory_index_file: Some(
-                crate::projects::agent_data_dir()
-                    .join("memory")
-                    .join("memory-index.json"),
-            ),
             ..Default::default()
         };
         apply_terminal_osc_color_env(&mut config, payload);
@@ -825,67 +898,16 @@ impl RemoteTerminalDispatch for AgentTerminalCtx<'_> {
             device_id,
             |session_id, device_id| self.add_viewer(session_id, device_id),
         );
-        if let (Some(session_id), Some(project_id)) = (
-            lifecycle.requested_terminal_id.as_deref(),
+        let create_result = create_terminal(
+            self.driver,
+            self.transport,
+            self.fanout,
+            config,
             project_id.as_deref(),
-        ) {
-            self.fanout.set_session_project(session_id, project_id);
-        }
-        // Stream this session's output to ALL of its viewers (fan-out), and
-        // forward viewport-state changes (lease claim/handoff) too.
-        let driver_for_emit = Arc::clone(self.driver);
-        let transport_for_emit = Arc::clone(self.transport);
-        let fanout_for_emit = self.fanout.clone();
-        let project_id_for_emit = project_id.clone();
-        let event_order = Arc::new(Mutex::new(()));
-        let event_order_for_emit = Arc::clone(&event_order);
-        let emit = Arc::new(move |event: TerminalEvent| {
-            let _guard = event_order_for_emit
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            handle_agent_terminal_event(
-                &driver_for_emit,
-                &transport_for_emit,
-                &fanout_for_emit,
-                project_id_for_emit.as_deref(),
-                event,
-            )
-        });
-        let event_key = config
-            .terminal_id
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-            .map(|terminal_id| format!("remote-terminal:{terminal_id}"));
-        let create_result = if let Some(event_key) = event_key {
-            self.driver.create_with_event_key(config, event_key, emit)
-        } else {
-            self.driver.create_with_sink(config, emit)
-        };
+        );
         match create_result {
-            Ok(session_id) => {
-                let _guard = event_order
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                let created_terminal = self
-                    .driver
-                    .list()
-                    .into_iter()
-                    .find(|terminal| terminal.id == session_id && terminal.is_running);
-                let Some(created_terminal) = created_terminal else {
-                    self.fanout.clear_session(&session_id);
-                    reply(
-                        self.transport,
-                        device_id,
-                        Some(&session_id),
-                        msg.request_id,
-                        REMOTE_TERMINAL_CLOSED,
-                        json!({ "sessionId": session_id }),
-                    );
-                    return;
-                };
-                if let Some(project_id) = project_id.as_deref() {
-                    self.fanout.set_session_project(&session_id, project_id);
-                }
+            Ok(created_terminal) => {
+                let session_id = created_terminal.id.clone();
                 finish_terminal_create_viewer_lifecycle(
                     &session_id,
                     device_id,

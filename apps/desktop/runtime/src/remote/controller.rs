@@ -583,6 +583,25 @@ impl RemoteController {
         payloads
     }
 
+    /// Drain unsolicited hosted worktree/terminal-list resource updates while
+    /// leaving every other controller event untouched.
+    pub fn drain_hosted_workspace_updates(&self) -> Vec<(String, Value)> {
+        let mut events = self.inner.events.lock().unwrap();
+        let mut updates = Vec::new();
+        events.retain(|(kind, payload)| {
+            if matches!(
+                kind.as_str(),
+                REMOTE_WORKTREE_UPDATED | REMOTE_TERMINAL_LIST
+            ) {
+                updates.push((kind.clone(), payload.clone()));
+                false
+            } else {
+                true
+            }
+        });
+        updates
+    }
+
     pub async fn shutdown(&self) {
         self.transport.shutdown().await;
     }
@@ -1006,6 +1025,7 @@ impl RemoteController {
             "cols": config.cols,
             "rows": config.rows,
             "projectId": config.root_project_id,
+            "rootProjectPath": config.root_project_path,
             "worktreeId": config.worktree_id,
             "title": config.title,
             "terminalId": config.terminal_id,
@@ -2291,5 +2311,41 @@ mod tests {
             sent.iter()
                 .all(|envelope| envelope["requestId"].is_string())
         );
+    }
+
+    #[test]
+    fn hosted_workspace_drain_leaves_unrelated_events_queued() {
+        let inner = Arc::new(ControllerInner::default());
+        inner.push_event(
+            REMOTE_AI_STATS.to_string(),
+            json!({ "projectId": "project-1" }),
+        );
+        inner.push_event(
+            REMOTE_WORKTREE_UPDATED.to_string(),
+            json!({ "projectId": "project-1" }),
+        );
+        inner.push_event(
+            REMOTE_TERMINAL_STATUS.to_string(),
+            json!({ "terminalId": "terminal-1" }),
+        );
+        inner.push_event(REMOTE_TERMINAL_LIST.to_string(), json!({ "terminals": [] }));
+        let controller = RemoteController {
+            transport: Arc::new(NoopTransport),
+            device_id: "device-1".to_string(),
+            inner,
+            next_id: AtomicU64::new(1),
+        };
+
+        let updates = controller.drain_hosted_workspace_updates();
+
+        assert_eq!(
+            updates
+                .iter()
+                .map(|(kind, _)| kind.as_str())
+                .collect::<Vec<_>>(),
+            [REMOTE_WORKTREE_UPDATED, REMOTE_TERMINAL_LIST]
+        );
+        assert_eq!(controller.drain_pushed_ai_stats().len(), 1);
+        assert_eq!(controller.drain_pushed_terminal_status().len(), 1);
     }
 }

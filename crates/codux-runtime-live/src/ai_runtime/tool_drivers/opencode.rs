@@ -17,6 +17,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["opencode"],
     process_names: &["opencode"],
     wrapper_bins: &["opencode"],
+    initial_prompt_args: &["run"],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

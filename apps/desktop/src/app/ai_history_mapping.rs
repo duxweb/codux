@@ -30,17 +30,8 @@ pub(in crate::app) fn ai_session_fork_command(
     prompt_path: &str,
 ) -> String {
     let prompt = shell_read_file_arg(prompt_path);
-    match target {
-        AISessionForkTarget::Codex => format!("codex {prompt}"),
-        AISessionForkTarget::Claude => format!("claude {prompt}"),
-        AISessionForkTarget::Agy => format!("agy {prompt}"),
-        AISessionForkTarget::Omp => format!("omp {prompt}"),
-        AISessionForkTarget::OpenCode => format!("opencode run {prompt}"),
-        AISessionForkTarget::Kiro => format!("kiro-cli {prompt}"),
-        AISessionForkTarget::CodeWhale => format!("codewhale {prompt}"),
-        AISessionForkTarget::Kimi => format!("kimi {prompt}"),
-        AISessionForkTarget::MiMo => format!("mimo run {prompt}"),
-    }
+    codux_runtime::ai_runtime::tool_driver::initial_prompt_command(target.tool_id(), &prompt)
+        .expect("fork target must have a runtime tool driver")
 }
 
 pub(in crate::app) fn normalized_ai_history_snapshot_to_summary(

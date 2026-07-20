@@ -3,9 +3,11 @@ fn parsed_session_from_entry(entry: &HistoryEntry) -> ParsedSessionAccumulator {
         session_key: entry.session_id.clone(),
         external_session_id: entry.external_session_id.clone(),
         title: entry.session_title.clone(),
+        title_at: entry.timestamp,
         first_seen_at: entry.timestamp,
         last_seen_at: entry.timestamp,
         last_model: entry.model.clone(),
+        model_at: entry.timestamp,
         active_duration_seconds: 0,
     }
 }
@@ -51,18 +53,24 @@ fn usage_bucket_from_session(
     }
 }
 
-fn build_session_links(usage_buckets: &[AIUsageBucket]) -> Vec<NormalizedSessionLinkRow> {
+fn build_session_links(
+    file_path: &str,
+    usage_buckets: &[AIUsageBucket],
+) -> Vec<NormalizedSessionLinkRow> {
     let mut map = HashMap::<String, NormalizedSessionLinkRow>::new();
     for bucket in usage_buckets {
         map.entry(bucket.session_key.clone())
             .and_modify(|session| {
-                session.external_session_id = session
-                    .external_session_id
-                    .clone()
-                    .or(bucket.external_session_id.clone());
-                session.session_title =
-                    preferred_string(Some(&session.session_title), Some(&bucket.session_title))
-                        .unwrap_or_else(|| bucket.project_name.clone());
+                stable_optional_string(
+                    &mut session.external_session_id,
+                    bucket.external_session_id.as_deref(),
+                );
+                if bucket.last_seen_at > session.last_seen_at
+                    || (same_timestamp(bucket.last_seen_at, session.last_seen_at)
+                        && bucket.session_title > session.session_title)
+                {
+                    session.session_title = bucket.session_title.clone();
+                }
                 session.first_seen_at = min_nonzero(session.first_seen_at, bucket.first_seen_at);
                 session.last_seen_at = session.last_seen_at.max(bucket.last_seen_at);
                 session.last_model = bucket.model.clone().or(session.last_model.clone());
@@ -72,6 +80,7 @@ fn build_session_links(usage_buckets: &[AIUsageBucket]) -> Vec<NormalizedSession
             })
             .or_insert_with(|| NormalizedSessionLinkRow {
                 source: bucket.source.clone(),
+                file_path: file_path.to_string(),
                 session_key: bucket.session_key.clone(),
                 external_session_id: bucket.external_session_id.clone(),
                 project_id: bucket.project_id.clone(),

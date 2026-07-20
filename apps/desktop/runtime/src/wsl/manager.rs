@@ -39,14 +39,23 @@ pub struct WslDistributionCatalog {
 #[derive(Default)]
 pub struct WslRuntimeManager {
     clients: Mutex<HashMap<String, Arc<WslRuntimeClient>>>,
+    terminal_query_colors: Mutex<Option<codux_terminal_core::TerminalQueryColors>>,
     distributions: Mutex<Option<Vec<super::WslDistribution>>>,
     runtime_starting: Mutex<()>,
     installing: Mutex<()>,
+    event_sink: Option<super::WslRuntimeEventSink>,
 }
 
 impl WslRuntimeManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn with_event_sink(event_sink: super::WslRuntimeEventSink) -> Self {
+        Self {
+            event_sink: Some(event_sink),
+            ..Self::default()
+        }
     }
 
     pub fn distributions(&self) -> Result<Vec<super::WslDistribution>, String> {
@@ -93,7 +102,15 @@ impl WslRuntimeManager {
             clients.remove(distribution);
         }
         require_wsl_sidecar(distribution)?;
-        let client = WslRuntimeClient::start(distribution)?;
+        let client = WslRuntimeClient::start(distribution, self.event_sink.clone())?;
+        if let Some(colors) = self
+            .terminal_query_colors
+            .lock()
+            .ok()
+            .and_then(|colors| *colors)
+        {
+            client.set_terminal_query_colors(colors);
+        }
         self.clients
             .lock()
             .map_err(|_| "WSL runtime manager is unavailable".to_string())?
@@ -107,6 +124,20 @@ impl WslRuntimeManager {
             .ok()
             .and_then(|clients| clients.get(distribution.trim()).cloned())
             .filter(|client| client.is_alive())
+    }
+
+    pub fn set_terminal_query_colors(&self, colors: codux_terminal_core::TerminalQueryColors) {
+        if let Ok(mut current) = self.terminal_query_colors.lock() {
+            *current = Some(colors);
+        }
+        let clients = self
+            .clients
+            .lock()
+            .map(|clients| clients.values().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        for client in clients {
+            client.set_terminal_query_colors(colors);
+        }
     }
 
     pub fn catalog(&self) -> Result<WslDistributionCatalog, String> {

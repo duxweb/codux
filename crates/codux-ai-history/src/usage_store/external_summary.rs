@@ -94,7 +94,9 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         WHERE project_id = '';
         "#,
         )?;
+        preserve_source_fallback_timestamps(conn)?;
         canonicalize_usage_event_paths(conn)?;
+        canonicalize_source_identity_paths(conn)?;
         conn.execute_batch(
             r#"
         DROP TABLE IF EXISTS ai_history_file_usage_bucket;
@@ -125,6 +127,83 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         Ok(())
     })();
     finish_transaction(conn, result)
+}
+
+fn preserve_source_fallback_timestamps(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        INSERT INTO ai_history_source_identity (
+            source, file_path, project_path, fallback_timestamp
+        )
+        SELECT source, file_path, project_path, MIN(fallback_timestamp)
+        FROM (
+            SELECT source, file_path, project_path, first_seen_at AS fallback_timestamp
+            FROM ai_history_file_session_link
+            WHERE first_seen_at > 0
+            UNION ALL
+            SELECT source, file_path, project_path, bucket_start AS fallback_timestamp
+            FROM ai_history_file_usage_bucket
+            WHERE bucket_start > 0
+            UNION ALL
+            SELECT source, file_path, project_path, occurred_at AS fallback_timestamp
+            FROM ai_history_file_usage_event
+            WHERE occurred_at > 0
+            UNION ALL
+            SELECT source, file_path, project_path, file_modified_at AS fallback_timestamp
+            FROM ai_history_file_state
+            WHERE file_modified_at > 0
+        )
+        GROUP BY source, file_path, project_path
+        ON CONFLICT(source, file_path, project_path) DO UPDATE SET
+            fallback_timestamp = MIN(
+                ai_history_source_identity.fallback_timestamp,
+                excluded.fallback_timestamp
+            );
+        "#,
+    )?;
+    Ok(())
+}
+
+fn canonicalize_source_identity_paths(conn: &Connection) -> Result<()> {
+    let mut statement = conn.prepare(
+        "SELECT rowid, source, file_path, project_path, fallback_timestamp FROM ai_history_source_identity ORDER BY rowid;",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, f64>(4)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(statement);
+    for (rowid, source, file_path, project_path, fallback_timestamp) in rows {
+        let canonical_path = canonical_project_path(&project_path);
+        if canonical_path.is_empty() || canonical_path == project_path {
+            continue;
+        }
+        conn.execute(
+            r#"
+            INSERT INTO ai_history_source_identity (
+                source, file_path, project_path, fallback_timestamp
+            ) VALUES (?1, ?2, ?3, ?4)
+            ON CONFLICT(source, file_path, project_path) DO UPDATE SET
+                fallback_timestamp = MIN(
+                    ai_history_source_identity.fallback_timestamp,
+                    excluded.fallback_timestamp
+                );
+            "#,
+            params![source, file_path, canonical_path, fallback_timestamp],
+        )?;
+        conn.execute(
+            "DELETE FROM ai_history_source_identity WHERE rowid = ?1;",
+            params![rowid],
+        )?;
+    }
+    Ok(())
 }
 
 fn canonicalize_usage_event_paths(conn: &Connection) -> Result<()> {
@@ -214,12 +293,22 @@ fn external_file_summary_from_parsed(
                 last_seen_at: metadata.timestamp,
                 ..Default::default()
             });
-        session.external_session_id = metadata
-            .external_session_id
-            .clone()
-            .or(session.external_session_id.clone());
-        session.title = metadata.session_title.clone().or(session.title.clone());
-        session.last_model = metadata.model.clone().or(session.last_model.clone());
+        stable_optional_string(
+            &mut session.external_session_id,
+            metadata.external_session_id.as_deref(),
+        );
+        update_metadata_string(
+            &mut session.title,
+            &mut session.title_at,
+            metadata.session_title.as_deref(),
+            metadata.timestamp,
+        );
+        update_metadata_string(
+            &mut session.last_model,
+            &mut session.model_at,
+            metadata.model.as_deref(),
+            metadata.timestamp,
+        );
         session.first_seen_at = min_nonzero(session.first_seen_at, metadata.timestamp);
         session.last_seen_at = session.last_seen_at.max(metadata.timestamp);
     }
@@ -254,12 +343,22 @@ fn external_file_summary_from_parsed(
                     last_seen_at: entry.timestamp,
                     ..Default::default()
                 });
-        session.external_session_id = entry
-            .external_session_id
-            .clone()
-            .or(session.external_session_id.clone());
-        session.title = entry.session_title.clone().or(session.title.clone());
-        session.last_model = entry.model.clone().or(session.last_model.clone());
+        stable_optional_string(
+            &mut session.external_session_id,
+            entry.external_session_id.as_deref(),
+        );
+        update_metadata_string(
+            &mut session.title,
+            &mut session.title_at,
+            entry.session_title.as_deref(),
+            entry.timestamp,
+        );
+        update_metadata_string(
+            &mut session.last_model,
+            &mut session.model_at,
+            entry.model.as_deref(),
+            entry.timestamp,
+        );
         session.first_seen_at = min_nonzero(session.first_seen_at, entry.timestamp);
         session.last_seen_at = session.last_seen_at.max(entry.timestamp);
         session.active_duration_seconds = session.active_duration_seconds.max(

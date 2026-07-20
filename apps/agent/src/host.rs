@@ -35,8 +35,11 @@ use codux_runtime_core::{
     project::project_list_payload,
 };
 use codux_runtime_live::{
-    ai_runtime::AIRuntimeBridge, ai_runtime_state::AIRuntimeStateService,
-    host_metrics::sample_host_metrics, terminal_pty::TerminalManager,
+    agent_worktree::{AgentWorktreeControl, AgentWorktreeHost},
+    ai_runtime::AIRuntimeBridge,
+    ai_runtime_state::AIRuntimeStateService,
+    host_metrics::sample_host_metrics,
+    terminal_pty::TerminalManager,
 };
 
 use crate::projects::AgentProjectStore;
@@ -68,6 +71,11 @@ type CandidateSlot = Arc<Mutex<Option<(String, String)>>>;
 /// registers by requesting `ai.stats`; the poller re-pushes fresh stats to them
 /// when the live AI runtime changes, so remote views tick like the desktop's.
 type AIStatsWatchers = Arc<Mutex<HashMap<String, HashSet<String>>>>;
+
+struct AgentWorktreeRuntime {
+    _control: Arc<AgentWorktreeControl>,
+    _host: Arc<dyn AgentWorktreeHost>,
+}
 
 #[derive(Clone)]
 struct AgentPairingState {
@@ -940,13 +948,32 @@ fn is_forbidden_ip(ip: IpAddr) -> bool {
 /// handle and the slot it has been stored in (for replies).
 async fn connect_serving_host(
     cfg: &AgentHostConfig,
-) -> Result<(Arc<dyn RemoteTransport>, TransportSlot, AgentPairingState), String> {
+) -> Result<
+    (
+        Arc<dyn RemoteTransport>,
+        TransportSlot,
+        AgentPairingState,
+        AgentWorktreeRuntime,
+    ),
+    String,
+> {
     let slot: TransportSlot = Arc::new(Mutex::new(None));
     let candidate: CandidateSlot = Arc::new(Mutex::new(None));
     let pairing = AgentPairingState::new()?;
     let ai_runtime = Arc::new(AIRuntimeBridge::new());
+    ai_runtime.stage_assets()?;
     let driver = Arc::new(TerminalManager::with_ai_runtime(Arc::clone(&ai_runtime)));
     let fanout = crate::terminals::TerminalFanout::new();
+    let agent_worktree_control =
+        AgentWorktreeControl::start(&crate::projects::agent_data_dir(), Arc::clone(&ai_runtime))?;
+    let agent_worktree_host: Arc<dyn AgentWorktreeHost> =
+        Arc::new(crate::agent_worktree::HeadlessAgentWorktreeHost::new(
+            Arc::clone(&driver),
+            Arc::clone(&slot),
+            fanout.clone(),
+        ));
+    agent_worktree_control.set_host(Arc::clone(&agent_worktree_host));
+    driver.bind_agent_worktree_control(Arc::clone(&agent_worktree_control));
     // On viewport-lease expiry, hand the viewport to another phone still viewing
     // the same agent terminal (if any) instead of snapping back to the host.
     {
@@ -1058,7 +1085,15 @@ async fn connect_serving_host(
         ai_stats_watchers,
     );
     spawn_terminal_status_poller(Arc::clone(&slot), ai_runtime);
-    Ok((host, slot, pairing))
+    Ok((
+        host,
+        slot,
+        pairing,
+        AgentWorktreeRuntime {
+            _control: agent_worktree_control,
+            _host: agent_worktree_host,
+        },
+    ))
 }
 
 /// Watch the live AI runtime and re-push `ai.stats` to watching devices whenever
@@ -1182,7 +1217,7 @@ impl codux_runtime_core::ai_stats::RemoteAICurrentSessionProvider
 /// Run the headless host until the process is stopped, printing the pairing
 /// candidate so a controller can connect.
 pub async fn run_host(cfg: AgentHostConfig) -> Result<(), String> {
-    let (host, _slot, pairing) = connect_serving_host(&cfg).await?;
+    let (host, _slot, pairing, _agent_worktree) = connect_serving_host(&cfg).await?;
     let web_test = match crate::web_test::start_background() {
         Ok(server) => Some(server),
         Err(error) => {
@@ -1306,7 +1341,7 @@ pub async fn run_serve_smoke_async() -> Result<String, String> {
     unsafe {
         std::env::set_var("CODUX_AGENT_DATA_DIR", &data_dir);
     }
-    let (host, _slot, pairing) = connect_serving_host(&cfg).await?;
+    let (host, _slot, pairing, _agent_worktree) = connect_serving_host(&cfg).await?;
     let (node_id, relay_url) = host
         .iroh_candidate()
         .ok_or_else(|| "iroh host candidate missing".to_string())?;

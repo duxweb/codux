@@ -616,7 +616,13 @@ $settings = Read-Tool-Settings
 $memoryInjectionStrategy = Tool-Memory-Injection-Strategy $Tool
 $permissionKey = Tool-Config-Key $Tool
 $modelKey = Tool-Model-Key $Tool
-$permissionMode = if ($settings -and $permissionKey) { [string]$settings.$permissionKey } else { "" }
+$permissionMode = if ($env:CODUX_AGENT_WORKTREE_AUTONOMOUS -eq "1") {
+  "fullAccess"
+} elseif ($settings -and $permissionKey) {
+  [string]$settings.$permissionKey
+} else {
+  ""
+}
 $configuredModel = if ($settings -and $modelKey) { [string]$settings.$modelKey } else { "" }
 $codexEffort = if ($settings) { [string]$settings.codexEffort } else { "" }
 if ($codexEffort -notin @("minimal", "low", "medium", "high", "xhigh")) {

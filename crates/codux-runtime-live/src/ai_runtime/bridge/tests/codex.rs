@@ -136,6 +136,64 @@ fn codex_wrapper_applies_tool_permissions_and_memory_injection() {
     assert!(args.contains("codux-ssh list"));
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[cfg(not(windows))]
+#[test]
+fn codex_agent_worktree_launch_forces_autonomous_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let dir = std::env::temp_dir().join(format!(
+        "codux-codex-agent-worktree-perms-{}",
+        Uuid::new_v4()
+    ));
+    let bridge = AIRuntimeBridge::with_paths(dir.join("root"), dir.join("temp"), dir.join("home"));
+    bridge.stage_assets().unwrap();
+
+    let real_bin = dir.join("real-bin");
+    fs::create_dir_all(&real_bin).unwrap();
+    let fake_codex = real_bin.join("codex");
+    fs::write(&fake_codex, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+    let mut permissions = fs::metadata(&fake_codex).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_codex, permissions).unwrap();
+
+    let permissions_file = dir.join("tool-permissions.json");
+    fs::write(&permissions_file, r#"{"codex":"default"}"#).unwrap();
+    let search_path = format!("{}:/usr/bin:/bin:/usr/sbin:/sbin", real_bin.display());
+    let mut command = Command::new(bridge.wrapper_bin_dir().join("codex"));
+    command
+        .env("PATH", &search_path)
+        .env("DMUX_ORIGINAL_PATH", &search_path)
+        .env("DMUX_SESSION_ID", "terminal-1")
+        .env("DMUX_RUNTIME_EVENT_DIR", dir.join("events"))
+        .env("DMUX_TOOL_PERMISSION_SETTINGS_FILE", &permissions_file)
+        .env_remove("DMUX_ACTIVE_AI_RESOLVED_PATH");
+
+    let ordinary = command.output().unwrap();
+    assert!(ordinary.status.success());
+    let ordinary_args = String::from_utf8_lossy(&ordinary.stdout);
+    assert!(
+        ordinary_args
+            .lines()
+            .all(|arg| arg != "--dangerously-bypass-approvals-and-sandbox"),
+        "{ordinary_args}"
+    );
+
+    let output = command
+        .env("CODUX_AGENT_WORKTREE_AUTONOMOUS", "1")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let args = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        args.lines()
+            .any(|arg| arg == "--dangerously-bypass-approvals-and-sandbox"),
+        "{args}"
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
 #[cfg(not(windows))]
 #[test]
 fn mimo_wrapper_uses_managed_xdg_config_for_system_transform() {

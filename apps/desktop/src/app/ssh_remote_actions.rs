@@ -1241,6 +1241,7 @@ impl CoduxApp {
         let remote_events = self.runtime_service.drain_remote_events();
         let mut remote_summary_events = 0;
         let mut remote_terminal_layout_events = 0;
+        let mut changed_worktree_projects = HashMap::new();
         for event in &remote_events {
             match event {
                 RemoteHostEvent::Summary(remote) => {
@@ -1254,10 +1255,26 @@ impl CoduxApp {
                 RemoteHostEvent::TerminalLayoutChanged(_) => {
                     remote_terminal_layout_events += 1;
                 }
+                RemoteHostEvent::WorktreesChanged {
+                    project_id,
+                    project_path,
+                } => {
+                    changed_worktree_projects.insert(project_id.clone(), project_path.clone());
+                }
             }
         }
         if remote_terminal_layout_events > 0 {
             self.reconcile_remote_terminal_layout(cx);
+        }
+        for (project_id, project_path) in changed_worktree_projects {
+            if self
+                .state
+                .selected_project
+                .as_ref()
+                .is_some_and(|project| project.id == project_id)
+            {
+                self.refresh_changed_worktrees_async(project_id, project_path, cx);
+            }
         }
         let scheduled_refresh = self.pending_runtime_refresh.take();
         let has_scheduled_refresh = scheduled_refresh.is_some();
@@ -1384,6 +1401,45 @@ impl CoduxApp {
             changed,
             ai_state_error: None,
         }
+    }
+
+    fn refresh_changed_worktrees_async(
+        &self,
+        project_id: String,
+        project_path: String,
+        cx: &mut Context<Self>,
+    ) {
+        let runtime_service = self.runtime_service.clone();
+        let generation = self.project_switch_generation;
+        cx.spawn(async move |this: gpui::WeakEntity<Self>, cx| {
+            let load =
+                codux_runtime::async_runtime::run_limited_blocking(move || ProjectSwitchTaskLoad {
+                    project_id: project_id.clone(),
+                    generation,
+                    worktrees: runtime_service
+                        .reload_worktrees(Some(&project_id), Some(&project_path)),
+                })
+                .await
+                .ok();
+            let _ = this.update(cx, |app, cx| {
+                let Some(load) = load else {
+                    return;
+                };
+                if app.project_switch_generation != load.generation
+                    || app
+                        .state
+                        .selected_project
+                        .as_ref()
+                        .map(|project| project.id.as_str())
+                        != Some(load.project_id.as_str())
+                {
+                    return;
+                }
+                app.merge_selected_project_worktrees(load.worktrees);
+                app.invalidate_task_column(cx);
+            });
+        })
+        .detach();
     }
 
     /// Apply any `ai.stats` the host pushed for the selected remote-hosted

@@ -65,10 +65,7 @@ impl CoduxApp {
             .map(TerminalLaunchContext::to_config)
             .unwrap_or_default();
         let terminal_config = terminal_config_for_settings(&state.settings, window.appearance());
-        runtime_service.set_remote_terminal_osc_colors(
-            terminal_config.colors.foreground_osc_payload(),
-            terminal_config.colors.background_osc_payload(),
-        );
+        runtime_service.set_terminal_query_colors(terminal_config.colors.query_colors());
         let terminal_manager = runtime_service.terminal_manager();
         let terminal_pane_registry = HashMap::new();
         // Boot restore runs during App construction, before a `Context<Self>`

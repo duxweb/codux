@@ -182,12 +182,13 @@ impl AIUsageStore {
                    first_seen_at, last_seen_at, last_model, active_duration_seconds
             FROM ai_history_file_session_link
             WHERE source = ?1 AND file_path = ?2 AND project_path = ?3
-            ORDER BY last_seen_at DESC;
+            ORDER BY last_seen_at DESC, session_key ASC;
             "#,
         )?;
         let rows = statement.query_map(params![source, file_path, project_path], |row| {
             Ok(NormalizedSessionLinkRow {
                 source: source.to_string(),
+                file_path: file_path.to_string(),
                 session_key: row.get(0)?,
                 external_session_id: row.get(1)?,
                 project_id: row.get(2)?,
@@ -219,13 +220,14 @@ impl AIUsageStore {
                    last_model, active_duration_seconds
             FROM ai_history_file_session_link
             WHERE project_path = ?1
-            ORDER BY last_seen_at DESC;
+            ORDER BY last_seen_at DESC, source ASC, file_path ASC, session_key ASC;
             "#,
         )?;
         statement
             .query_map(params![project_path], |row| {
                 Ok(NormalizedSessionLinkRow {
                     source: row.get(0)?,
+                    file_path: row.get(1)?,
                     session_key: row.get(3)?,
                     external_session_id: row.get(4)?,
                     project_id: row.get(5)?,

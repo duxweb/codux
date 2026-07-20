@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+wrapper_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+wrapper_helper="${wrapper_dir}/../codux-wrapper-helper"
+if [ ! -x "${wrapper_helper}" ]; then
+  printf '%s\n' "codux-worktree: bundled helper is missing" >&2
+  exit 127
+fi
+exec "${wrapper_helper}" --codux-wrapper-helper agent-worktree "$@"

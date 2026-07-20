@@ -259,6 +259,8 @@ pub struct AIExternalFileCheckpointPayload {
     pub session_title: Option<String>,
     pub last_model: Option<String>,
     #[serde(default)]
+    pub(crate) last_source_timestamp: Option<f64>,
+    #[serde(default)]
     pub(crate) codex_total_usage_by_session: HashMap<String, HistoryUsage>,
     #[serde(default)]
     pub(crate) codex_active_task_started_at_by_session: HashMap<String, f64>,
@@ -290,6 +292,8 @@ struct SessionAccumulator {
     first_seen_at: f64,
     last_seen_at: f64,
     model: Option<String>,
+    title_at: f64,
+    model_at: f64,
     input_tokens: i64,
     output_tokens: i64,
     cached_input_tokens: i64,

@@ -413,6 +413,7 @@ fn launch_request_respects_cross_project_user_memory_setting() {
     let artifacts = service
         .prepare_launch_artifacts(&runtime_root, MemoryLaunchRequest {
             project_id: "project-a".to_string(),
+            workspace_id: None,
             project_name: "Project A".to_string(),
             workspace_path: Some("/workspace/project-a".to_string()),
             settings,
@@ -442,6 +443,7 @@ fn launch_request_includes_global_prompt_even_when_memory_injection_is_disabled(
     let artifacts = service
         .prepare_launch_artifacts(&runtime_root, MemoryLaunchRequest {
             project_id: "project-launch".to_string(),
+            workspace_id: None,
             project_name: "Launch Project".to_string(),
             workspace_path: Some("/workspace/launch".to_string()),
             settings,
@@ -454,6 +456,51 @@ fn launch_request_includes_global_prompt_even_when_memory_injection_is_disabled(
     assert!(index.contains("Extra launch note."));
     assert!(!index.contains("project active entry"));
     assert!(!index.contains("user active entry"));
+
+    fs::remove_dir_all(support_dir).unwrap();
+}
+
+#[test]
+fn launch_request_separates_root_memory_scope_from_worktree_artifacts() {
+    let support_dir = temp_support_dir();
+    create_memory_db(&support_dir);
+    let service = MemoryService::new(support_dir.clone());
+    let runtime_root = support_dir.join("runtime-root");
+
+    let first = service
+        .prepare_launch_artifacts(&runtime_root, MemoryLaunchRequest {
+            project_id: "project-a".to_string(),
+            workspace_id: Some("worktree-a".to_string()),
+            project_name: "Project A".to_string(),
+            workspace_path: Some("/workspace/project-a/worktree-a".to_string()),
+            settings: MemoryConfig::default(),
+            extra_context: None,
+        })
+        .unwrap();
+    let second = service
+        .prepare_launch_artifacts(&runtime_root, MemoryLaunchRequest {
+            project_id: "project-a".to_string(),
+            workspace_id: Some("worktree-b".to_string()),
+            project_name: "Project A".to_string(),
+            workspace_path: Some("/workspace/project-a/worktree-b".to_string()),
+            settings: MemoryConfig::default(),
+            extra_context: None,
+        })
+        .unwrap();
+
+    assert_ne!(first.workspace_root, second.workspace_root);
+    assert!(first.workspace_root.ends_with("worktree-a"));
+    assert!(second.workspace_root.ends_with("worktree-b"));
+    let first_index = fs::read_to_string(first.index_file).unwrap();
+    let second_index = fs::read_to_string(second.index_file).unwrap();
+    assert!(first_index.contains("Project ID: project-a"));
+    assert!(first_index.contains("Workspace: /workspace/project-a/worktree-a"));
+    assert!(first_index.contains("project active entry"));
+    assert!(!first_index.contains("other project entry"));
+    assert!(second_index.contains("Project ID: project-a"));
+    assert!(second_index.contains("Workspace: /workspace/project-a/worktree-b"));
+    assert!(second_index.contains("project active entry"));
+    assert!(!second_index.contains("other project entry"));
 
     fs::remove_dir_all(support_dir).unwrap();
 }

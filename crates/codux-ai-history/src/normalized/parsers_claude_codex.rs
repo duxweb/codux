@@ -47,13 +47,15 @@ fn parse_claude_history_file_snapshot(
             last_processed_offset = end_offset;
             return true;
         };
-        let timestamp = row
+        let source_timestamp = row
             .get("timestamp")
             .and_then(|value| value.as_str())
-            .and_then(parse_iso8601_seconds)
-            .unwrap_or_else(now_seconds);
+            .and_then(parse_iso8601_seconds);
         let row_type = row.get("type").and_then(|value| value.as_str());
         if let Some(kind) = claude_event_kind(&row) {
+            let timestamp = source_timestamp
+                .or(payload.last_source_timestamp)
+                .unwrap_or(0.0);
             result.events.push(HistoryEvent {
                 source: "claude".to_string(),
                 session_id: session_id.clone(),
@@ -62,6 +64,7 @@ fn parse_claude_history_file_snapshot(
             });
             payload.session_key = Some(session_id.clone());
             payload.external_session_id = Some(session_id.clone());
+            payload.last_source_timestamp = Some(timestamp);
             payload.session_title = claude_title(&row)
                 .or(payload.session_title.clone())
                 .or_else(|| Some(project.name.clone()));
@@ -70,6 +73,10 @@ fn parse_claude_history_file_snapshot(
             last_processed_offset = end_offset;
             return true;
         }
+        let timestamp = source_timestamp
+            .or(payload.last_source_timestamp)
+            .unwrap_or(0.0);
+        payload.last_source_timestamp = Some(timestamp);
         let message = row.get("message").unwrap_or(&Value::Null);
         let message_id = message
             .get("id")

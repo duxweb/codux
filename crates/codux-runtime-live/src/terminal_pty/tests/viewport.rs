@@ -2,6 +2,71 @@ use super::*;
 
 #[cfg(unix)]
 #[test]
+fn runtime_screen_answers_colors_before_ui_attach_and_tracks_viewport_owner() {
+    let manager = TerminalManager::new();
+    manager.set_query_colors(TerminalQueryColors {
+        foreground: (0x2a, 0x31, 0x40),
+        background: (0xfa, 0xfb, 0xfc),
+    });
+    let temp = std::env::temp_dir().join(format!("codux-terminal-query-colors-{}", Uuid::new_v4()));
+    fs::create_dir_all(&temp).unwrap();
+    let command = concat!(
+        "stty -echo -icanon min 1 time 20; ",
+        "printf '\\033]10;?\\a'; dd bs=1 count=24 2>/dev/null; ",
+        "dd bs=1 count=1 >/dev/null 2>&1; ",
+        "printf '\\033]10;?\\a'; dd bs=1 count=24 2>/dev/null; ",
+        "dd bs=1 count=1 >/dev/null 2>&1; ",
+        "printf '\\033]10;?\\a'; dd bs=1 count=24 2>/dev/null"
+    );
+    let (session, output) = manager
+        .attach_or_create_with_context(
+            TerminalPtyConfig {
+                shell: Some("/bin/sh".to_string()),
+                command: Some(command.to_string()),
+                cwd: Some(temp.to_string_lossy().to_string()),
+                cols: Some(100),
+                rows: Some(32),
+                ..Default::default()
+            },
+            None,
+            Arc::new(|_| true),
+        )
+        .expect("create terminal");
+    let handle = session.clone_handle();
+    let local_report = "\x1b]10;rgb:2a2a/3131/4040\x07";
+    let updated_local_report = "\x1b]10;rgb:1111/2222/3333\x07";
+    let remote_report = "\x1b]10;rgb:e6e6/eded/f3f3\x07";
+
+    assert!(
+        recv_until_contains(&output, local_report, Duration::from_secs(2)).contains(local_report)
+    );
+    handle
+        .claim_viewport("remote:phone")
+        .expect("claim remote viewport");
+    manager.set_query_colors(TerminalQueryColors {
+        foreground: (0x11, 0x22, 0x33),
+        background: (0xf1, 0xf2, 0xf3),
+    });
+    session.write(b"x").expect("continue remote query");
+    assert!(
+        recv_until_contains(&output, remote_report, Duration::from_secs(2)).contains(remote_report)
+    );
+    handle
+        .release_viewport("remote:phone")
+        .expect("release remote viewport")
+        .expect("released viewport state");
+    session.write(b"x").expect("continue local query");
+    assert!(
+        recv_until_contains(&output, updated_local_report, Duration::from_secs(2))
+            .contains(updated_local_report)
+    );
+
+    let _ = session.kill();
+    fs::remove_dir_all(temp).ok();
+}
+
+#[cfg(unix)]
+#[test]
 fn automatic_viewport_claim_respects_explicit_handoffs() {
     let manager = TerminalManager::new();
     let temp = std::env::temp_dir().join(format!(

@@ -7,6 +7,7 @@ use super::{
     payload::AIHookEventPayload,
     registry::{AIRuntimeRegistry, AIRuntimeTerminalState},
     supervisor::{AIRuntimeSupervisor, AIRuntimeSupervisorEvent},
+    terminal_activity::{TerminalActivityEvent, TerminalActivityHub, TerminalActivitySubscription},
     terminal_status::TerminalStatusEvent,
 };
 use crate::runtime_paths::{
@@ -69,6 +70,7 @@ pub struct AIRuntimeBridge {
     home_dir: PathBuf,
     registry: Arc<AIRuntimeRegistry>,
     supervisor: Arc<AIRuntimeSupervisor>,
+    terminal_activity: TerminalActivityHub,
     started: AtomicBool,
     start_lock: Mutex<()>,
     hook_config_lock: Mutex<()>,
@@ -99,6 +101,7 @@ impl AIRuntimeBridge {
             home_dir,
             registry: AIRuntimeRegistry::shared(),
             supervisor: Arc::new(AIRuntimeSupervisor::new()),
+            terminal_activity: TerminalActivityHub::default(),
             started: AtomicBool::new(false),
             start_lock: Mutex::new(()),
             hook_config_lock: Mutex::new(()),
@@ -197,7 +200,31 @@ impl AIRuntimeBridge {
     }
 
     pub fn submit_terminal_status(&self, status: TerminalStatusEvent) -> Result<(), String> {
+        self.terminal_activity
+            .publish(TerminalActivityEvent::Status(status.clone()));
         self.supervisor.submit_terminal_status(status)
+    }
+
+    pub(crate) fn subscribe_terminal_activity(
+        &self,
+        terminal_id: &str,
+    ) -> TerminalActivitySubscription {
+        self.terminal_activity.subscribe(terminal_id)
+    }
+
+    pub(crate) fn submit_terminal_exit(&self, terminal_id: &str, exit_code: Option<i32>) {
+        self.terminal_activity.publish(TerminalActivityEvent::Exit {
+            terminal_id: terminal_id.to_string(),
+            exit_code,
+        });
+    }
+
+    pub(crate) fn submit_terminal_error(&self, terminal_id: &str, message: &str) {
+        self.terminal_activity
+            .publish(TerminalActivityEvent::Error {
+                terminal_id: terminal_id.to_string(),
+                message: message.to_string(),
+            });
     }
 
     pub fn wrapper_bin_dir(&self) -> &Path {

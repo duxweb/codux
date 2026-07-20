@@ -13,6 +13,8 @@ pub struct TerminalPtyConfig {
     pub scrollback_lines: Option<usize>,
     pub env: Option<HashMap<String, String>>,
     pub root_project_id: Option<String>,
+    #[serde(default)]
+    pub root_project_path: Option<String>,
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub terminal_id: Option<String>,
@@ -58,6 +60,7 @@ impl From<TerminalLaunchConfig> for TerminalPtyConfig {
 #[derive(Clone, Debug)]
 pub struct TerminalLaunchContext {
     pub root_project_id: String,
+    pub root_project_path: PathBuf,
     pub project_id: String,
     pub project_name: String,
     pub project_path: PathBuf,
@@ -88,6 +91,7 @@ impl TerminalLaunchContext {
             ),
             project_id: Some(self.project_id.clone()),
             root_project_id: Some(self.root_project_id.clone()),
+            root_project_path: Some(self.root_project_path.display().to_string()),
             worktree_id: Some(self.project_id.clone()),
             project_name: Some(self.project_name.clone()),
             terminal_id: self.terminal_id.clone(),
@@ -106,6 +110,48 @@ impl TerminalLaunchContext {
             ..Default::default()
         }
     }
+}
+
+pub(super) fn agent_worktree_terminal_scope(
+    config: &TerminalPtyConfig,
+    context: Option<&TerminalLaunchContext>,
+) -> Option<codux_runtime_core::agent_worktree::AgentWorktreeTerminalScope> {
+    use codux_runtime_core::agent_worktree::AgentWorktreeTerminalScope;
+
+    let root_project_id = config
+        .root_project_id
+        .clone()
+        .or_else(|| context.map(|context| context.root_project_id.clone()))
+        .filter(|value| !value.trim().is_empty())?;
+    let root_project_path = config
+        .root_project_path
+        .clone()
+        .or_else(|| context.map(|context| context.root_project_path.display().to_string()))
+        .filter(|value| !value.trim().is_empty())?;
+    let source_worktree_id = config
+        .worktree_id
+        .clone()
+        .or_else(|| config.project_id.clone())
+        .or_else(|| context.map(|context| context.project_id.clone()))
+        .filter(|value| !value.trim().is_empty())?;
+    let source_worktree_path = requested_terminal_cwd(config, context)?;
+    let project_name = config
+        .project_name
+        .clone()
+        .or_else(|| context.map(|context| context.project_name.clone()))
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "Codux".to_string());
+
+    Some(AgentWorktreeTerminalScope {
+        root_project_id,
+        root_project_path,
+        project_name,
+        source_worktree_id,
+        source_worktree_path,
+        runtime_target: context
+            .map(|context| context.runtime_target.clone())
+            .unwrap_or_else(|| config.runtime_target.clone()),
+    })
 }
 
 #[derive(Clone, Debug, Default)]
@@ -167,6 +213,51 @@ pub(super) fn requested_terminal_cwd(
     )
 }
 
+pub(super) fn terminal_query_colors(config: &TerminalPtyConfig) -> Option<TerminalQueryColors> {
+    let env = config.env.as_ref()?;
+    Some(TerminalQueryColors {
+        foreground: parse_osc_rgb(env.get("DMUX_TERMINAL_OSC_FG")?)?,
+        background: parse_osc_rgb(env.get("DMUX_TERMINAL_OSC_BG")?)?,
+    })
+}
+
+fn parse_osc_rgb(value: &str) -> Option<(u8, u8, u8)> {
+    let mut channels = value.trim().strip_prefix("rgb:")?.split('/');
+    let red = parse_osc_rgb_channel(channels.next()?)?;
+    let green = parse_osc_rgb_channel(channels.next()?)?;
+    let blue = parse_osc_rgb_channel(channels.next()?)?;
+    channels.next().is_none().then_some((red, green, blue))
+}
+
+pub(super) fn apply_terminal_query_colors_env(
+    config: &mut TerminalPtyConfig,
+    colors: TerminalQueryColors,
+) {
+    let env = config.env.get_or_insert_with(HashMap::new);
+    env.insert(
+        "DMUX_TERMINAL_OSC_FG".to_string(),
+        format_osc_rgb(colors.foreground),
+    );
+    env.insert(
+        "DMUX_TERMINAL_OSC_BG".to_string(),
+        format_osc_rgb(colors.background),
+    );
+}
+
+fn format_osc_rgb((red, green, blue): (u8, u8, u8)) -> String {
+    format!("rgb:{red:02x}{red:02x}/{green:02x}{green:02x}/{blue:02x}{blue:02x}")
+}
+
+fn parse_osc_rgb_channel(value: &str) -> Option<u8> {
+    let digits = value.len();
+    if !(1..=4).contains(&digits) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    let raw = u16::from_str_radix(value, 16).ok()? as u32;
+    let max = (1_u32 << (digits * 4)) - 1;
+    Some(((raw * 255 + max / 2) / max) as u8)
+}
+
 #[cfg(test)]
 mod cwd_tests {
     use super::*;
@@ -181,5 +272,50 @@ mod cwd_tests {
             normalize_terminal_cwd(Some(r"\\?\F:\Projects\Codux".to_string())).as_deref(),
             Some(r"F:\Projects\Codux")
         );
+    }
+}
+
+#[cfg(test)]
+mod query_color_tests {
+    use super::*;
+
+    #[test]
+    fn parses_xterm_dynamic_color_payloads() {
+        let config = TerminalPtyConfig {
+            env: Some(HashMap::from([
+                (
+                    "DMUX_TERMINAL_OSC_FG".to_string(),
+                    "rgb:2a2a/3131/4040".to_string(),
+                ),
+                (
+                    "DMUX_TERMINAL_OSC_BG".to_string(),
+                    "rgb:fafa/fbfb/fcfc".to_string(),
+                ),
+            ])),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            terminal_query_colors(&config),
+            Some(TerminalQueryColors {
+                foreground: (0x2a, 0x31, 0x40),
+                background: (0xfa, 0xfb, 0xfc),
+            })
+        );
+    }
+
+    #[test]
+    fn ignores_incomplete_or_invalid_dynamic_colors() {
+        let config = TerminalPtyConfig {
+            env: Some(HashMap::from([(
+                "DMUX_TERMINAL_OSC_FG".to_string(),
+                "rgb:ffff/ffff/ffff".to_string(),
+            )])),
+            ..Default::default()
+        };
+
+        assert_eq!(terminal_query_colors(&config), None);
+        assert_eq!(parse_osc_rgb("#ffffff"), None);
+        assert_eq!(parse_osc_rgb("rgb:gg/00/00"), None);
     }
 }

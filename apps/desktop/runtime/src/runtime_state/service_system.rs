@@ -239,7 +239,12 @@ impl RuntimeService {
     }
 
     pub fn drain_remote_events(&self) -> Vec<RemoteHostEvent> {
-        self.remote_host.drain_events()
+        let mut events = self.remote_host.drain_events();
+        events.extend(self.drain_hosted_workspace_updates());
+        if let Ok(mut hosted) = self.hosted_runtime_events.lock() {
+            events.extend(hosted.drain(..));
+        }
+        events
     }
 
     /// Notify connected mobile clients that the terminal set changed (e.g. a

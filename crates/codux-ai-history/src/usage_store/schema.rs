@@ -1,3 +1,6 @@
+// Bumped 14 -> 15 to rebuild session timestamps and metadata with stable
+// source-backed fallbacks and deterministic merge ordering.
+//
 // Bumped 13 -> 14 to persist exact usage, request, and activity facts for
 // membership-scoped pet progress, with canonical project paths.
 //
@@ -25,7 +28,7 @@
 // de-inflation). On launch a version mismatch drops the index tables and
 // re-parses every log from offset 0 with the corrected parser. Pet XP is
 // derived from the corrected event facts, so parser fixes also correct pet XP.
-const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "14";
+const NORMALIZED_HISTORY_SCHEMA_VERSION: &str = "15";
 const RECENT_HISTORY_SESSION_LIMIT: usize = 80;
 
 const SCHEMA_STATEMENTS: &[&str] = &[
@@ -41,6 +44,15 @@ const SCHEMA_STATEMENTS: &[&str] = &[
         file_path TEXT NOT NULL,
         project_path TEXT NOT NULL,
         file_modified_at REAL NOT NULL,
+        PRIMARY KEY (source, file_path, project_path)
+    );
+    "#,
+    r#"
+    CREATE TABLE IF NOT EXISTS ai_history_source_identity (
+        source TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        project_path TEXT NOT NULL,
+        fallback_timestamp REAL NOT NULL,
         PRIMARY KEY (source, file_path, project_path)
     );
     "#,
@@ -129,6 +141,7 @@ const SCHEMA_STATEMENTS: &[&str] = &[
     );
     "#,
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_state_project_path ON ai_history_file_state(project_path);",
+    "CREATE INDEX IF NOT EXISTS idx_ai_history_source_identity_project_path ON ai_history_source_identity(project_path);",
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_checkpoint_project_path ON ai_history_file_checkpoint(project_path);",
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_session_link_project_path ON ai_history_file_session_link(project_path);",
     "CREATE INDEX IF NOT EXISTS idx_ai_history_file_usage_bucket_project_path ON ai_history_file_usage_bucket(project_path, bucket_start);",

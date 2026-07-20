@@ -266,6 +266,20 @@ impl AISessionForkTarget {
             Self::MiMo => "MiMo-Code",
         }
     }
+
+    pub fn tool_id(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Agy => "agy",
+            Self::Omp => "omp",
+            Self::OpenCode => "opencode",
+            Self::Kiro => "kiro",
+            Self::CodeWhale => "codewhale",
+            Self::Kimi => "kimi",
+            Self::MiMo => "mimo",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

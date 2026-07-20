@@ -74,6 +74,7 @@ fn terminal_environment_injects_codux_runtime_context() {
     .unwrap();
     let context = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-1".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),
@@ -202,6 +203,7 @@ fn terminal_environment_treats_named_zsh_wrapper_as_zsh() {
     .unwrap();
     let context = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-1".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),
@@ -276,6 +278,7 @@ fn terminal_environment_does_not_override_zdotdir_when_runtime_zsh_hook_is_incom
     fs::create_dir_all(runtime_root.join("scripts/shell-hooks/zsh")).unwrap();
     let context = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-1".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),
@@ -319,6 +322,7 @@ fn terminal_environment_does_not_override_zdotdir_when_runtime_zsh_hook_is_incom
 fn terminal_environment_keeps_runtime_context_compact() {
     let context = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-1".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),

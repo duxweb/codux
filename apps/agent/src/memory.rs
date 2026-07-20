@@ -8,15 +8,123 @@
 //! controller-forwarded provider config) is the follow-up.
 
 use codux_memory::{
-    MemoryConfig, MemoryManagementRequest, MemoryProjectInfo, MemoryProjectRecord, MemoryService,
-    MemorySessionSnapshot,
+    MemoryConfig, MemoryLaunchRequest, MemoryManagementRequest, MemoryProjectInfo,
+    MemoryProjectRecord, MemoryService, MemorySessionSnapshot,
 };
+use codux_runtime_live::terminal_pty::TerminalPtyConfig;
 use serde_json::{Value, json};
+use std::path::Path;
 
 use crate::projects::{AgentProjectStore, agent_data_dir};
 
 fn service() -> MemoryService {
     MemoryService::new(agent_data_dir())
+}
+
+pub(crate) fn prepare_terminal_launch_context(
+    config: &mut TerminalPtyConfig,
+    data_dir: &Path,
+    runtime_root: &Path,
+) -> Result<(), String> {
+    let project_id = config
+        .root_project_id
+        .as_deref()
+        .or(config.project_id.as_deref())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("project");
+    let workspace_id = config
+        .worktree_id
+        .as_deref()
+        .or(config.project_id.as_deref())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(project_id);
+    let workspace_path = config
+        .cwd
+        .as_deref()
+        .or(config.root_project_path.as_deref())
+        .unwrap_or_default();
+    let project_name = config
+        .project_name
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("Codux");
+    let mut settings = MemoryConfig::default();
+    settings.memory.enabled = false;
+    settings.memory.automatic_injection_enabled = false;
+    let artifacts = MemoryService::new(data_dir.to_path_buf())
+        .prepare_launch_artifacts(
+            runtime_root,
+            MemoryLaunchRequest {
+                project_id: project_id.to_string(),
+                workspace_id: Some(workspace_id.to_string()),
+                project_name: project_name.to_string(),
+                workspace_path: Some(workspace_path.to_string()),
+                settings,
+                extra_context: Some(
+                    codux_runtime_core::agent_worktree::agent_worktree_ai_directive().to_string(),
+                ),
+            },
+        )
+        .ok_or_else(|| "Unable to prepare the agent launch context.".to_string())?;
+    config.memory_workspace_root = Some(artifacts.workspace_root);
+    config.memory_prompt_file = Some(artifacts.prompt_file);
+    config.memory_index_file = Some(artifacts.index_file);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "codux-agent-launch-{label}-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn terminal_config(worktree_id: &str, workspace_path: &str) -> TerminalPtyConfig {
+        TerminalPtyConfig {
+            root_project_id: Some("project-root".to_string()),
+            project_id: Some(worktree_id.to_string()),
+            worktree_id: Some(worktree_id.to_string()),
+            project_name: Some("Project Root".to_string()),
+            cwd: Some(workspace_path.to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn terminal_launch_context_writes_closed_loop_directive_per_worktree() {
+        let data_dir = temp_dir("data");
+        let runtime_root = temp_dir("runtime");
+        let mut first = terminal_config("worktree-a", "/repo/worktree-a");
+        let mut second = terminal_config("worktree-b", "/repo/worktree-b");
+
+        prepare_terminal_launch_context(&mut first, &data_dir, &runtime_root).unwrap();
+        prepare_terminal_launch_context(&mut second, &data_dir, &runtime_root).unwrap();
+
+        let first_root = first.memory_workspace_root.as_ref().unwrap();
+        let second_root = second.memory_workspace_root.as_ref().unwrap();
+        assert_ne!(first_root, second_root);
+        assert!(first_root.ends_with("worktree-a"));
+        assert!(second_root.ends_with("worktree-b"));
+
+        let prompt = fs::read_to_string(first.memory_prompt_file.as_ref().unwrap()).unwrap();
+        assert!(prompt.contains("codux-worktree create"));
+        assert!(prompt.contains("waits for the child agent to complete"));
+        assert!(prompt.contains("--detach"));
+        assert!(prompt.contains("Project ID: project-root"));
+        assert!(prompt.contains("Workspace: /repo/worktree-a"));
+        assert!(first.memory_index_file.as_ref().unwrap().is_file());
+        assert!(!data_dir.join("memory.sqlite3").exists());
+
+        fs::remove_dir_all(data_dir).ok();
+        fs::remove_dir_all(runtime_root).ok();
+    }
 }
 
 /// The host's projects as workspace records (the agent has no root/worktree

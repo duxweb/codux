@@ -34,6 +34,19 @@ fn bridge_stages_runtime_assets_without_installing_hooks() {
         assert!(bridge.wrapper_bin_dir().join("kimi-code").is_file());
         assert!(bridge.wrapper_bin_dir().join("mimo").is_file());
         assert!(bridge.wrapper_bin_dir().join("omp").is_file());
+        fs::write(
+            bridge.wrapper_bin_dir().parent().unwrap().join("codux-wrapper-helper"),
+            "#!/bin/sh\n[ \"$1\" = --codux-wrapper-helper ] && [ \"$2\" = agent-worktree ] && [ \"$3\" = create ] && [ \"$4\" = --name ] && [ \"$5\" = test-branch ]\n",
+        )
+        .unwrap();
+        assert!(
+            std::process::Command::new("/bin/sh")
+                .arg(bridge.wrapper_bin_dir().join("codux-worktree"))
+                .args(["create", "--name", "test-branch"])
+                .status()
+                .unwrap()
+                .success()
+        );
     }
     #[cfg(windows)]
     {

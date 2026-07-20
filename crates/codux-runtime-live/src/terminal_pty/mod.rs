@@ -2,7 +2,7 @@ use crate::ai_runtime::{AIRuntimeBridge, AIRuntimeTerminalBinding};
 use anyhow::{Context, Result, anyhow};
 use codux_terminal_core::{
     HeadlessTerminalScreen, TerminalDriver as CoreTerminalDriver, TerminalEventSink,
-    TerminalLaunchConfig, TerminalScreenSnapshot,
+    TerminalLaunchConfig, TerminalPtyResponder, TerminalQueryColors, TerminalScreenSnapshot,
     TerminalSessionHandle as CoreTerminalSessionHandle,
 };
 pub use codux_terminal_core::{TerminalEvent, TerminalSessionSnapshot, TerminalViewportState};
@@ -35,6 +35,10 @@ const MAX_CONFIGURED_HISTORY_BYTES: usize = 8 * 1024 * 1024;
 const REMOTE_SCREEN_SCROLLBACK_CAP: usize = 2_000;
 const REMOTE_SCREEN_IDLE_SCROLLBACK: usize = 500;
 const TERMINAL_VIEWPORT_LEASE_TTL: Duration = Duration::from_secs(20);
+const REMOTE_TERMINAL_QUERY_COLORS: TerminalQueryColors = TerminalQueryColors {
+    foreground: (0xe6, 0xed, 0xf3),
+    background: (0x0d, 0x11, 0x17),
+};
 
 mod capture;
 mod config;

@@ -120,16 +120,47 @@ impl RuntimeService {
         project_name: &str,
         workspace_path: &str,
     ) -> Option<crate::memory::MemoryLaunchArtifacts> {
+        self.prepare_workspace_memory_launch_artifacts(
+            project_id,
+            project_id,
+            project_name,
+            workspace_path,
+        )
+    }
+
+    pub fn prepare_workspace_memory_launch_artifacts(
+        &self,
+        project_id: &str,
+        workspace_id: &str,
+        project_name: &str,
+        workspace_path: &str,
+    ) -> Option<crate::memory::MemoryLaunchArtifacts> {
+        Self::prepare_memory_launch_artifacts_at(
+            &self.support_dir,
+            project_id,
+            workspace_id,
+            project_name,
+            workspace_path,
+        )
+    }
+
+    pub(crate) fn prepare_memory_launch_artifacts_at(
+        support_dir: &Path,
+        project_id: &str,
+        workspace_id: &str,
+        project_name: &str,
+        workspace_path: &str,
+    ) -> Option<crate::memory::MemoryLaunchArtifacts> {
         // Launch artifacts are the shared AI CLI entry context. Memory settings
         // only decide whether stored memory entries are included; tool context
         // such as codux-ssh/codux-db must remain available even when memory is
         // disabled.
-        let settings = SettingsService::new(self.support_dir.clone()).ai_settings();
-        let extra_context = std::iter::once(Some(codux_environment_directive().to_string()))
+        let settings = SettingsService::new(support_dir.to_path_buf()).ai_settings();
+        let extra_context = std::iter::once(Some(codux_environment_directive()))
             .chain([
-            render_ssh_launch_context_from_support_dir(self.support_dir.clone(), None),
+            render_ssh_launch_context_from_support_dir(support_dir.to_path_buf(), None),
             render_db_launch_context_from_support_dir(
-                self.support_dir.clone(),
+                support_dir.to_path_buf(),
                 Some(project_id),
                 None,
             ),
@@ -137,10 +168,11 @@ impl RuntimeService {
         .flatten()
         .collect::<Vec<_>>()
         .join("\n\n");
-        MemoryService::new(self.support_dir.clone()).prepare_launch_artifacts(
+        MemoryService::new(support_dir.to_path_buf()).prepare_launch_artifacts(
             &crate::runtime_paths::runtime_root_dir(),
             crate::memory::MemoryLaunchRequest {
                 project_id: project_id.to_string(),
+                workspace_id: Some(workspace_id.to_string()),
                 project_name: project_name.to_string(),
                 workspace_path: Some(workspace_path.to_string()),
                 settings: crate::memory::memory_config(&settings),
@@ -556,12 +588,16 @@ impl RuntimeService {
     }
 }
 
-fn codux_environment_directive() -> &'static str {
-    "# Codux Environment Directive\n\n\
+fn codux_environment_directive() -> String {
+    format!(
+        "# Codux Environment Directive\n\n\
 You are running inside a Codux-managed terminal.\n\n\
 ## Saved Connections\n\
 - SSH: use `codux-ssh list` first to discover saved hosts, then `codux-ssh <profile-id> -- '<remote-command>'` for one-off remote commands, or `codux-ssh scp <profile-id> <src> <dst>` (mark the remote path with a leading ':') to transfer files.\n\
 - Database: use `codux-db list` first to discover saved databases for the current root project, then run `codux-db <profile-id> -- '<SQL>'`.\n\
 - Do not grep the repository to discover saved SSH or database connections.\n\
-- Do not ask the user for saved credentials. Codux injects credentials into the wrappers; you cannot see them and must not print, infer, or hardcode them."
+- Do not ask the user for saved credentials. Codux injects credentials into the wrappers; you cannot see them and must not print, infer, or hardcode them.\n\n\
+{}",
+        codux_runtime_core::agent_worktree::agent_worktree_ai_directive()
+    )
 }

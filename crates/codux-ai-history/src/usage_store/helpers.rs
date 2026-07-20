@@ -39,6 +39,7 @@ fn sorted_breakdown(mut map: HashMap<String, AIUsageBreakdownItem>) -> Vec<AIUsa
                             .sum::<f64>(),
                     )
             })
+            .then_with(|| left.key.cmp(&right.key))
     });
     values
 }
@@ -51,6 +52,7 @@ fn merge_usage_amount(amounts: &mut Vec<AIUsageAmount>, next: AIUsageAmount) {
         existing.value += next.value;
     } else {
         amounts.push(next);
+        amounts.sort_by(|left, right| left.unit.cmp(&right.unit));
     }
 }
 
@@ -129,7 +131,7 @@ fn merge_logical_sessions(sessions: Vec<AISessionSummary>) -> Vec<AISessionSumma
     for session in sessions {
         let key = (session.session_id.clone(), session.project_path.clone());
         if let Some(current) = merged.get_mut(&key) {
-            let newer = session.last_seen_at >= current.last_seen_at;
+            let newer = session_metadata_cmp(&session, current).is_gt();
             current.first_seen_at = min_nonzero(current.first_seen_at, session.first_seen_at);
             current.last_seen_at = current.last_seen_at.max(session.last_seen_at);
             current.request_count = current.request_count.saturating_add(session.request_count);
@@ -150,6 +152,11 @@ fn merge_logical_sessions(sessions: Vec<AISessionSummary>) -> Vec<AISessionSumma
             current.today_cached_input_tokens = current
                 .today_cached_input_tokens
                 .saturating_add(session.today_cached_input_tokens);
+            merge_usage_amounts(&mut current.usage_amounts, &session.usage_amounts);
+            merge_usage_amounts(
+                &mut current.today_usage_amounts,
+                &session.today_usage_amounts,
+            );
             if newer {
                 current.project_id = session.project_id;
                 current.project_name = session.project_name;
@@ -162,8 +169,70 @@ fn merge_logical_sessions(sessions: Vec<AISessionSummary>) -> Vec<AISessionSumma
         }
     }
     let mut sessions = merged.into_values().collect::<Vec<_>>();
-    sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
+    sort_sessions_recent_first(&mut sessions);
     sessions
+}
+
+fn session_metadata_cmp(left: &AISessionSummary, right: &AISessionSummary) -> std::cmp::Ordering {
+    left.last_seen_at
+        .total_cmp(&right.last_seen_at)
+        .then_with(|| left.project_id.cmp(&right.project_id))
+        .then_with(|| left.project_name.cmp(&right.project_name))
+        .then_with(|| left.session_title.cmp(&right.session_title))
+        .then_with(|| left.last_tool.cmp(&right.last_tool))
+        .then_with(|| left.last_model.cmp(&right.last_model))
+}
+
+fn sort_sessions_recent_first(sessions: &mut [AISessionSummary]) {
+    sessions.sort_by(|left, right| {
+        right
+            .last_seen_at
+            .total_cmp(&left.last_seen_at)
+            .then_with(|| left.session_id.cmp(&right.session_id))
+            .then_with(|| left.project_path.cmp(&right.project_path))
+    });
+}
+
+fn stable_optional_string(current: &mut Option<String>, candidate: Option<&str>) {
+    let Some(candidate) = candidate.and_then(normalized_optional_string) else {
+        return;
+    };
+    if current.as_ref().is_none_or(|value| candidate < *value) {
+        *current = Some(candidate);
+    }
+}
+
+fn metadata_source_key(link: &NormalizedSessionLinkRow) -> String {
+    format!("{}\0{}\0{}", link.source, link.file_path, link.session_key)
+}
+
+fn metadata_candidate_is_newer(
+    candidate_at: f64,
+    candidate_key: &str,
+    current_at: f64,
+    current_key: &str,
+) -> bool {
+    candidate_at > current_at
+        || (same_timestamp(candidate_at, current_at) && candidate_key > current_key)
+}
+
+fn update_metadata_string(
+    current: &mut Option<String>,
+    current_at: &mut f64,
+    candidate: Option<&str>,
+    candidate_at: f64,
+) {
+    let Some(candidate) = candidate.and_then(normalized_optional_string) else {
+        return;
+    };
+    if current.is_none()
+        || candidate_at > *current_at
+        || (same_timestamp(candidate_at, *current_at)
+            && current.as_ref().is_none_or(|value| candidate > *value))
+    {
+        *current = Some(candidate);
+        *current_at = candidate_at;
+    }
 }
 
 fn displayable_model_name(value: Option<&str>) -> Option<&str> {

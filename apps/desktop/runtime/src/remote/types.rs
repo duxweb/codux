@@ -25,6 +25,10 @@ pub struct RemoteSummary {
 pub enum RemoteHostEvent {
     Summary(Box<RemoteSummary>),
     TerminalLayoutChanged(RemoteTerminalLayoutChanged),
+    WorktreesChanged {
+        project_id: String,
+        project_path: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

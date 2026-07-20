@@ -1,3 +1,4 @@
+mod agent_worktree;
 mod dispatch;
 mod terminal;
 
@@ -44,12 +45,14 @@ pub fn run(version: &str) -> Result<(), String> {
     let home_dir = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| data_dir.clone());
-    codux_runtime_live::ai_runtime::AIRuntimeBridge::with_runtime_paths(
-        runtime_root,
-        runtime_temp,
-        home_dir,
-    )
-    .stage_assets()?;
+    let ai_runtime = Arc::new(
+        codux_runtime_live::ai_runtime::AIRuntimeBridge::with_runtime_paths(
+            runtime_root,
+            runtime_temp,
+            home_dir,
+        ),
+    );
+    ai_runtime.stage_assets()?;
 
     let writer = RuntimeStdioWriter::new();
     writer.write(&RuntimeStdioFrame::Hello {
@@ -65,7 +68,11 @@ pub fn run(version: &str) -> Result<(), String> {
         ],
     })?;
 
-    let runtime = Arc::new(dispatch::RuntimeStdioService::new(data_dir, writer.clone()));
+    let runtime = Arc::new(dispatch::RuntimeStdioService::new(
+        data_dir,
+        writer.clone(),
+        ai_runtime,
+    )?);
     let (terminal_tx, terminal_rx) = std::sync::mpsc::channel();
     let terminal_runtime = Arc::clone(&runtime);
     let terminal_writer = writer.clone();

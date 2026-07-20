@@ -1,11 +1,13 @@
 use super::RuntimeStdioWriter;
 use codux_runtime_core::runtime_stdio::RuntimeStdioFrame;
+use codux_runtime_live::ai_runtime::AIRuntimeBridge;
 use codux_runtime_live::terminal_pty::{TerminalManager, TerminalPtyConfig};
 use codux_terminal_core::TerminalEvent;
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub(super) struct RuntimeStdioTerminals {
     manager: Arc<TerminalManager>,
     data_dir: PathBuf,
@@ -13,12 +15,20 @@ pub(super) struct RuntimeStdioTerminals {
 }
 
 impl RuntimeStdioTerminals {
-    pub(super) fn new(data_dir: PathBuf, writer: RuntimeStdioWriter) -> Self {
+    pub(super) fn new(
+        data_dir: PathBuf,
+        writer: RuntimeStdioWriter,
+        ai_runtime: Arc<AIRuntimeBridge>,
+    ) -> Self {
         Self {
-            manager: Arc::new(TerminalManager::new()),
+            manager: Arc::new(TerminalManager::with_ai_runtime(ai_runtime)),
             data_dir,
             writer,
         }
+    }
+
+    pub(super) fn manager(&self) -> Arc<TerminalManager> {
+        Arc::clone(&self.manager)
     }
 
     pub(super) fn list(&self) -> Result<Value, String> {
@@ -26,23 +36,21 @@ impl RuntimeStdioTerminals {
     }
 
     pub(super) fn create(&self, params: &Value) -> Result<Value, String> {
-        let mut config = serde_json::from_value::<TerminalPtyConfig>(params.clone())
+        let config = serde_json::from_value::<TerminalPtyConfig>(params.clone())
             .map_err(|error| format!("invalid terminal config: {error}"))?;
+        let terminal = self.create_config(config)?;
+        serde_json::to_value(terminal).map_err(|error| error.to_string())
+    }
+
+    pub(super) fn create_config(
+        &self,
+        mut config: TerminalPtyConfig,
+    ) -> Result<codux_terminal_core::TerminalSessionSnapshot, String> {
         let runtime_root = self.data_dir.join("runtime-root");
-        let workspace_id = config
-            .worktree_id
-            .as_deref()
-            .or(config.project_id.as_deref())
-            .or(config.root_project_id.as_deref())
-            .unwrap_or("project");
-        let memory = codux_memory::launch_artifact_paths(&runtime_root, workspace_id);
-        config.runtime_target = Default::default();
         config.support_dir = Some(self.data_dir.clone());
-        config.runtime_root = Some(runtime_root);
+        config.runtime_root = Some(runtime_root.clone());
         config.tool_permissions_file = Some(self.data_dir.join("tool_permissions.json"));
-        config.memory_workspace_root = Some(memory.workspace_root);
-        config.memory_prompt_file = Some(memory.prompt_file);
-        config.memory_index_file = Some(memory.index_file);
+        crate::memory::prepare_terminal_launch_context(&mut config, &self.data_dir, &runtime_root)?;
         if config.terminal_id.is_none() {
             config.terminal_id = Some(uuid::Uuid::new_v4().to_string());
         }
@@ -57,7 +65,7 @@ impl RuntimeStdioTerminals {
             .into_iter()
             .find(|terminal| terminal.id == session_id)
             .ok_or_else(|| "created terminal is unavailable".to_string())?;
-        serde_json::to_value(terminal).map_err(|error| error.to_string())
+        Ok(terminal)
     }
 
     pub(super) fn input(&self, params: &Value) -> Result<Value, String> {

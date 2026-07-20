@@ -3,6 +3,21 @@ impl WorktreeService {
         &self,
         request: WorktreeCreateRequest,
     ) -> Result<WorktreeSnapshot, String> {
+        Ok(self.create_from_request_with_selection(request, true)?.snapshot)
+    }
+
+    pub fn create_in_background(
+        &self,
+        request: WorktreeCreateRequest,
+    ) -> Result<CreatedWorktree, String> {
+        self.create_from_request_with_selection(request, false)
+    }
+
+    fn create_from_request_with_selection(
+        &self,
+        request: WorktreeCreateRequest,
+        select_created: bool,
+    ) -> Result<CreatedWorktree, String> {
         // The git work (managed `.codux/worktrees/<slug>` path + git2 branch
         // setup) lives in the shared `codux_git::worktree` engine so the desktop
         // and the headless agent create worktrees identically. Only the
@@ -30,8 +45,17 @@ impl WorktreeService {
             base_branch.as_deref(),
             base_commit.as_deref(),
         )?;
-        self.select_worktree(&request.project_id, &created_id)?;
-        Ok(self.snapshot(request.project_id, request.project_path))
+        if select_created {
+            self.select_worktree(&request.project_id, &created_id)?;
+        }
+        let snapshot = self.snapshot(request.project_id, request.project_path);
+        let worktree = snapshot
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.id == created_id)
+            .cloned()
+            .ok_or_else(|| "Created worktree is missing from the refreshed snapshot.".to_string())?;
+        Ok(CreatedWorktree { worktree, snapshot })
     }
 
     pub fn remove_from_request(

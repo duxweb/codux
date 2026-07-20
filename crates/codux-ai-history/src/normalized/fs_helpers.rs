@@ -88,6 +88,39 @@ fn file_modified_millis(path: &Path) -> Option<u128> {
         .map(|duration| duration.as_millis())
 }
 
+pub(crate) fn history_source_timestamp_candidate(path: &Path) -> f64 {
+    let Ok(metadata) = fs::metadata(path) else {
+        return 0.0;
+    };
+    metadata
+        .created()
+        .or_else(|_| metadata.modified())
+        .ok()
+        .and_then(|timestamp| timestamp.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs_f64())
+        .filter(|timestamp| timestamp.is_finite() && *timestamp > 0.0)
+        .unwrap_or(0.0)
+}
+
+pub(crate) fn apply_history_timestamp_fallback(parsed: &mut ParsedHistory, fallback: f64) {
+    for timestamp in parsed
+        .entries
+        .iter_mut()
+        .map(|entry| &mut entry.timestamp)
+        .chain(parsed.events.iter_mut().map(|event| &mut event.timestamp))
+        .chain(
+            parsed
+                .sessions
+                .iter_mut()
+                .map(|session| &mut session.timestamp),
+        )
+    {
+        if !timestamp.is_finite() || *timestamp <= 0.0 {
+            *timestamp = fallback;
+        }
+    }
+}
+
 fn is_sqlite_history_database_path(path: &Path) -> bool {
     path.extension().and_then(|value| value.to_str()) == Some("db")
         || path.file_name().and_then(|value| value.to_str()) == Some("state_5.sqlite")

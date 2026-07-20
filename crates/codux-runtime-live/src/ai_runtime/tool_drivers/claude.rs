@@ -11,6 +11,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["claude", "claude-code", "reclaude"],
     process_names: &["claude", "claude-code", "reclaude"],
     wrapper_bins: &["claude", "claude-code", "reclaude"],
+    initial_prompt_args: &[],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

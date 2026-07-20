@@ -18,7 +18,9 @@ fn parse_omp_history_file(
         result.events.push(HistoryEvent {
             source: "omp".to_string(),
             session_id: session_id.clone(),
-            timestamp: event.timestamp,
+            timestamp: (event.timestamp > 0.0)
+                .then_some(event.timestamp)
+                .unwrap_or(0.0),
             kind: match event.role {
                 OmpSessionRole::User => HistoryEventKind::Request,
                 OmpSessionRole::Assistant => HistoryEventKind::Activity,
@@ -39,7 +41,9 @@ fn parse_omp_history_file(
             session_id: session_id.clone(),
             external_session_id: session.id.clone(),
             session_title: session_title.clone(),
-            timestamp: event.timestamp,
+            timestamp: (event.timestamp > 0.0)
+                .then_some(event.timestamp)
+                .unwrap_or(0.0),
             model: event.model.or_else(|| session.model.clone()),
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
@@ -55,7 +59,8 @@ fn parse_omp_history_file(
         session_title,
         timestamp: session
             .created_at
-            .unwrap_or_else(|| (session.updated_at > 0.0).then_some(session.updated_at).unwrap_or_else(now_seconds)),
+            .or_else(|| (session.updated_at > 0.0).then_some(session.updated_at))
+            .unwrap_or(0.0),
         model: session.model,
     });
     result

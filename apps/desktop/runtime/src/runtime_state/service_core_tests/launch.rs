@@ -57,8 +57,14 @@ fn launch_artifacts_include_tool_context_when_memory_is_disabled() {
     .unwrap();
 
     let service = RuntimeService::new(support_dir.clone());
+    let workspace_id = format!("project-a-{}", uuid::Uuid::new_v4());
     let artifacts = service
-        .prepare_memory_launch_artifacts("project-a", "Project A", "/workspace/project-a")
+        .prepare_workspace_memory_launch_artifacts(
+            "project-a",
+            &workspace_id,
+            "Project A",
+            "/workspace/project-a",
+        )
         .expect("tool launch context should create artifacts");
     let agents = fs::read_to_string(artifacts.workspace_root.join("AGENTS.md")).unwrap();
 
@@ -72,6 +78,8 @@ fn launch_artifacts_include_tool_context_when_memory_is_disabled() {
     assert!(!agents.contains("secret-passphrase"));
     assert!(agents.contains("codux-db list"));
     assert!(agents.contains("codux-db <profile-id> -- '<SQL>'"));
+    assert!(agents.contains("codux-worktree create"));
+    assert!(agents.contains("waits for the child agent to complete"));
     assert!(agents.contains("cast them to text"));
     assert!(!agents.contains("db-1"));
     assert!(!agents.contains("db.example.com:5432 / app"));
@@ -106,14 +114,21 @@ fn launch_artifacts_include_environment_directive_without_profiles() {
     .unwrap();
 
     let service = RuntimeService::new(support_dir.clone());
+    let workspace_id = format!("project-a-{}", uuid::Uuid::new_v4());
     let artifacts = service
-        .prepare_memory_launch_artifacts("project-a", "Project A", "/workspace/project-a")
+        .prepare_workspace_memory_launch_artifacts(
+            "project-a",
+            &workspace_id,
+            "Project A",
+            "/workspace/project-a",
+        )
         .expect("environment directive should create artifacts");
     let agents = fs::read_to_string(artifacts.workspace_root.join("AGENTS.md")).unwrap();
 
     assert!(agents.starts_with("# Codux Environment Directive"));
     assert!(agents.contains("codux-ssh list"));
     assert!(agents.contains("codux-db list"));
+    assert!(agents.contains("codux-worktree create"));
     assert!(agents.contains("# Codux Memory"));
     assert!(!agents.contains("project active entry"));
 

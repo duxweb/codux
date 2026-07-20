@@ -6,6 +6,8 @@ type TerminalPtySpawnResult = (
     Box<dyn Read + Send>,
 );
 
+pub(super) type TerminalExitCallback = Arc<dyn Fn(&str) + Send + Sync + 'static>;
+
 pub struct TerminalBaselineSnapshot {
     pub data: String,
     pub offset: usize,
@@ -21,6 +23,8 @@ pub struct TerminalPtySession {
     pub(super) output_capture: Arc<parking_lot::Mutex<TerminalOutputCapture>>,
     pub(super) history: Arc<parking_lot::Mutex<RingHistory>>,
     pub(super) screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
+    pub(super) query_colors: Arc<parking_lot::Mutex<Option<TerminalQueryColors>>>,
+    pub(super) remote_query_colors: TerminalQueryColors,
     pub(super) output_commit: Arc<parking_lot::Mutex<()>>,
     pub(super) output_subscribers: Arc<parking_lot::Mutex<Vec<flume::Sender<Vec<u8>>>>>,
     pub(super) event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
@@ -45,6 +49,8 @@ pub struct TerminalPtySessionHandle {
     pub(super) viewport: Arc<parking_lot::Mutex<TerminalViewportLease>>,
     pub(super) event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
     pub(super) screen: Arc<parking_lot::Mutex<HeadlessTerminalScreen>>,
+    pub(super) query_colors: Arc<parking_lot::Mutex<Option<TerminalQueryColors>>>,
+    pub(super) remote_query_colors: TerminalQueryColors,
 }
 
 impl TerminalPtySession {
@@ -52,6 +58,9 @@ impl TerminalPtySession {
         config: TerminalPtyConfig,
         context: Option<&TerminalLaunchContext>,
         event_sink: Option<(Option<String>, EventSink)>,
+        on_exit: Option<TerminalExitCallback>,
+        local_query_colors: Option<TerminalQueryColors>,
+        remote_query_colors: TerminalQueryColors,
     ) -> Result<TerminalPtySpawnResult> {
         let id = config
             .terminal_id
@@ -104,11 +113,23 @@ impl TerminalPtySession {
         let remote_screen_scrollback = remote_screen_scrollback_lines(config.scrollback_lines);
         let initial_remote_screen_scrollback =
             initial_remote_screen_scrollback_lines(remote_screen_scrollback);
-        let screen = Arc::new(parking_lot::Mutex::new(HeadlessTerminalScreen::new(
+        let responder: TerminalPtyResponder = {
+            let stdin_writer = Arc::clone(&stdin_writer);
+            Arc::new(move |bytes: &[u8]| {
+                let mut writer = stdin_writer.lock();
+                let _ = writer.write_all(bytes);
+                let _ = writer.flush();
+            })
+        };
+        let mut terminal_screen = HeadlessTerminalScreen::new_with_responder(
             cols as usize,
             rows as usize,
             initial_remote_screen_scrollback,
-        )));
+            Some(responder),
+        );
+        let query_colors = Arc::new(parking_lot::Mutex::new(local_query_colors));
+        terminal_screen.set_query_colors(*query_colors.lock());
+        let screen = Arc::new(parking_lot::Mutex::new(terminal_screen));
         let output_commit = Arc::new(parking_lot::Mutex::new(()));
         let output_subscribers = Arc::new(parking_lot::Mutex::new(Vec::new()));
         let event_subscribers = Arc::new(parking_lot::Mutex::new(Vec::new()));
@@ -222,6 +243,7 @@ impl TerminalPtySession {
             info.clone(),
             event_subscribers.clone(),
             exit_signal.clone(),
+            on_exit,
         );
 
         let terminal_writer = CaptureWriter::new(stdin_writer.clone(), input_capture.clone());
@@ -246,6 +268,8 @@ impl TerminalPtySession {
                 output_capture,
                 history,
                 screen,
+                query_colors,
+                remote_query_colors,
                 output_commit,
                 output_subscribers,
                 event_subscribers,
@@ -275,6 +299,8 @@ impl TerminalPtySession {
             viewport: self.viewport.clone(),
             event_subscribers: self.event_subscribers.clone(),
             screen: self.screen.clone(),
+            query_colors: self.query_colors.clone(),
+            remote_query_colors: self.remote_query_colors,
         }
     }
 
@@ -317,6 +343,10 @@ impl TerminalPtySession {
         writer.flush()?;
         self.input_capture.lock().push(data);
         Ok(())
+    }
+
+    pub fn set_query_colors(&self, colors: Option<TerminalQueryColors>) {
+        self.clone_handle().set_query_colors(colors);
     }
 
     pub fn subscribe_output(&self, replay_snapshot: bool) -> flume::Receiver<Vec<u8>> {
@@ -596,6 +626,21 @@ enum ViewportClaimIntent {
 }
 
 impl TerminalPtySessionHandle {
+    pub fn set_query_colors(&self, colors: Option<TerminalQueryColors>) {
+        *self.query_colors.lock() = colors;
+        self.apply_query_colors_for_viewport();
+    }
+
+    fn apply_query_colors_for_viewport(&self) {
+        let viewport = self.viewport.lock();
+        let colors = if viewport.state.owner == terminal_viewport_local_owner() {
+            *self.query_colors.lock()
+        } else {
+            Some(self.remote_query_colors)
+        };
+        self.screen.lock().set_query_colors(colors);
+    }
+
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         self.resize_viewport(terminal_viewport_local_owner(), cols, rows)
             .map(|_| ())
@@ -653,6 +698,7 @@ impl TerminalPtySessionHandle {
         let state = viewport.state.clone();
         drop(viewport);
         if owner_changed {
+            self.apply_query_colors_for_viewport();
             // A scrolled host viewport belongs to the previous owner.
             self.screen.lock().scroll_to_bottom();
             self.emit_viewport_state(&state);
@@ -704,6 +750,7 @@ impl TerminalPtySessionHandle {
         viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
         let state = viewport.state.clone();
         drop(viewport);
+        self.apply_query_colors_for_viewport();
         self.emit_viewport_state(&state);
         Some(state)
     }
@@ -720,6 +767,7 @@ impl TerminalPtySessionHandle {
         viewport.expires_at = Instant::now() + TERMINAL_VIEWPORT_LEASE_TTL;
         let state = viewport.state.clone();
         drop(viewport);
+        self.apply_query_colors_for_viewport();
         self.emit_viewport_state(&state);
         Ok(Some(state))
     }
@@ -806,6 +854,7 @@ pub(super) fn spawn_waiter(
     info: Arc<parking_lot::Mutex<TerminalSessionSnapshot>>,
     event_subscribers: Arc<parking_lot::Mutex<Vec<EventSubscriber>>>,
     exit_signal: Arc<TerminalExitSignal>,
+    on_exit: Option<TerminalExitCallback>,
 ) {
     std::thread::Builder::new()
         .name(format!("codux-terminal-waiter-{id}"))
@@ -817,6 +866,9 @@ pub(super) fn spawn_waiter(
                 info.status = "exited".to_string();
                 info.is_running = false;
                 info.last_active_at = rfc3339_now();
+            }
+            if let Some(on_exit) = on_exit {
+                on_exit(&id);
             }
             emit_terminal_event(
                 &event_subscribers,

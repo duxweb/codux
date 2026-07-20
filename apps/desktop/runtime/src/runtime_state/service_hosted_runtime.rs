@@ -5,6 +5,161 @@ enum HostedProjectRuntime {
 }
 
 impl RuntimeService {
+    fn drain_hosted_workspace_updates(&self) -> Vec<RemoteHostEvent> {
+        self.remote_controllers
+            .drain_hosted_workspace_updates()
+            .into_iter()
+            .flat_map(|(device_id, kind, payload)| {
+                match self.apply_hosted_workspace_update(&device_id, &kind, &payload) {
+                    Ok(events) => events,
+                    Err(error) => {
+                        crate::runtime_trace::runtime_trace(
+                            "agent-worktree",
+                            &format!("ignored remote update from {device_id}: {error}"),
+                        );
+                        Vec::new()
+                    }
+                }
+            })
+            .collect()
+    }
+
+    fn apply_hosted_workspace_update(
+        &self,
+        device_id: &str,
+        kind: &str,
+        payload: &Value,
+    ) -> Result<Vec<RemoteHostEvent>, String> {
+        match kind {
+            codux_protocol::REMOTE_WORKTREE_UPDATED => {
+                let snapshot = worktree_snapshot_from_payload(payload)?;
+                let project = self.remote_project_owned_by_device(device_id, &snapshot.project_id)?;
+                let default_base_branch = payload
+                    .get("defaultBaseBranch")
+                    .and_then(Value::as_str);
+                self.sync_hosted_project_worktree_snapshot(
+                    &project.id,
+                    &snapshot,
+                    default_base_branch,
+                    false,
+                )?;
+                Ok(vec![RemoteHostEvent::WorktreesChanged {
+                    project_id: project.id,
+                    project_path: project.path,
+                }])
+            }
+            codux_protocol::REMOTE_TERMINAL_LIST => {
+                let terminals = payload
+                    .get("terminals")
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| "Remote terminal list is missing terminals.".to_string())?;
+                let projects = ProjectStore::new(self.support_dir.clone()).projects_snapshot();
+                let mut updates = Vec::new();
+                for terminal in terminals {
+                    if !terminal
+                        .get("isRunning")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true)
+                    {
+                        continue;
+                    }
+                    let project_id = terminal
+                        .get("projectId")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| {
+                            "Remote terminal list entry is missing projectId.".to_string()
+                        })?;
+                    let Some(project) = projects.iter().find(|project| project.id == project_id)
+                    else {
+                        continue;
+                    };
+                    if project.runtime_target.remote_device_id() != Some(device_id) {
+                        return Err(format!(
+                            "Project {project_id} does not belong to remote device {device_id}."
+                        ));
+                    }
+                    let worktree_id = terminal
+                        .get("worktreeId")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or(project_id);
+                    let terminal_id = terminal
+                        .get("id")
+                        .or_else(|| terminal.get("sessionId"))
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .ok_or_else(|| "Remote terminal list entry is missing id.".to_string())?;
+                    let title = terminal
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Terminal");
+                    updates.push((
+                        project_id.to_string(),
+                        worktree_id.to_string(),
+                        terminal_id.to_string(),
+                        title.to_string(),
+                    ));
+                }
+                let layout_service = TerminalLayoutService::new(self.support_dir.clone());
+                let mut changed = false;
+                for (project_id, worktree_id, terminal_id, title) in updates {
+                    let layout_key = crate::terminal_layout::terminal_layout_storage_key(
+                        &project_id,
+                        &worktree_id,
+                    );
+                    let layout = layout_service.load(Some(&layout_key));
+                    if layout
+                        .top_panes
+                        .iter()
+                        .any(|pane| pane.terminal_id == terminal_id)
+                        || layout
+                            .tabs
+                            .iter()
+                            .any(|tab| tab.terminal_id == terminal_id)
+                    {
+                        continue;
+                    }
+                    layout_service.ensure_terminal(&layout_key, &terminal_id, &title)?;
+                    changed = true;
+                }
+                if !changed {
+                    return Ok(Vec::new());
+                }
+                let generation = self
+                    .hosted_terminal_layout_generation
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    + 1;
+                Ok(vec![RemoteHostEvent::TerminalLayoutChanged(
+                    crate::remote::RemoteTerminalLayoutChanged { generation },
+                )])
+            }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn remote_project_owned_by_device(
+        &self,
+        device_id: &str,
+        project_id: &str,
+    ) -> Result<crate::project_store::ProjectRecord, String> {
+        ProjectStore::new(self.support_dir.clone())
+            .projects_snapshot()
+            .into_iter()
+            .find(|project| {
+                project.id == project_id
+                    && project.runtime_target.remote_device_id() == Some(device_id)
+            })
+            .ok_or_else(|| {
+                format!(
+                    "Project {project_id} does not belong to remote device {device_id}."
+                )
+            })
+    }
+
     pub(crate) fn hosted_git_invoke(
         &self,
         project_path: &str,
@@ -1103,6 +1258,49 @@ fn hosted_payload_field<T: serde::de::DeserializeOwned>(
 mod hosted_runtime_payload_tests {
     use super::*;
 
+    fn remote_runtime_service() -> (RuntimeService, std::path::PathBuf) {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-remote-agent-worktree-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&support_dir).expect("create support directory");
+        std::fs::write(
+            support_dir.join("state.json"),
+            serde_json::to_vec(&json!({
+                "projects": [
+                    {
+                        "id": "project-1",
+                        "name": "Remote Project",
+                        "path": "/workspace/project",
+                        "runtimeTarget": { "kind": "remote", "deviceId": "device-1" }
+                    },
+                    {
+                        "id": "project-2",
+                        "name": "Other Project",
+                        "path": "/workspace/other",
+                        "runtimeTarget": { "kind": "remote", "deviceId": "device-2" }
+                    }
+                ],
+                "worktrees": [{
+                    "id": "worktree-current",
+                    "projectId": "project-1",
+                    "name": "Current",
+                    "branch": "current",
+                    "path": "/workspace/current",
+                    "status": "active",
+                    "isDefault": false,
+                    "createdAt": 1,
+                    "updatedAt": 1
+                }],
+                "selectedProjectId": "project-1",
+                "selectedWorktreeIdByProject": { "project-1": "worktree-current" }
+            }))
+            .expect("state json"),
+        )
+        .expect("write state");
+        (RuntimeService::new(support_dir.clone()), support_dir)
+    }
+
     #[test]
     fn disabled_wsl_integration_rejects_runtime_access_before_platform_launch() {
         let support_dir = std::env::temp_dir().join(format!(
@@ -1126,6 +1324,163 @@ mod hosted_runtime_payload_tests {
             .expect("disabled WSL should reject terminal access");
         assert_eq!(error, "WSL integration is disabled in Settings");
 
+        std::fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn hosted_worktree_update_preserves_desktop_selection() {
+        let (service, support_dir) = remote_runtime_service();
+        let events = service
+            .apply_hosted_workspace_update(
+                "device-1",
+                codux_protocol::REMOTE_WORKTREE_UPDATED,
+                &json!({
+                    "projectId": "project-1",
+                    "selectedWorktreeId": "worktree-new",
+                    "worktrees": [
+                        {
+                            "id": "worktree-current",
+                            "projectId": "project-1",
+                            "name": "Current",
+                            "branch": "current",
+                            "path": "/workspace/current",
+                            "status": "active",
+                            "isDefault": false
+                        },
+                        {
+                            "id": "worktree-new",
+                            "projectId": "project-1",
+                            "name": "New",
+                            "branch": "new",
+                            "path": "/workspace/new",
+                            "status": "active",
+                            "isDefault": false
+                        }
+                    ],
+                    "tasks": [],
+                    "error": null,
+                    "defaultBaseBranch": "main"
+                }),
+            )
+            .expect("apply worktree update");
+
+        assert!(matches!(
+            events.as_slice(),
+            [RemoteHostEvent::WorktreesChanged { project_id, .. }]
+                if project_id == "project-1"
+        ));
+        let snapshot = ProjectStore::new(support_dir.clone()).snapshot();
+        assert_eq!(
+            snapshot
+                .selected_worktree_id_by_project
+                .get("project-1")
+                .map(String::as_str),
+            Some("worktree-current")
+        );
+        assert!(
+            snapshot
+                .worktrees
+                .iter()
+                .any(|worktree| worktree.id == "worktree-new")
+        );
+
+        drop(service);
+        std::fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_list_persists_original_id_and_is_idempotent() {
+        let (service, support_dir) = remote_runtime_service();
+        let payload = json!({
+            "terminals": [
+                {
+                    "id": "ignored-terminal",
+                    "projectId": "unknown-project",
+                    "worktreeId": "unknown-worktree",
+                    "isRunning": true
+                },
+                {
+                    "id": "agent-terminal-1",
+                    "projectId": "project-1",
+                    "worktreeId": "worktree-new",
+                    "title": "New · codex",
+                    "isRunning": true
+                }
+            ]
+        });
+
+        assert_eq!(
+            service
+                .apply_hosted_workspace_update(
+                    "device-1",
+                    codux_protocol::REMOTE_TERMINAL_LIST,
+                    &payload,
+                )
+                .expect("apply terminal list")
+                .len(),
+            1
+        );
+        assert!(
+            service
+                .apply_hosted_workspace_update(
+                    "device-1",
+                    codux_protocol::REMOTE_TERMINAL_LIST,
+                    &payload,
+                )
+                .expect("reapply terminal list")
+                .is_empty()
+        );
+        let layout_key = crate::terminal_layout::terminal_layout_storage_key(
+            "project-1",
+            "worktree-new",
+        );
+        let layout = TerminalLayoutService::new(support_dir.clone()).load(Some(&layout_key));
+        assert_eq!(layout.top_panes.len(), 1);
+        assert_eq!(layout.top_panes[0].terminal_id, "agent-terminal-1");
+
+        drop(service);
+        std::fs::remove_dir_all(support_dir).ok();
+    }
+
+    #[test]
+    fn remote_terminal_list_rejects_wrong_device_without_partial_writes() {
+        let (service, support_dir) = remote_runtime_service();
+        let error = service
+            .apply_hosted_workspace_update(
+                "device-1",
+                codux_protocol::REMOTE_TERMINAL_LIST,
+                &json!({
+                    "terminals": [
+                        {
+                            "id": "valid-terminal",
+                            "projectId": "project-1",
+                            "worktreeId": "worktree-valid",
+                            "isRunning": true
+                        },
+                        {
+                            "id": "foreign-terminal",
+                            "projectId": "project-2",
+                            "worktreeId": "worktree-foreign",
+                            "isRunning": true
+                        }
+                    ]
+                }),
+            )
+            .expect_err("wrong-device project must be rejected");
+
+        assert!(error.contains("does not belong to remote device device-1"));
+        let layout_key = crate::terminal_layout::terminal_layout_storage_key(
+            "project-1",
+            "worktree-valid",
+        );
+        assert!(
+            TerminalLayoutService::new(support_dir.clone())
+                .load(Some(&layout_key))
+                .top_panes
+                .is_empty()
+        );
+
+        drop(service);
         std::fs::remove_dir_all(support_dir).ok();
     }
 

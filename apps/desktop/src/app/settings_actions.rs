@@ -171,10 +171,8 @@ impl CoduxApp {
 
     pub(super) fn apply_terminal_text_settings(&self, cx: &mut Context<Self>) {
         let config = self.terminal_config_from_settings();
-        self.runtime_service.set_remote_terminal_osc_colors(
-            config.colors.foreground_osc_payload(),
-            config.colors.background_osc_payload(),
-        );
+        self.runtime_service
+            .set_terminal_query_colors(config.colors.query_colors());
         for tab in &self.terminals {
             for slot in &tab.panes {
                 if let Some(pane) = &slot.pane {

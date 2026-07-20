@@ -154,41 +154,6 @@ fn osc_notifications_parse_titles_chunks_and_skip_progress() {
     assert!(third.is_empty());
 }
 #[test]
-fn osc_color_queries_tracked_across_chunks() {
-    let mut state = TerminalColorSchemeState::default();
-
-    assert_eq!(
-        update_terminal_color_scheme_state(b"\x1b]1", &mut state),
-        TerminalColorSchemeUpdate::default()
-    );
-    assert_eq!(
-        update_terminal_color_scheme_state(b"1;?\x07\x1b]10;?\x1b\\", &mut state),
-        TerminalColorSchemeUpdate {
-            osc_foreground_queries: 1,
-            osc_background_queries: 1,
-            ..TerminalColorSchemeUpdate::default()
-        }
-    );
-}
-#[test]
-fn osc_color_queries_reply_with_palette_colors() {
-    let mut state = TerminalModel::new_for_test(10, 4, 100);
-    state.colors = ColorPalette::builder()
-        .background(0x1e, 0x22, 0x2b)
-        .foreground(0xee, 0xee, 0xee)
-        .build();
-
-    state.respond_to_osc_color_queries(&TerminalColorSchemeUpdate {
-        osc_foreground_queries: 1,
-        osc_background_queries: 1,
-        ..TerminalColorSchemeUpdate::default()
-    });
-
-    let written = String::from_utf8(state.written_bytes_for_test()).unwrap();
-    assert!(written.contains("\x1b]10;rgb:eeee/eeee/eeee\x07"));
-    assert!(written.contains("\x1b]11;rgb:1e1e/2222/2b2b\x07"));
-}
-#[test]
 fn color_scheme_report_matches_xterm_codes() {
     assert_eq!(
         terminal_color_scheme_report_for(ColorPalette::default().is_dark()),

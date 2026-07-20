@@ -299,6 +299,7 @@ fn restored_terminal_preview_lines_use_last_non_empty_rows() {
 fn terminal_pane_terminal_id_normalizes_existing_runtime_id() {
     let base = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-1".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),
@@ -342,6 +343,7 @@ fn terminal_pane_terminal_id_rejects_foreign_owner_id() {
     // project instead; an id already owned by this project is kept as-is.
     let base = TerminalLaunchContext {
         root_project_id: "project-1".to_string(),
+        root_project_path: PathBuf::from("/workspace/codux"),
         project_id: "project-B".to_string(),
         project_name: "Codux".to_string(),
         project_path: PathBuf::from("/workspace/codux"),

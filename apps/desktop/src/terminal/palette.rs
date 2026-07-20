@@ -182,6 +182,15 @@ impl ColorPalette {
         osc_color_payload(self.background)
     }
 
+    pub(crate) fn query_colors(&self) -> codux_terminal_core::TerminalQueryColors {
+        let foreground = hsla_to_rgb(self.foreground);
+        let background = hsla_to_rgb(self.background);
+        codux_terminal_core::TerminalQueryColors {
+            foreground: (foreground.r, foreground.g, foreground.b),
+            background: (background.r, background.g, background.b),
+        }
+    }
+
     fn resolve_fg(&self, color: &TerminalScreenColor, bold: bool, dim: bool) -> Hsla {
         let mut resolved = self.resolve_screen_color(color, self.foreground);
         if bold
