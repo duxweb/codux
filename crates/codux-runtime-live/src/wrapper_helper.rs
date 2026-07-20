@@ -2,10 +2,18 @@ use crate::ai_runtime::tool_driver::{AIRuntimeMemoryInjectionDriver, runtime_too
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use serde_json::{Value, json};
 use sqlx::{Any, AnyConnection, Column, Connection, Row, TypeInfo, ValueRef, any::AnyRow, query};
-use std::{env, fs, path::Path, time::Duration};
+use std::{
+    env, fs,
+    io::{BufRead, BufReader, Read, Write},
+    net::TcpStream,
+    path::{Path, PathBuf},
+    process::Command,
+    time::Duration,
+};
 
 const DB_QUERY_TIMEOUT_SECONDS: u64 = 15;
 const DB_QUERY_MAX_ROWS: usize = 100;
+const AGENT_WORKTREE_ERROR_OSC: &[u8] = b"\x1b]9;4;2\x07";
 const DB_QUERY_MAX_CELL_CHARS: usize = 240;
 const DB_URL_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b' ')
@@ -65,6 +73,8 @@ pub fn handle_args(args: &[String]) -> Result<bool, String> {
         "ssh-askpass" => print_ssh_askpass(&args[2..]),
         "db-list-profiles" => print_db_profiles(),
         "db-query" => print_db_query(),
+        "agent-worktree" => run_agent_worktree_command(&args[2..]),
+        "agent-worktree-launch" => launch_agent_worktree_prompt(),
         _ => return Err(format!("unknown wrapper helper subcommand: {subcommand}")),
     }?;
     Ok(true)
@@ -91,6 +101,293 @@ fn tool_memory_injection_strategy(tool: &str) -> Option<&'static str> {
         AIRuntimeMemoryInjectionDriver::AppendSystemPrompt => Some("appendSystemPrompt"),
         AIRuntimeMemoryInjectionDriver::OpenCodeSystemTransform => Some("opencodeSystemTransform"),
     }
+}
+
+struct ParsedAgentWorktreeCommand {
+    command: codux_runtime_core::agent_worktree::AgentWorktreeCommand,
+    json: bool,
+    detach: bool,
+}
+
+fn run_agent_worktree_command(args: &[String]) -> Result<(), String> {
+    use codux_runtime_core::agent_worktree::{
+        AGENT_WORKTREE_CONTROL_ADDRESS_ENV, AGENT_WORKTREE_CONTROL_CAPABILITY_ENV,
+        AgentWorktreeCommandResult, AgentWorktreeControlRequest, AgentWorktreeControlResponse,
+        AgentWorktreeOperationState,
+    };
+
+    let command = parse_agent_worktree_command(args)?;
+    let address = env_value(AGENT_WORKTREE_CONTROL_ADDRESS_ENV);
+    let capability = env_value(AGENT_WORKTREE_CONTROL_CAPABILITY_ENV);
+    if address.is_empty() || capability.is_empty() {
+        return Err("codux-worktree: this terminal has no worktree capability".to_string());
+    }
+    let mut stream = TcpStream::connect(&address)
+        .map_err(|error| format!("codux-worktree: control endpoint unavailable: {error}"))?;
+    if command.detach {
+        stream
+            .set_read_timeout(Some(Duration::from_secs(120)))
+            .map_err(|error| error.to_string())?;
+    }
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .map_err(|error| error.to_string())?;
+    serde_json::to_writer(
+        &mut stream,
+        &AgentWorktreeControlRequest {
+            capability,
+            command: command.command,
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    stream.write_all(b"\n").map_err(|error| error.to_string())?;
+    stream.flush().map_err(|error| error.to_string())?;
+
+    let mut response = String::new();
+    BufReader::new(stream.take(1024 * 1024))
+        .read_line(&mut response)
+        .map_err(|error| error.to_string())?;
+    let response = serde_json::from_str::<AgentWorktreeControlResponse>(&response)
+        .map_err(|error| format!("codux-worktree: invalid control response: {error}"))?;
+    if command.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response.result).map_err(|error| error.to_string())?
+        );
+    }
+    match response.result {
+        AgentWorktreeCommandResult::Error { error } => {
+            return Err(format!("codux-worktree: {}", error.message));
+        }
+        AgentWorktreeCommandResult::Create { result } => {
+            if result.state == AgentWorktreeOperationState::Failed {
+                return Err(result
+                    .error
+                    .map(|error| format!("codux-worktree: {}", error.message))
+                    .unwrap_or_else(|| "codux-worktree: operation failed".to_string()));
+            }
+            if result.task_state
+                == Some(codux_runtime_core::agent_worktree::AgentWorktreeTaskState::Failed)
+            {
+                return Err(result
+                    .task_error
+                    .map(|error| format!("codux-worktree: {}", error.message))
+                    .unwrap_or_else(|| "codux-worktree: agent task failed".to_string()));
+            }
+            if !command.json {
+                if command.detach {
+                    println!(
+                        "Started worktree {} with terminal {} (operation {}).",
+                        result.worktree_id.as_deref().unwrap_or(""),
+                        result.terminal_id.as_deref().unwrap_or(""),
+                        result.operation_id,
+                    );
+                } else {
+                    println!(
+                        "Agent completed in worktree {} at {} (operation {}).",
+                        result.worktree_id.as_deref().unwrap_or(""),
+                        result.worktree_path.as_deref().unwrap_or(""),
+                        result.operation_id,
+                    );
+                }
+            }
+        }
+        AgentWorktreeCommandResult::Delivery { result } if !command.json => match result.state {
+            codux_runtime_core::agent_worktree::AgentWorktreeDeliveryState::Merged => {
+                println!("Merged agent worktree {}.", result.worktree_id);
+            }
+            codux_runtime_core::agent_worktree::AgentWorktreeDeliveryState::Removed => {
+                println!("Removed agent worktree {}.", result.worktree_id);
+            }
+        },
+        AgentWorktreeCommandResult::Delivery { .. } => {}
+    }
+    Ok(())
+}
+
+fn parse_agent_worktree_command(args: &[String]) -> Result<ParsedAgentWorktreeCommand, String> {
+    match args.first().map(String::as_str) {
+        Some("create") => parse_agent_worktree_create(args),
+        Some("merge") => parse_agent_worktree_delivery(args, true),
+        Some("remove") => parse_agent_worktree_delivery(args, false),
+        _ => Err(agent_worktree_usage()),
+    }
+}
+
+fn parse_agent_worktree_create(args: &[String]) -> Result<ParsedAgentWorktreeCommand, String> {
+    use codux_runtime_core::agent_worktree::{AgentWorktreeCommand, AgentWorktreeCreateRequest};
+
+    let mut name = None;
+    let mut agent = None;
+    let mut prompt = None;
+    let mut base_branch = None;
+    let mut request_id = None;
+    let mut json = false;
+    let mut detach = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--name" => name = Some(agent_worktree_option(args, &mut index, "--name")?),
+            "--agent" => agent = Some(agent_worktree_option(args, &mut index, "--agent")?),
+            "--prompt" => prompt = Some(agent_worktree_option(args, &mut index, "--prompt")?),
+            "--base" | "--base-branch" => {
+                base_branch = Some(agent_worktree_option(args, &mut index, "--base-branch")?)
+            }
+            "--request-id" => {
+                request_id = Some(agent_worktree_option(args, &mut index, "--request-id")?)
+            }
+            "--json" => json = true,
+            "--detach" => detach = true,
+            "-h" | "--help" | "help" => return Err(agent_worktree_usage()),
+            option => return Err(format!("codux-worktree: unknown option {option}")),
+        }
+        index += 1;
+    }
+    let request = AgentWorktreeCreateRequest {
+        request_id: request_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        name: name.ok_or_else(|| "codux-worktree: --name is required".to_string())?,
+        agent: agent.ok_or_else(|| "codux-worktree: --agent is required".to_string())?,
+        prompt: prompt.ok_or_else(|| "codux-worktree: --prompt is required".to_string())?,
+        base_branch,
+    };
+    request.validate().map_err(|error| error.message)?;
+    Ok(ParsedAgentWorktreeCommand {
+        command: AgentWorktreeCommand::Create {
+            request,
+            wait_for_completion: !detach,
+        },
+        json,
+        detach,
+    })
+}
+
+fn parse_agent_worktree_delivery(
+    args: &[String],
+    merge: bool,
+) -> Result<ParsedAgentWorktreeCommand, String> {
+    use codux_runtime_core::agent_worktree::AgentWorktreeCommand;
+
+    let mut operation_id = None;
+    let mut json = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--operation" => {
+                operation_id = Some(agent_worktree_option(args, &mut index, "--operation")?)
+            }
+            "--json" => json = true,
+            "-h" | "--help" | "help" => return Err(agent_worktree_usage()),
+            option => return Err(format!("codux-worktree: unknown option {option}")),
+        }
+        index += 1;
+    }
+    let operation_id =
+        operation_id.ok_or_else(|| "codux-worktree: --operation is required".to_string())?;
+    Ok(ParsedAgentWorktreeCommand {
+        command: if merge {
+            AgentWorktreeCommand::Merge { operation_id }
+        } else {
+            AgentWorktreeCommand::Remove { operation_id }
+        },
+        json,
+        detach: false,
+    })
+}
+
+fn agent_worktree_option(
+    args: &[String],
+    index: &mut usize,
+    option: &str,
+) -> Result<String, String> {
+    *index += 1;
+    args.get(*index)
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("codux-worktree: {option} requires a value"))
+}
+
+fn agent_worktree_usage() -> String {
+    "usage: codux-worktree create --name <branch> --agent <tool> --prompt <text> [--base <branch>] [--detach] [--json]\n       codux-worktree merge --operation <operation-id> [--json]\n       codux-worktree remove --operation <operation-id> [--json]".to_string()
+}
+
+fn launch_agent_worktree_prompt() -> Result<(), String> {
+    let result = run_agent_worktree_prompt();
+    if result.is_err() {
+        let _ = write_agent_worktree_error(std::io::stdout());
+    }
+    result
+}
+
+fn write_agent_worktree_error(mut output: impl Write) -> std::io::Result<()> {
+    output.write_all(AGENT_WORKTREE_ERROR_OSC)?;
+    output.flush()
+}
+
+fn run_agent_worktree_prompt() -> Result<(), String> {
+    let tool = env_value("CODUX_AGENT_WORKTREE_TOOL");
+    let prompt_path = PathBuf::from(env_value("CODUX_AGENT_WORKTREE_PROMPT_FILE"));
+    let driver = runtime_tool_driver(&tool)
+        .ok_or_else(|| format!("codux-worktree: unsupported AI agent: {tool}"))?;
+    let executable = driver
+        .wrapper_bins
+        .first()
+        .ok_or_else(|| format!("codux-worktree: {tool} has no launcher"))?;
+    let prompt = claim_agent_worktree_prompt(&prompt_path)?;
+    let wrapper_bin = PathBuf::from(env_value("DMUX_WRAPPER_BIN"));
+    if wrapper_bin.as_os_str().is_empty() {
+        return Err("codux-worktree: runtime wrapper directory is unavailable".to_string());
+    }
+
+    #[cfg(windows)]
+    let mut child = {
+        let mut command = Command::new("powershell.exe");
+        command.args([
+            "-NoLogo",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ]);
+        command.arg(wrapper_bin.join(format!("{executable}.ps1")));
+        command
+    };
+    #[cfg(not(windows))]
+    let mut child = Command::new(wrapper_bin.join(executable));
+    child.args(driver.initial_prompt_args);
+    child.arg(prompt);
+    child.env_remove("CODUX_AGENT_WORKTREE_PROMPT_FILE");
+    child.env_remove("CODUX_AGENT_WORKTREE_TOOL");
+    let status = child
+        .status()
+        .map_err(|error| format!("codux-worktree: failed to start {tool}: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("codux-worktree: {tool} exited with {status}"))
+    }
+}
+
+fn claim_agent_worktree_prompt(path: &Path) -> Result<String, String> {
+    if path.as_os_str().is_empty() {
+        return Err("codux-worktree: initial prompt is unavailable".to_string());
+    }
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "codux-worktree: invalid initial prompt path".to_string())?;
+    let claimed = path.with_file_name(format!(
+        ".{file_name}.claimed-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    fs::rename(path, &claimed)
+        .map_err(|error| format!("codux-worktree: initial prompt was already claimed: {error}"))?;
+    let result = fs::read_to_string(&claimed)
+        .map_err(|error| format!("codux-worktree: failed to read initial prompt: {error}"));
+    let _ = fs::remove_file(&claimed);
+    result
 }
 
 fn print_json_string_key() -> Result<(), String> {
@@ -1324,6 +1621,113 @@ mod tests {
             ])
             .is_err()
         );
+    }
+
+    #[test]
+    fn parses_agent_worktree_create_command() {
+        let command = parse_agent_worktree_command(&[
+            "create".to_string(),
+            "--name".to_string(),
+            "fix/login".to_string(),
+            "--agent".to_string(),
+            "opencode".to_string(),
+            "--prompt".to_string(),
+            "Fix login".to_string(),
+            "--base".to_string(),
+            "main".to_string(),
+            "--request-id".to_string(),
+            "request-1".to_string(),
+            "--json".to_string(),
+        ])
+        .unwrap();
+
+        let codux_runtime_core::agent_worktree::AgentWorktreeCommand::Create {
+            request,
+            wait_for_completion,
+        } = &command.command
+        else {
+            panic!("expected create command");
+        };
+        assert_eq!(request.request_id, "request-1");
+        assert_eq!(request.name, "fix/login");
+        assert_eq!(request.agent, "opencode");
+        assert_eq!(request.prompt, "Fix login");
+        assert_eq!(request.base_branch.as_deref(), Some("main"));
+        assert!(*wait_for_completion);
+        assert!(command.json);
+        assert!(!command.detach);
+    }
+
+    #[test]
+    fn parses_agent_worktree_detach_option() {
+        let command = parse_agent_worktree_command(&[
+            "create".to_string(),
+            "--name".to_string(),
+            "fix/login".to_string(),
+            "--agent".to_string(),
+            "codex".to_string(),
+            "--prompt".to_string(),
+            "Fix login".to_string(),
+            "--detach".to_string(),
+        ])
+        .unwrap();
+
+        assert!(command.detach);
+        assert!(!command.json);
+    }
+
+    #[test]
+    fn parses_agent_worktree_delivery_commands() {
+        let merge = parse_agent_worktree_command(&[
+            "merge".to_string(),
+            "--operation".to_string(),
+            "operation-1".to_string(),
+            "--json".to_string(),
+        ])
+        .unwrap();
+        assert!(matches!(
+            merge.command,
+            codux_runtime_core::agent_worktree::AgentWorktreeCommand::Merge {
+                operation_id
+            } if operation_id == "operation-1"
+        ));
+        assert!(merge.json);
+
+        let remove = parse_agent_worktree_command(&[
+            "remove".to_string(),
+            "--operation".to_string(),
+            "operation-1".to_string(),
+        ])
+        .unwrap();
+        assert!(matches!(
+            remove.command,
+            codux_runtime_core::agent_worktree::AgentWorktreeCommand::Remove {
+                operation_id
+            } if operation_id == "operation-1"
+        ));
+    }
+
+    #[test]
+    fn prompt_claim_is_atomic_and_removes_source() {
+        let root = std::env::temp_dir().join(format!(
+            "codux-agent-worktree-prompt-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("prompt.txt");
+        fs::write(&path, "Fix login").unwrap();
+
+        assert_eq!(claim_agent_worktree_prompt(&path).unwrap(), "Fix login");
+        assert!(!path.exists());
+        assert!(claim_agent_worktree_prompt(&path).is_err());
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_launch_failure_emits_standard_error_osc() {
+        let mut output = Vec::new();
+        write_agent_worktree_error(&mut output).unwrap();
+        assert_eq!(output, b"\x1b]9;4;2\x07");
     }
 
     #[test]

@@ -34,12 +34,14 @@ impl HistorySourceDriver {
     fn parse_all(&self, project: &AIHistoryProjectRequest, home: &Path) -> ParsedHistory {
         let mut result = ParsedHistory::default();
         for file_path in self.paths(project, home) {
-            result.merge(match self.kind {
+            let mut parsed = match self.kind {
                 HistorySourceDriverKind::File { parse_file, .. } => parse_file(project, &file_path),
                 HistorySourceDriverKind::Jsonl { parse_snapshot, .. } => {
                     parse_snapshot(project, &file_path, 0, None).result
                 }
-            });
+            };
+            apply_history_timestamp_fallback(&mut parsed, 0.0);
+            result.merge(parsed);
         }
         result
     }

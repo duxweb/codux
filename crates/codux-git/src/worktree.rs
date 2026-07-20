@@ -29,14 +29,19 @@ pub fn create_worktree(
     if branch.is_empty() {
         return Err("Branch name cannot be empty.".to_string());
     }
-    let root = repository_root(repo_path).ok_or_else(|| "Not a Git repository.".to_string())?;
+    let base = base
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| current_branch(repo_path));
+    let root = main_worktree_root(repo_path)?;
     if !has_head_commit(&root) {
         return Err(
             "Repository has no commits yet. Create an initial commit before adding a worktree."
                 .to_string(),
         );
     }
-    let destination = managed_worktree_path(&root, branch);
+    let destination = managed_worktree_path_from_root(&root, branch);
     if destination.exists() {
         return Err(format!(
             "Worktree path already exists: {}",
@@ -47,11 +52,6 @@ pub fn create_worktree(
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     ensure_managed_worktrees_excluded(&root)?;
-    let base = base
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .or_else(|| current_branch(&root));
     create_worktree_with_git2(&root, branch, &destination, base.as_deref())?;
     Ok(destination)
 }
@@ -63,7 +63,7 @@ pub fn remove_worktree(
     worktree_path: &str,
     remove_branch: bool,
 ) -> Result<(), String> {
-    let root = repository_root(repo_path).ok_or_else(|| "Not a Git repository.".to_string())?;
+    let root = main_worktree_root(repo_path)?;
     let branch_to_delete = if remove_branch {
         removable_worktree_branch(&root, worktree_path)
     } else {
@@ -85,7 +85,9 @@ pub fn merge_worktree(
     base: Option<&str>,
     remove_after: bool,
 ) -> Result<(), String> {
-    let root = repository_root(repo_path).ok_or_else(|| "Not a Git repository.".to_string())?;
+    let root = main_worktree_root(repo_path)?;
+    ensure_worktree_clean(worktree_path)?;
+    ensure_worktree_clean(&root)?;
     let branch = current_branch(worktree_path)
         .ok_or_else(|| "Worktree branch cannot be resolved.".to_string())?;
     let base_branch = base
@@ -109,9 +111,173 @@ pub fn merge_worktree(
     Ok(())
 }
 
+/// Merge a child worktree branch back into the worktree that created it.
+pub fn merge_worktree_into_source(
+    source_worktree_path: &str,
+    child_worktree_path: &str,
+    expected_source_branch: Option<&str>,
+) -> Result<(), String> {
+    ensure_worktree_status_clean(
+        child_worktree_path,
+        true,
+        "Child worktree has uncommitted changes. Commit the reviewed changes before merging.",
+    )?;
+    ensure_worktree_status_clean(
+        source_worktree_path,
+        false,
+        "Source worktree has tracked uncommitted changes. Commit or discard them before merging.",
+    )?;
+    let branch = current_branch(child_worktree_path)
+        .ok_or_else(|| "Worktree branch cannot be resolved.".to_string())?;
+    let source_branch = current_branch(source_worktree_path)
+        .ok_or_else(|| "Source worktree branch cannot be resolved.".to_string())?;
+    if let Some(expected) = expected_source_branch
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        && source_branch != expected
+    {
+        return Err(format!(
+            "Source worktree branch changed from {expected} to {source_branch}."
+        ));
+    }
+    if branch == source_branch {
+        return Err("The child worktree is already on the source branch.".to_string());
+    }
+    let repo = crate::discover_repository(source_worktree_path)
+        .map_err(|error| error.message().to_string())?;
+    merge_branch_git2(&repo, &branch)
+}
+
+pub fn ensure_merged_worktree_removable(
+    source_worktree_path: &str,
+    child_worktree_path: &str,
+    child_branch: &str,
+) -> Result<(), String> {
+    let child_branch = child_branch.trim();
+    if child_branch.is_empty() {
+        return Err("Child worktree branch cannot be empty.".to_string());
+    }
+    let root = main_worktree_root(source_worktree_path)?;
+    let expected_path = managed_worktree_path_from_root(&root, child_branch);
+    if crate::repository_path_key(child_worktree_path)
+        != crate::repository_path_key(&expected_path.to_string_lossy())
+    {
+        return Err("Child worktree path does not match its managed branch.".to_string());
+    }
+    let source_repo = crate::discover_repository(source_worktree_path)
+        .map_err(|error| error.message().to_string())?;
+    let root_repo =
+        crate::discover_repository(&root).map_err(|error| error.message().to_string())?;
+    let has_metadata = find_worktree_by_path(&root_repo, child_worktree_path)?.is_some();
+    let child_exists = Path::new(child_worktree_path).exists();
+    if child_exists && !has_metadata {
+        return Err("Child worktree metadata is missing.".to_string());
+    }
+    if child_exists {
+        ensure_worktree_clean(child_worktree_path)?;
+        let actual_branch = current_branch(child_worktree_path)
+            .ok_or_else(|| "Child worktree branch cannot be resolved.".to_string())?;
+        if actual_branch != child_branch {
+            return Err(format!(
+                "Child worktree branch changed from {child_branch} to {actual_branch}."
+            ));
+        }
+    }
+    let child_commit = match root_repo.find_branch(child_branch, git2::BranchType::Local) {
+        Ok(branch) => Some(
+            branch
+                .get()
+                .peel_to_commit()
+                .map_err(|error| error.message().to_string())?
+                .id(),
+        ),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => None,
+        Err(error) => return Err(error.message().to_string()),
+    };
+    let Some(child_head) = child_commit else {
+        return if has_metadata {
+            Err("Child worktree branch is missing.".to_string())
+        } else {
+            Ok(())
+        };
+    };
+    let source_head = source_repo
+        .head()
+        .and_then(|head| head.peel_to_commit())
+        .map_err(|error| error.message().to_string())?
+        .id();
+    if source_head == child_head
+        || source_repo
+            .graph_descendant_of(source_head, child_head)
+            .map_err(|error| error.message().to_string())?
+    {
+        Ok(())
+    } else {
+        Err(
+            "The child branch has commits that are not merged into the source worktree."
+                .to_string(),
+        )
+    }
+}
+
+pub fn remove_merged_worktree(
+    source_worktree_path: &str,
+    child_worktree_path: &str,
+    child_branch: &str,
+) -> Result<(), String> {
+    ensure_merged_worktree_removable(source_worktree_path, child_worktree_path, child_branch)?;
+    let root = main_worktree_root(source_worktree_path)?;
+    let repo = crate::discover_repository(&root).map_err(|error| error.message().to_string())?;
+    if let Some(worktree) = find_worktree_by_path(&repo, child_worktree_path)? {
+        prune_worktree(worktree, child_worktree_path)?;
+    }
+    delete_local_branch(&root, child_branch)
+}
+
+pub fn current_branch(project_path: &str) -> Option<String> {
+    crate::discover_repository(project_path)
+        .ok()
+        .as_ref()
+        .and_then(current_branch_from_repo)
+}
+
+fn ensure_worktree_clean(worktree_path: &str) -> Result<(), String> {
+    ensure_worktree_status_clean(
+        worktree_path,
+        true,
+        "Worktree has uncommitted changes. Commit the reviewed changes before merging.",
+    )
+}
+
+fn ensure_worktree_status_clean(
+    worktree_path: &str,
+    include_untracked: bool,
+    message: &str,
+) -> Result<(), String> {
+    let repo =
+        crate::discover_repository(worktree_path).map_err(|error| error.message().to_string())?;
+    let mut options = git2::StatusOptions::new();
+    options
+        .include_untracked(include_untracked)
+        .recurse_untracked_dirs(include_untracked);
+    let statuses = repo
+        .statuses(Some(&mut options))
+        .map_err(|error| error.message().to_string())?;
+    if statuses.is_empty() {
+        Ok(())
+    } else {
+        Err(message.to_string())
+    }
+}
+
 // ---- managed path convention ----
 
-fn managed_worktree_path(root_path: &str, branch: &str) -> PathBuf {
+pub fn managed_worktree_path(repo_path: &str, branch: &str) -> Result<PathBuf, String> {
+    let root = main_worktree_root(repo_path)?;
+    Ok(managed_worktree_path_from_root(&root, branch))
+}
+
+fn managed_worktree_path_from_root(root_path: &str, branch: &str) -> PathBuf {
     crate::git_path(root_path)
         .join(".codux")
         .join("worktrees")
@@ -216,6 +382,27 @@ fn create_worktree_with_git2(
 fn remove_worktree_with_git2(root_path: &str, worktree_path: &str) -> Result<(), String> {
     let repo =
         crate::discover_repository(root_path).map_err(|error| error.message().to_string())?;
+    let worktree = find_worktree_by_path(&repo, worktree_path)?
+        .ok_or_else(|| "Worktree not found.".to_string())?;
+    prune_worktree(worktree, worktree_path)
+}
+
+fn prune_worktree(worktree: git2::Worktree, worktree_path: &str) -> Result<(), String> {
+    let target_path = normalize_path(worktree_path);
+    if Path::new(&target_path).exists() {
+        fs::remove_dir_all(&target_path).map_err(|error| error.to_string())?;
+    }
+    let mut options = git2::WorktreePruneOptions::new();
+    options.valid(true);
+    worktree
+        .prune(Some(&mut options))
+        .map_err(|error| error.message().to_string())
+}
+
+fn find_worktree_by_path(
+    repo: &GitRepository,
+    worktree_path: &str,
+) -> Result<Option<git2::Worktree>, String> {
     let target_path = normalize_path(worktree_path);
     let names = repo
         .worktrees()
@@ -224,19 +411,11 @@ fn remove_worktree_with_git2(root_path: &str, worktree_path: &str) -> Result<(),
         let worktree = repo
             .find_worktree(name)
             .map_err(|error| error.message().to_string())?;
-        if normalize_path(&worktree.path().to_string_lossy()) != target_path {
-            continue;
+        if normalize_path(&worktree.path().to_string_lossy()) == target_path {
+            return Ok(Some(worktree));
         }
-        if Path::new(&target_path).exists() {
-            fs::remove_dir_all(&target_path).map_err(|error| error.to_string())?;
-        }
-        let mut options = git2::WorktreePruneOptions::new();
-        options.valid(true);
-        return worktree
-            .prune(Some(&mut options))
-            .map_err(|error| error.message().to_string());
     }
-    Err("Worktree not found.".to_string())
+    Ok(None)
 }
 
 fn checkout_branch_git2(repo: &GitRepository, branch: &str) -> Result<(), String> {
@@ -282,8 +461,6 @@ fn merge_branch_git2(repo: &GitRepository, branch: &str) -> Result<(), String> {
         .merge_commits(&head_commit, &their_commit, None)
         .map_err(|error| error.message().to_string())?;
     if index.has_conflicts() {
-        repo.checkout_index(Some(&mut index), None)
-            .map_err(|error| error.message().to_string())?;
         return Err("Merge produced conflicts. Resolve them manually.".to_string());
     }
     let tree_id = index
@@ -339,14 +516,21 @@ fn fast_forward_head(repo: &GitRepository, target: git2::Oid) -> Result<(), Stri
     let mut reference = repo
         .find_reference(&head_name)
         .map_err(|error| error.message().to_string())?;
+    let target_commit = repo
+        .find_commit(target)
+        .map_err(|error| error.message().to_string())?;
+    let target_tree = target_commit
+        .tree()
+        .map_err(|error| error.message().to_string())?;
+    repo.checkout_tree(
+        target_tree.as_object(),
+        Some(git2::build::CheckoutBuilder::new().safe()),
+    )
+    .map_err(|error| error.message().to_string())?;
     reference
         .set_target(target, "Fast-forward")
         .map_err(|error| error.message().to_string())?;
     repo.set_head(&head_name)
-        .map_err(|error| error.message().to_string())?;
-    let mut checkout = git2::build::CheckoutBuilder::new();
-    checkout.force();
-    repo.checkout_head(Some(&mut checkout))
         .map_err(|error| error.message().to_string())
 }
 
@@ -388,21 +572,25 @@ fn delete_local_branch(root_path: &str, branch: &str) -> Result<(), String> {
 
 // ---- discovery helpers ----
 
-fn repository_root(project_path: &str) -> Option<String> {
-    crate::discover_repository(project_path)
-        .ok()
-        .and_then(|repo| repo_root(&repo).map(|path| normalize_path(&path.to_string_lossy())))
+pub fn main_worktree_root(project_path: &str) -> Result<String, String> {
+    let repo = crate::discover_repository(project_path)
+        .map_err(|_| "Not a Git repository.".to_string())?;
+    if repo.is_bare() {
+        return Err("Repository has no working tree.".to_string());
+    }
+    let root = if repo.is_worktree() {
+        GitRepository::open(repo.commondir())
+            .ok()
+            .and_then(|common| common.workdir().map(Path::to_path_buf))
+    } else {
+        repo_root(&repo).map(Path::to_path_buf)
+    }
+    .ok_or_else(|| "Repository has no working tree.".to_string())?;
+    Ok(normalize_path(&root.to_string_lossy()))
 }
 
 fn repo_root(repo: &GitRepository) -> Option<&Path> {
     repo.workdir().or_else(|| repo.path().parent())
-}
-
-fn current_branch(project_path: &str) -> Option<String> {
-    crate::discover_repository(project_path)
-        .ok()
-        .as_ref()
-        .and_then(current_branch_from_repo)
 }
 
 fn current_branch_from_repo(repo: &GitRepository) -> Option<String> {
@@ -439,4 +627,400 @@ fn now_seconds() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linked_worktree_creation_uses_main_managed_root_and_source_branch() {
+        let root = temp_dir("linked-source");
+        init_repo(&root);
+        let source = create_worktree(root.to_string_lossy().as_ref(), "feature/source", None)
+            .expect("create source worktree");
+        fs::write(source.join("source.txt"), "source\n").expect("write source file");
+        commit_all(&source, "source commit");
+
+        let child = create_worktree(source.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+
+        assert_eq!(
+            normalize_path(&child.to_string_lossy()),
+            normalize_path(
+                &root
+                    .join(".codux/worktrees/feature-child")
+                    .to_string_lossy()
+            )
+        );
+        assert!(!source.join(".codux/worktrees/feature-child").exists());
+        let child_repo = GitRepository::open(&child).expect("open child worktree");
+        let source_repo = GitRepository::open(&source).expect("open source worktree");
+        let source_head = source_repo
+            .head()
+            .and_then(|head| head.peel_to_commit())
+            .expect("source head");
+        assert_eq!(
+            child_repo.head().unwrap().target(),
+            Some(source_head.id()),
+            "the new branch must start at the calling worktree head"
+        );
+
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn managed_path_and_main_root_are_stable_from_linked_worktree() {
+        let root = temp_dir("linked-root");
+        init_repo(&root);
+        let canonical_root = fs::canonicalize(&root).expect("canonical repository root");
+        let linked = create_worktree(root.to_string_lossy().as_ref(), "task/one", None)
+            .expect("create linked worktree");
+
+        assert_eq!(
+            main_worktree_root(linked.to_string_lossy().as_ref()).unwrap(),
+            normalize_path(&root.to_string_lossy())
+        );
+        assert_eq!(
+            crate::repository_path_key(
+                &managed_worktree_path(linked.to_string_lossy().as_ref(), "task/two")
+                    .unwrap()
+                    .to_string_lossy()
+            ),
+            crate::repository_path_key(
+                &canonical_root
+                    .join(".codux/worktrees/task-two")
+                    .to_string_lossy()
+            )
+        );
+
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_merge_targets_its_source_worktree_and_can_be_removed() {
+        let root = temp_dir("delivery");
+        init_repo(&root);
+        let source = create_worktree(root.to_string_lossy().as_ref(), "feature/source", None)
+            .expect("create source worktree");
+        fs::write(source.join("source.txt"), "source\n").expect("write source file");
+        commit_all(&source, "source commit");
+        let child = create_worktree(source.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("child.txt"), "child\n").expect("write child file");
+        commit_all(&child, "child commit");
+
+        merge_worktree_into_source(
+            source.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some("feature/source"),
+        )
+        .expect("merge child into source");
+
+        assert!(source.join("child.txt").exists());
+        assert!(!root.join("child.txt").exists());
+        remove_merged_worktree(
+            source.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            "feature/child",
+        )
+        .expect("remove merged child");
+        assert!(!child.exists());
+        remove_worktree(
+            root.to_string_lossy().as_ref(),
+            source.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("remove source worktree");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_merge_requires_clean_child_and_tracked_source() {
+        let root = temp_dir("delivery-clean");
+        init_repo(&root);
+        let source = create_worktree(root.to_string_lossy().as_ref(), "feature/source", None)
+            .expect("create source worktree");
+        let child = create_worktree(source.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("child.txt"), "uncommitted\n").expect("dirty child");
+
+        let child_error = merge_worktree_into_source(
+            source.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some("feature/source"),
+        )
+        .unwrap_err();
+        assert!(child_error.contains("uncommitted changes"));
+
+        fs::remove_file(child.join("child.txt")).expect("clean child");
+        fs::write(child.join("child.txt"), "committed\n").expect("write child");
+        commit_all(&child, "child commit");
+        fs::write(source.join("README.md"), "tracked source change\n").expect("dirty source");
+        let source_error = merge_worktree_into_source(
+            source.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some("feature/source"),
+        )
+        .unwrap_err();
+        assert!(source_error.contains("Source worktree has tracked uncommitted changes"));
+
+        fs::write(source.join("README.md"), "test\n").expect("clean source");
+        remove_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("remove child worktree");
+        remove_worktree(
+            root.to_string_lossy().as_ref(),
+            source.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("remove source worktree");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_merge_preserves_non_conflicting_source_untracked_files() {
+        let root = temp_dir("delivery-source-untracked");
+        init_repo(&root);
+        let source_branch = current_branch(root.to_string_lossy().as_ref()).unwrap();
+        let child = create_worktree(root.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("child.txt"), "child\n").expect("write child file");
+        commit_all(&child, "child commit");
+        fs::write(root.join("local.txt"), "keep me\n").expect("write source untracked file");
+
+        merge_worktree_into_source(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some(&source_branch),
+        )
+        .expect("merge with non-conflicting source untracked file");
+
+        assert_eq!(
+            fs::read_to_string(root.join("local.txt")).unwrap(),
+            "keep me\n"
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("child.txt")).unwrap(),
+            "child\n"
+        );
+        fs::remove_file(root.join("local.txt")).expect("remove source untracked file");
+        remove_merged_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            "feature/child",
+        )
+        .expect("remove merged child");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_merge_rejects_conflicting_source_untracked_file_without_data_loss() {
+        let root = temp_dir("delivery-source-untracked-conflict");
+        init_repo(&root);
+        let source_branch = current_branch(root.to_string_lossy().as_ref()).unwrap();
+        let source_head = GitRepository::open(&root)
+            .unwrap()
+            .head()
+            .unwrap()
+            .target()
+            .unwrap();
+        let child = create_worktree(root.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("shared.txt"), "child\n").expect("write child file");
+        commit_all(&child, "child commit");
+        fs::write(root.join("shared.txt"), "local\n").expect("write conflicting source file");
+
+        let error = merge_worktree_into_source(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some(&source_branch),
+        )
+        .unwrap_err();
+
+        assert!(!error.is_empty());
+        assert_eq!(
+            fs::read_to_string(root.join("shared.txt")).unwrap(),
+            "local\n"
+        );
+        assert_eq!(
+            GitRepository::open(&root).unwrap().head().unwrap().target(),
+            Some(source_head)
+        );
+        fs::remove_file(root.join("shared.txt")).expect("remove conflicting source file");
+        remove_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("remove child worktree");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_removal_rejects_new_unmerged_commits() {
+        let root = temp_dir("delivery-new-commit");
+        init_repo(&root);
+        let source_branch = current_branch(root.to_string_lossy().as_ref()).unwrap();
+        let child = create_worktree(root.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("first.txt"), "first\n").expect("write first child file");
+        commit_all(&child, "first child commit");
+        merge_worktree_into_source(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some(&source_branch),
+        )
+        .expect("merge first child commit");
+        fs::write(child.join("second.txt"), "second\n").expect("write second child file");
+        commit_all(&child, "second child commit");
+
+        let error = remove_merged_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            "feature/child",
+        )
+        .unwrap_err();
+        assert!(error.contains("not merged"));
+        assert!(child.exists());
+
+        merge_worktree_into_source(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some(&source_branch),
+        )
+        .expect("merge second child commit");
+        remove_merged_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            "feature/child",
+        )
+        .expect("remove child worktree");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_removal_is_idempotent_after_git_cleanup() {
+        let root = temp_dir("delivery-retry");
+        init_repo(&root);
+        let source_branch = current_branch(root.to_string_lossy().as_ref()).unwrap();
+        let child = create_worktree(root.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("child.txt"), "child\n").expect("write child file");
+        commit_all(&child, "child commit");
+        merge_worktree_into_source(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some(&source_branch),
+        )
+        .expect("merge child");
+
+        remove_merged_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            "feature/child",
+        )
+        .expect("remove child");
+        remove_merged_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            "feature/child",
+        )
+        .expect("retry removed child");
+
+        assert!(!child.exists());
+        assert!(
+            GitRepository::open(&root)
+                .unwrap()
+                .find_branch("feature/child", git2::BranchType::Local)
+                .is_err()
+        );
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn agent_worktree_conflict_does_not_modify_source_worktree() {
+        let root = temp_dir("delivery-conflict");
+        init_repo(&root);
+        let source_branch = current_branch(root.to_string_lossy().as_ref()).unwrap();
+        let child = create_worktree(root.to_string_lossy().as_ref(), "feature/child", None)
+            .expect("create child worktree");
+        fs::write(child.join("README.md"), "child\n").expect("write child conflict");
+        commit_all(&child, "child conflict");
+        fs::write(root.join("README.md"), "source\n").expect("write source conflict");
+        commit_all(&root, "source conflict");
+
+        let error = merge_worktree_into_source(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            Some(&source_branch),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("conflicts"));
+        assert_eq!(
+            fs::read_to_string(root.join("README.md")).unwrap(),
+            "source\n"
+        );
+        ensure_worktree_clean(root.to_string_lossy().as_ref())
+            .expect("source worktree must remain clean");
+        remove_worktree(
+            root.to_string_lossy().as_ref(),
+            child.to_string_lossy().as_ref(),
+            true,
+        )
+        .expect("remove child worktree");
+        fs::remove_dir_all(root).ok();
+    }
+
+    fn init_repo(path: &Path) {
+        fs::create_dir_all(path).expect("create repository directory");
+        let repo = GitRepository::init(path).expect("init repository");
+        let mut config = repo.config().expect("repository config");
+        config
+            .set_str("user.email", "codux@example.test")
+            .expect("set email");
+        config.set_str("user.name", "Codux").expect("set name");
+        fs::write(path.join("README.md"), "test\n").expect("write repository file");
+        commit_all(path, "initial");
+    }
+
+    fn commit_all(path: &Path, message: &str) {
+        let repo = GitRepository::open(path).expect("open repository");
+        let mut index = repo.index().expect("open index");
+        index
+            .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+            .expect("stage files");
+        index.write().expect("write index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let signature = repo.signature().expect("signature");
+        let parents = repo
+            .head()
+            .ok()
+            .and_then(|head| head.peel_to_commit().ok())
+            .into_iter()
+            .collect::<Vec<_>>();
+        let parent_refs = parents.iter().collect::<Vec<_>>();
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parent_refs,
+        )
+        .expect("commit");
+    }
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        std::env::temp_dir().join(format!("codux-worktree-{label}-{nanos}"))
+    }
 }

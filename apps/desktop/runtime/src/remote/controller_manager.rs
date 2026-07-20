@@ -454,6 +454,29 @@ impl RemoteControllerManager {
             .collect()
     }
 
+    pub fn drain_hosted_workspace_updates(&self) -> Vec<(String, String, serde_json::Value)> {
+        let controllers: Vec<(String, Arc<RemoteController>)> = self
+            .shared
+            .connections
+            .lock()
+            .map(|connections| {
+                connections
+                    .iter()
+                    .map(|(device_id, controller)| (device_id.clone(), controller.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        controllers
+            .iter()
+            .flat_map(|(device_id, controller)| {
+                controller
+                    .drain_hosted_workspace_updates()
+                    .into_iter()
+                    .map(|(kind, payload)| (device_id.clone(), kind, payload))
+            })
+            .collect()
+    }
+
     pub fn drain_disconnected_devices(&self) -> Vec<String> {
         self.shared
             .disconnected_devices

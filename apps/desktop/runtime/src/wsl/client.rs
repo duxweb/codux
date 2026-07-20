@@ -4,6 +4,7 @@ use codux_runtime_core::runtime_stdio::{
 };
 use codux_runtime_core::runtime_stdio::{RuntimeStdioFrame, encode_runtime_stdio_frame};
 use codux_terminal_core::TerminalEvent;
+use codux_terminal_core::TerminalQueryColors;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
@@ -23,6 +24,34 @@ type TerminalOutputForwarder = Box<dyn Fn(Vec<u8>) + Send + Sync>;
 type TerminalEventForwarder = Box<dyn Fn(TerminalEvent) + Send + Sync>;
 type PendingRequestSender = flume::Sender<Result<Value, String>>;
 type PendingRequests = Mutex<HashMap<u64, PendingRequestSender>>;
+pub type WslRuntimeEventSink = Arc<dyn Fn(WslRuntimeEvent) + Send + Sync>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WslRuntimeEvent {
+    AgentWorktreeCreated(WslAgentWorktreeCreated),
+    AgentWorktreeChanged(WslAgentWorktreeChanged),
+}
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WslAgentWorktreeChanged {
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_id: String,
+    #[serde(default)]
+    pub removed: bool,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WslAgentWorktreeCreated {
+    pub project_id: String,
+    pub project_path: String,
+    pub worktree_id: String,
+    pub worktree_path: String,
+    pub terminal_id: String,
+    pub title: String,
+}
 
 pub struct WslRuntimeClient {
     child: Mutex<Child>,
@@ -36,7 +65,10 @@ pub struct WslRuntimeClient {
 
 impl WslRuntimeClient {
     #[cfg(target_os = "windows")]
-    pub(crate) fn start(distribution: &str) -> Result<Arc<Self>, String> {
+    pub(crate) fn start(
+        distribution: &str,
+        event_sink: Option<WslRuntimeEventSink>,
+    ) -> Result<Arc<Self>, String> {
         let mut child = super::command()
             .args([
                 "--distribution",
@@ -61,11 +93,14 @@ impl WslRuntimeClient {
             .ok_or_else(|| "WSL runtime stdout is unavailable".to_string())?;
         let stderr = child.stderr.take();
         let first_line = BufReader::new(stdout);
-        Self::finish_start(distribution, child, stdin, first_line, stderr)
+        Self::finish_start(distribution, child, stdin, first_line, stderr, event_sink)
     }
 
     #[cfg(not(target_os = "windows"))]
-    pub(crate) fn start(_distribution: &str) -> Result<Arc<Self>, String> {
+    pub(crate) fn start(
+        _distribution: &str,
+        _event_sink: Option<WslRuntimeEventSink>,
+    ) -> Result<Arc<Self>, String> {
         Err("WSL runtimes are available on Windows only".to_string())
     }
 
@@ -76,6 +111,7 @@ impl WslRuntimeClient {
         stdin: ChildStdin,
         stdout: BufReader<std::process::ChildStdout>,
         stderr: Option<std::process::ChildStderr>,
+        event_sink: Option<WslRuntimeEventSink>,
     ) -> Result<Arc<Self>, String> {
         let (stdout, hello_line) = match read_hello_line(stdout, WSL_RUNTIME_HANDSHAKE_TIMEOUT) {
             Ok(result) => result,
@@ -118,7 +154,7 @@ impl WslRuntimeClient {
             terminal_events: Arc::new(Mutex::new(HashMap::new())),
             alive: Arc::new(AtomicBool::new(true)),
         });
-        spawn_stdout_reader(&client, stdout);
+        spawn_stdout_reader(&client, stdout, event_sink);
         if let Some(stderr) = stderr {
             let distribution = distribution.to_string();
             std::thread::spawn(move || {
@@ -171,6 +207,12 @@ impl WslRuntimeClient {
             params,
         };
         self.write_frame(&frame).is_ok()
+    }
+
+    pub fn set_terminal_query_colors(&self, colors: TerminalQueryColors) -> bool {
+        serde_json::to_value(colors)
+            .ok()
+            .is_some_and(|params| self.notify("terminal.setQueryColors", params))
     }
 
     fn write_request(&self, id: u64, method: &str, params: Value) -> Result<(), String> {
@@ -344,6 +386,7 @@ impl Drop for WslRuntimeClient {
 fn spawn_stdout_reader(
     client: &Arc<WslRuntimeClient>,
     stdout: BufReader<std::process::ChildStdout>,
+    event_sink: Option<WslRuntimeEventSink>,
 ) {
     let pending = Arc::clone(&client.pending);
     let terminal_outputs = Arc::clone(&client.terminal_outputs);
@@ -374,6 +417,11 @@ fn spawn_stdout_reader(
                         forward_terminal_output(&terminal_outputs, &params);
                     } else if let Some(event) = terminal_event_from_stdio(&method, &params) {
                         forward_terminal_event(&terminal_events, event);
+                    } else if let (Some(event_sink), Some(event)) = (
+                        event_sink.as_ref(),
+                        wsl_runtime_event_from_stdio(&method, params),
+                    ) {
+                        event_sink(event);
                     }
                 }
                 _ => {}
@@ -387,6 +435,19 @@ fn spawn_stdout_reader(
             "WSL runtime exited",
         );
     });
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn wsl_runtime_event_from_stdio(method: &str, params: Value) -> Option<WslRuntimeEvent> {
+    match method {
+        "agentWorktree.created" => serde_json::from_value(params)
+            .ok()
+            .map(WslRuntimeEvent::AgentWorktreeCreated),
+        "agentWorktree.changed" => serde_json::from_value(params)
+            .ok()
+            .map(WslRuntimeEvent::AgentWorktreeChanged),
+        _ => None,
+    }
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -588,6 +649,58 @@ mod tests {
                 generation: 3,
             }) if session_id == "terminal-1" && owner == "local"
         ));
+    }
+
+    #[test]
+    fn parses_agent_worktree_created_event() {
+        let event = wsl_runtime_event_from_stdio(
+            "agentWorktree.created",
+            json!({
+                "projectId": "project-1",
+                "projectPath": "/repo",
+                "worktreeId": "worktree-1",
+                "worktreePath": "/repo/.codux/worktrees/task",
+                "terminalId": "terminal-1",
+                "title": "task · codex",
+            }),
+        );
+        assert_eq!(
+            event,
+            Some(WslRuntimeEvent::AgentWorktreeCreated(
+                WslAgentWorktreeCreated {
+                    project_id: "project-1".to_string(),
+                    project_path: "/repo".to_string(),
+                    worktree_id: "worktree-1".to_string(),
+                    worktree_path: "/repo/.codux/worktrees/task".to_string(),
+                    terminal_id: "terminal-1".to_string(),
+                    title: "task · codex".to_string(),
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parses_removed_agent_worktree_changed_event() {
+        let event = wsl_runtime_event_from_stdio(
+            "agentWorktree.changed",
+            json!({
+                "projectId": "project-1",
+                "projectPath": "/repo",
+                "worktreeId": "worktree-1",
+                "removed": true,
+            }),
+        );
+        assert_eq!(
+            event,
+            Some(WslRuntimeEvent::AgentWorktreeChanged(
+                WslAgentWorktreeChanged {
+                    project_id: "project-1".to_string(),
+                    project_path: "/repo".to_string(),
+                    worktree_id: "worktree-1".to_string(),
+                    removed: true,
+                }
+            ))
+        );
     }
 
     #[test]

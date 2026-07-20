@@ -21,6 +21,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["agy"],
     process_names: &["agy"],
     wrapper_bins: &["agy"],
+    initial_prompt_args: &[],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

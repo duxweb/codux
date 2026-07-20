@@ -17,6 +17,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["codewhale"],
     process_names: &["codewhale"],
     wrapper_bins: &["codewhale"],
+    initial_prompt_args: &[],
     liveness_from_process: true,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

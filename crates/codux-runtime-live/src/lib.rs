@@ -7,6 +7,7 @@
 //! a headless host can depend on it without dragging in the desktop's platform
 //! layer.
 
+pub mod agent_worktree;
 pub mod ai_runtime;
 pub mod ai_runtime_state;
 pub mod host_metrics;

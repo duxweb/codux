@@ -10,7 +10,7 @@ use alacritty_terminal::term::cell::{Cell, Flags};
 use alacritty_terminal::term::{Config as AlacrittyConfig, Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Processor};
 use base64::{Engine as _, engine::general_purpose};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::TerminalInputMode;
 
@@ -141,6 +141,17 @@ pub enum TerminalScreenColor {
     Indexed { index: u8 },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalQueryColors {
+    pub foreground: (u8, u8, u8),
+    pub background: (u8, u8, u8),
+}
+
+fn osc_color_payload((red, green, blue): (u8, u8, u8)) -> String {
+    format!("rgb:{red:02x}{red:02x}/{green:02x}{green:02x}/{blue:02x}{blue:02x}")
+}
+
 /// An inline image laid over the cell grid. Equality ignores the pixel data
 /// (the id is unique per decoded image), keeping snapshot comparison cheap.
 #[derive(Clone, Debug)]
@@ -220,6 +231,11 @@ impl HeadlessTerminalScreen {
 
     pub fn set_event_sink(&mut self, sink: TerminalScreenEventSink) {
         self.engine.send(TerminalScreenCommand::SetEventSink(sink));
+    }
+
+    pub fn set_query_colors(&mut self, colors: Option<TerminalQueryColors>) {
+        self.engine
+            .send(TerminalScreenCommand::SetQueryColors(colors));
     }
 
     pub fn process(&mut self, bytes: &[u8]) {
@@ -548,6 +564,7 @@ enum TerminalScreenCommand {
     ReplaceVisible(Vec<u8>),
     RestoreWrappedRows(Vec<bool>),
     SetEventSink(TerminalScreenEventSink),
+    SetQueryColors(Option<TerminalQueryColors>),
     Resize {
         cols: usize,
         rows: usize,
@@ -742,6 +759,14 @@ impl TerminalScreenWorker {
                         responder(format(self.window_size()).as_bytes());
                     }
                 }
+                Event::ColorRequest(index, format) => {
+                    if index < alacritty_terminal::term::color::COUNT
+                        && let (Some(responder), Some(color)) =
+                            (self.responder.as_ref(), self.term.colors()[index])
+                    {
+                        responder(format(color).as_bytes());
+                    }
+                }
                 // OSC 52 write; loads are ignored (remote clipboard reads are
                 // a data leak, matching most terminals' default).
                 Event::ClipboardStore(_, text) => {
@@ -754,8 +779,6 @@ impl TerminalScreenWorker {
                         sink(TerminalScreenEvent::Bell);
                     }
                 }
-                // OSC color queries are intentionally not answered here; the
-                // embedder resolves those from its own theme palette.
                 _ => {}
             }
         }
@@ -1034,6 +1057,9 @@ impl TerminalScreenWorker {
                 TerminalScreenCommand::SetEventSink(sink) => {
                     self.event_sink = Some(sink);
                 }
+                TerminalScreenCommand::SetQueryColors(colors) => {
+                    self.set_query_colors(colors);
+                }
                 TerminalScreenCommand::Resize { mut cols, mut rows } => {
                     // Layout settling queues resizes back-to-back, and every
                     // column change reflows the whole scrollback. Collapse a
@@ -1107,6 +1133,16 @@ impl TerminalScreenWorker {
                 }
                 TerminalScreenCommand::Clear => {
                     let event_sink = self.event_sink.take();
+                    let query_colors = match (
+                        self.term.colors()[NamedColor::Foreground],
+                        self.term.colors()[NamedColor::Background],
+                    ) {
+                        (Some(foreground), Some(background)) => Some(TerminalQueryColors {
+                            foreground: (foreground.r, foreground.g, foreground.b),
+                            background: (background.r, background.g, background.b),
+                        }),
+                        _ => None,
+                    };
                     self = Self::new(
                         self.cols,
                         self.rows,
@@ -1114,10 +1150,23 @@ impl TerminalScreenWorker {
                         self.responder.clone(),
                     );
                     self.event_sink = event_sink;
+                    self.set_query_colors(query_colors);
                 }
                 TerminalScreenCommand::ClearKeepPrompt => self.clear_keep_prompt(),
             }
         }
+    }
+
+    fn set_query_colors(&mut self, colors: Option<TerminalQueryColors>) {
+        let sequence = match colors {
+            Some(colors) => format!(
+                "\x1b]10;{}\x1b\\\x1b]11;{}\x1b\\",
+                osc_color_payload(colors.foreground),
+                osc_color_payload(colors.background),
+            ),
+            None => "\x1b]110\x1b\\\x1b]111\x1b\\".to_string(),
+        };
+        self.parser.advance(&mut self.term, sequence.as_bytes());
     }
 
     fn resize(&mut self, cols: usize, rows: usize) {
@@ -2450,6 +2499,67 @@ mod tests {
         screen.process(b"\x1b[6n");
         let _ = screen.snapshot();
         assert!(!replies.take().is_empty());
+    }
+
+    #[test]
+    fn configured_colors_answer_dynamic_color_queries() {
+        let replies = Arc::new(parking_lot_free_buffer::Buffer::default());
+        let responder: TerminalPtyResponder = {
+            let replies = replies.clone();
+            Arc::new(move |bytes: &[u8]| replies.push(bytes))
+        };
+        let mut screen = HeadlessTerminalScreen::new_with_responder(20, 4, 100, Some(responder));
+        screen.set_query_colors(Some(TerminalQueryColors {
+            foreground: (0x2a, 0x31, 0x40),
+            background: (0xfa, 0xfb, 0xfc),
+        }));
+
+        screen.process(b"\x1b]10;?\x07\x1b]11;?\x1b\\");
+        let _ = screen.snapshot();
+        screen.clear();
+        screen.process(b"\x1b]10;?\x07\x1b]11;?\x1b\\");
+        let _ = screen.snapshot();
+
+        let replies = String::from_utf8(replies.take()).unwrap();
+        assert_eq!(replies.matches("\x1b]10;rgb:2a2a/3131/4040\x07").count(), 2);
+        assert_eq!(
+            replies.matches("\x1b]11;rgb:fafa/fbfb/fcfc\x1b\\").count(),
+            2
+        );
+    }
+
+    #[test]
+    fn unset_colors_do_not_answer_dynamic_color_queries() {
+        let replies = Arc::new(parking_lot_free_buffer::Buffer::default());
+        let responder: TerminalPtyResponder = {
+            let replies = replies.clone();
+            Arc::new(move |bytes: &[u8]| replies.push(bytes))
+        };
+        let mut screen = HeadlessTerminalScreen::new_with_responder(20, 4, 100, Some(responder));
+
+        screen.process(b"\x1b]10;?\x07\x1b]11;?\x07");
+        let _ = screen.snapshot();
+
+        assert!(replies.take().is_empty());
+    }
+
+    #[test]
+    fn replayed_color_queries_do_not_write_to_the_pty() {
+        let replies = Arc::new(parking_lot_free_buffer::Buffer::default());
+        let responder: TerminalPtyResponder = {
+            let replies = replies.clone();
+            Arc::new(move |bytes: &[u8]| replies.push(bytes))
+        };
+        let mut screen = HeadlessTerminalScreen::new_with_responder(20, 4, 100, Some(responder));
+        screen.set_query_colors(Some(TerminalQueryColors {
+            foreground: (0xee, 0xee, 0xee),
+            background: (0x1e, 0x22, 0x2b),
+        }));
+
+        screen.process_replay(b"\x1b]10;?\x07\x1b]11;?\x07");
+        let _ = screen.snapshot();
+
+        assert!(replies.take().is_empty());
     }
 
     #[test]

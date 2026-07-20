@@ -91,6 +91,8 @@ pub struct RuntimeService {
     project_watch_registration: Arc<Mutex<()>>,
     ai_history_activation_keys: Arc<Mutex<HashSet<String>>>,
     hosted_ai_history_events: Arc<Mutex<VecDeque<AIHistoryEvent>>>,
+    hosted_runtime_events: Arc<Mutex<VecDeque<RemoteHostEvent>>>,
+    hosted_terminal_layout_generation: Arc<std::sync::atomic::AtomicU64>,
     git_cancels: Arc<Mutex<HashMap<String, git::GitCancelToken>>>,
     power_manager: Arc<PowerManager>,
     remote_host: Arc<RemoteHostRuntime>,
@@ -117,11 +119,9 @@ impl RuntimeService {
         Arc::clone(&self.ai_runtime)
     }
 
-    /// Register the desktop theme's OSC 10/11 payloads as the host-side seed
-    /// fallback for remote terminal spawns that carry no viewer colors.
-    pub fn set_remote_terminal_osc_colors(&self, foreground: String, background: String) {
-        self.remote_host
-            .set_terminal_osc_colors(foreground, background);
+    pub fn set_terminal_query_colors(&self, colors: codux_terminal_core::TerminalQueryColors) {
+        self.remote_host.terminal_manager().set_query_colors(colors);
+        self.wsl_runtimes.set_terminal_query_colors(colors);
     }
 }
 

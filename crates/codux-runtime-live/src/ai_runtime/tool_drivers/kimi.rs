@@ -21,6 +21,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["kimi", "kimi-code"],
     process_names: &["kimi", "kimi-code"],
     wrapper_bins: &["kimi", "kimi-code"],
+    initial_prompt_args: &[],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

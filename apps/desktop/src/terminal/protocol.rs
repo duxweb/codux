@@ -117,8 +117,6 @@ struct TerminalColorSchemeUpdate {
     enabled: bool,
     disabled: bool,
     query_count: usize,
-    osc_foreground_queries: usize,
-    osc_background_queries: usize,
 }
 
 #[derive(Debug, Default)]
@@ -180,10 +178,6 @@ fn update_terminal_color_scheme_state(
     const ENABLE: &[u8] = b"\x1b[?2031h";
     const DISABLE: &[u8] = b"\x1b[?2031l";
     const QUERY: &[u8] = b"\x1b[?996n";
-    // xterm dynamic color queries; TUIs use these to read the real
-    // fg/bg RGB (e.g. to derive elevated panel backgrounds).
-    const OSC_FG_QUERY: &[u8] = b"\x1b]10;?";
-    const OSC_BG_QUERY: &[u8] = b"\x1b]11;?";
     const MAX_PATTERN_LEN: usize = ENABLE.len();
 
     let mut update = TerminalColorSchemeUpdate::default();
@@ -215,20 +209,6 @@ fn update_terminal_color_scheme_state(
                 update.query_count += 1;
             }
             index += QUERY.len();
-            continue;
-        }
-        if scan[index..].starts_with(OSC_FG_QUERY) {
-            if index + OSC_FG_QUERY.len() > old_tail_len {
-                update.osc_foreground_queries += 1;
-            }
-            index += OSC_FG_QUERY.len();
-            continue;
-        }
-        if scan[index..].starts_with(OSC_BG_QUERY) {
-            if index + OSC_BG_QUERY.len() > old_tail_len {
-                update.osc_background_queries += 1;
-            }
-            index += OSC_BG_QUERY.len();
             continue;
         }
         index += 1;
@@ -374,25 +354,6 @@ fn terminal_color_scheme_report_for(dark: bool) -> &'static [u8] {
 fn scheme_is_dark(remote_viewer: bool, colors: &ColorPalette) -> bool {
     // The mobile client renders with a fixed dark theme.
     remote_viewer || colors.is_dark()
-}
-
-// Mobile app theme (apps/mobile/lib/theme/app_theme.dart):
-// bgBase #0D1117, textPrimary #E6EDF3.
-const REMOTE_VIEWER_BACKGROUND: (u8, u8, u8) = (0x0d, 0x11, 0x17);
-const REMOTE_VIEWER_FOREGROUND: (u8, u8, u8) = (0xe6, 0xed, 0xf3);
-
-fn terminal_osc_rgb_report(code: u8, (r, g, b): (u8, u8, u8)) -> Vec<u8> {
-    format!(
-        "\x1b]{};rgb:{:02x}{:02x}/{:02x}{:02x}/{:02x}{:02x}\x07",
-        code, r, r, g, g, b, b
-    )
-    .into_bytes()
-}
-
-// xterm dynamic color reply (OSC 10 = foreground, OSC 11 = background),
-// 16-bit per channel as rrrr/gggg/bbbb.
-fn terminal_osc_color_report(code: u8, color: Hsla) -> Vec<u8> {
-    format!("\x1b]{};{}\x07", code, osc_color_payload(color)).into_bytes()
 }
 
 fn terminal_trace_enabled() -> bool {

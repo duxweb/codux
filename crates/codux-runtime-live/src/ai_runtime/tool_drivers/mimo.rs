@@ -17,6 +17,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["mimo"],
     process_names: &["mimo"],
     wrapper_bins: &["mimo"],
+    initial_prompt_args: &["run"],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

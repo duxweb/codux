@@ -580,6 +580,43 @@ fn tauri_create_request_uses_requested_branch_and_task_title() {
 }
 
 #[test]
+fn background_create_returns_worktree_without_changing_selection() {
+    let repo = temp_dir("worktree-background-create");
+    create_repo_with_commit(&repo);
+    let support_dir = temp_dir("worktree-background-create-support");
+    fs::create_dir_all(&support_dir).unwrap();
+    let service = WorktreeService::new(support_dir.clone());
+
+    service
+        .sync_from_git("project", repo.to_str().expect("repo"))
+        .unwrap();
+    service.select_worktree("project", "project").unwrap();
+    let created = service
+        .create_in_background(WorktreeCreateRequest {
+            project_id: "project".to_string(),
+            project_path: repo.to_string_lossy().to_string(),
+            base_branch: None,
+            branch_name: "feature/background".to_string(),
+            task_title: Some("Background task".to_string()),
+        })
+        .unwrap();
+
+    assert_eq!(created.worktree.branch, "feature/background");
+    assert_eq!(created.snapshot.selected_worktree_id, "project");
+    assert_ne!(created.worktree.id, created.snapshot.selected_worktree_id);
+    assert_eq!(
+        service
+            .state_summary(Some("project"), repo.to_str())
+            .selected_worktree_id
+            .as_deref(),
+        Some("project")
+    );
+
+    fs::remove_dir_all(repo).ok();
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn create_request_preserves_requested_base_branch_across_sync() {
     let repo = temp_dir("worktree-create-base-branch");
     create_repo_with_commit(&repo);

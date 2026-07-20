@@ -33,16 +33,21 @@ impl MemoryService {
         }
 
         let workspace_path = request.workspace_path.as_deref().unwrap_or_default();
+        let workspace_id = request
+            .workspace_id
+            .as_deref()
+            .unwrap_or(&request.project_id);
         let input_hash = Self::launch_input_hash(&[
             &request.project_id,
+            workspace_id,
             &request.project_name,
             workspace_path,
             global_prompt,
             extra_context,
             if should_inject_memory { "1" } else { "0" },
         ]);
-        if Self::launch_artifacts_recently_prepared(&request.project_id, input_hash) {
-            return Some(super::launch_artifact_paths(runtime_root, &request.project_id));
+        if Self::launch_artifacts_recently_prepared(workspace_id, input_hash) {
+            return Some(super::launch_artifact_paths(runtime_root, workspace_id));
         }
 
         let project_profile = should_inject_memory
@@ -67,7 +72,7 @@ impl MemoryService {
         } else {
             Default::default()
         };
-        let artifacts = super::launch_artifact_paths(runtime_root, &request.project_id);
+        let artifacts = super::launch_artifact_paths(runtime_root, workspace_id);
         let content = render_launch_memory_index(
             &request.project_id,
             &request.project_name,

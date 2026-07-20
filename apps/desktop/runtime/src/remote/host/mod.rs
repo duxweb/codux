@@ -37,9 +37,7 @@ use crate::ai_history_normalized::AIHistoryProjectRequest;
 use crate::project_store::{
     ProjectCreateRequest, ProjectRuntimeTarget, ProjectStore, ProjectUpdateRequest,
 };
-use crate::terminal_layout::{
-    TerminalLayoutService, TerminalPaneSummary, terminal_layout_storage_key,
-};
+use crate::terminal_layout::{TerminalLayoutService, terminal_layout_storage_key};
 use crate::terminal_pty::{
     TerminalEvent, TerminalManager, TerminalPtyConfig, TerminalSessionSnapshot,
     TerminalViewportState, terminal_viewport_remote_owner,
@@ -54,6 +52,7 @@ use codux_runtime_core::{
     terminal as runtime_terminal, upload as runtime_upload, worktree as runtime_worktree,
 };
 use codux_runtime_live::{
+    agent_worktree::{AgentWorktreeControl, AgentWorktreeHost},
     host_metrics::sample_host_metrics,
     remote_terminal_dispatch::{
         RemoteTerminalDispatch, TerminalMessage, apply_terminal_osc_color_env,
@@ -88,6 +87,7 @@ const REMOTE_TERMINAL_OWNER_REASSERT_EVERY: i64 = 8;
 struct RemoteProjectScope {
     project_id: String,
     project_name: String,
+    root_project_path: String,
     project_path: String,
     worktree_id: String,
     layout_key: String,
@@ -143,6 +143,8 @@ pub struct RemoteHostRuntime {
     pub(crate) ai_current_sessions:
         Option<Arc<dyn runtime_ai_stats::RemoteAICurrentSessionProvider>>,
     pub(crate) terminals: Arc<TerminalManager>,
+    agent_worktree_control: Mutex<Option<Arc<AgentWorktreeControl>>>,
+    agent_worktree_host: Mutex<Option<Arc<dyn AgentWorktreeHost>>>,
     authorization: authorization::RemoteAuthorizationCache,
     // Arc so protocol dispatch, output fan-out, and the viewport-owner resolver
     // all use one authoritative subscription state.
@@ -171,11 +173,9 @@ pub struct RemoteHostRuntime {
     // devices when the live AI runtime changes (so remote views tick like the
     // desktop's local view) and when a cold-on-request index finishes refreshing.
     pub(crate) ai_stats_watchers: Mutex<HashMap<String, HashMap<String, String>>>,
-    // Host theme's OSC 10/11 payloads; the fallback for remote spawn paths whose
-    // envelope carries no viewer colors (e.g. lazy respawn after a host restart).
-    pub(crate) terminal_osc_colors: Mutex<Option<(String, String)>>,
 }
 
+mod agent_worktree;
 mod ai_stats;
 mod authorization;
 mod files;
@@ -284,6 +284,8 @@ impl RemoteHostRuntime {
             ai_history,
             ai_current_sessions,
             terminals,
+            agent_worktree_control: Mutex::new(None),
+            agent_worktree_host: Mutex::new(None),
             authorization,
             resource_subscriptions,
             terminal_output_seq_by_session: Mutex::new(HashMap::new()),
@@ -304,13 +306,6 @@ impl RemoteHostRuntime {
             send_seq_by_device: Mutex::new(HashMap::new()),
             receive_seq_by_device: Mutex::new(HashMap::new()),
             ai_stats_watchers: Mutex::new(HashMap::new()),
-            terminal_osc_colors: Mutex::new(None),
-        }
-    }
-
-    pub fn set_terminal_osc_colors(&self, foreground: String, background: String) {
-        if let Ok(mut colors) = self.terminal_osc_colors.lock() {
-            *colors = Some((foreground, background));
         }
     }
 
@@ -354,6 +349,29 @@ impl RemoteHostRuntime {
 
     pub fn terminal_manager(&self) -> Arc<TerminalManager> {
         Arc::clone(&self.terminals)
+    }
+
+    pub fn enable_agent_worktree_control(self: &Arc<Self>) -> Result<(), String> {
+        let ai_runtime = self
+            .terminals
+            .ai_runtime()
+            .ok_or_else(|| "The desktop AI runtime is unavailable.".to_string())?;
+        let control = AgentWorktreeControl::start(&self.support_dir, ai_runtime)?;
+        let host: Arc<dyn AgentWorktreeHost> = Arc::new(agent_worktree::DesktopAgentWorktreeHost {
+            runtime: Arc::downgrade(self),
+        });
+        control.set_host(Arc::clone(&host));
+        self.terminals
+            .bind_agent_worktree_control(Arc::clone(&control));
+        *self
+            .agent_worktree_control
+            .lock()
+            .map_err(|error| error.to_string())? = Some(control);
+        *self
+            .agent_worktree_host
+            .lock()
+            .map_err(|error| error.to_string())? = Some(host);
+        Ok(())
     }
 
     /// Push the current terminal list to subscribed devices. Called when the

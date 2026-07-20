@@ -46,6 +46,65 @@ mod tests {
     }
 
     #[test]
+    fn claude_missing_timestamps_do_not_follow_index_time() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let file_path = root.join("session.jsonl");
+        fs::write(
+            &file_path,
+            r#"{"type":"user","sessionId":"s1","cwd":"/tmp/project-a","message":{"content":"hello"}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-a","uuid":"a1","message":{"model":"claude-sonnet","usage":{"input_tokens":100,"output_tokens":50}}}
+"#,
+        )
+        .unwrap();
+        let project = AIHistoryProjectRequest {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: "/tmp/project-a".to_string(),
+        };
+
+        let first = parse_claude_history_file_snapshot(&project, &file_path, 0, None);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let second = parse_claude_history_file_snapshot(&project, &file_path, 0, None);
+
+        assert_eq!(first.result.events[0].timestamp, second.result.events[0].timestamp);
+        assert_eq!(first.result.entries[0].timestamp, second.result.entries[0].timestamp);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn history_without_store_is_stable_when_source_mtime_changes() {
+        let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
+        let project_path = "/tmp/project-a";
+        let log_dir = root.join(".claude/projects/-tmp-project-a");
+        fs::create_dir_all(&log_dir).unwrap();
+        let file_path = log_dir.join("session.jsonl");
+        let contents = r#"{"type":"user","sessionId":"s1","cwd":"/tmp/project-a","message":{"content":"hello"}}
+{"type":"assistant","sessionId":"s1","cwd":"/tmp/project-a","uuid":"a1","message":{"model":"claude-sonnet","usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        fs::write(&file_path, contents).unwrap();
+        let project = AIHistoryProjectRequest {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: project_path.to_string(),
+        };
+
+        let mut first =
+            load_project_history_without_store(project.clone(), &root, &mut |_, _| {});
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(&file_path, contents).unwrap();
+        let mut second = load_project_history_without_store(project, &root, &mut |_, _| {});
+
+        first.indexed_at = 0.0;
+        second.indexed_at = 0.0;
+        assert_eq!(
+            serde_json::to_value(first).unwrap(),
+            serde_json::to_value(second).unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn codex_uses_state_database_before_recursive_scan() {
         let root = std::env::temp_dir().join(format!("codux-history-test-{}", Uuid::new_v4()));
         let project_path = root.join("project-a").to_string_lossy().to_string();

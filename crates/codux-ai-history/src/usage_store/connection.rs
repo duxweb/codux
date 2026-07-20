@@ -84,8 +84,14 @@ fn merge_usage_buckets(existing: &[AIUsageBucket], delta: &[AIUsageBucket]) -> V
             bucket.model.clone().unwrap_or_default(),
             bucket.bucket_start as i64,
         );
-        map.entry(key)
+            map.entry(key)
             .and_modify(|current| {
+                if bucket.last_seen_at > current.last_seen_at
+                    || (same_timestamp(bucket.last_seen_at, current.last_seen_at)
+                        && bucket.session_title > current.session_title)
+                {
+                    current.session_title = bucket.session_title.clone();
+                }
                 current.input_tokens += bucket.input_tokens;
                 current.output_tokens += bucket.output_tokens;
                 current.total_tokens += bucket.total_tokens;
@@ -95,13 +101,10 @@ fn merge_usage_buckets(existing: &[AIUsageBucket], delta: &[AIUsageBucket]) -> V
                 current.active_duration_seconds += bucket.active_duration_seconds;
                 current.first_seen_at = min_nonzero(current.first_seen_at, bucket.first_seen_at);
                 current.last_seen_at = current.last_seen_at.max(bucket.last_seen_at);
-                current.external_session_id = current
-                    .external_session_id
-                    .clone()
-                    .or(bucket.external_session_id.clone());
-                current.session_title =
-                    preferred_string(Some(&current.session_title), Some(&bucket.session_title))
-                        .unwrap_or_else(|| bucket.project_name.clone());
+                stable_optional_string(
+                    &mut current.external_session_id,
+                    bucket.external_session_id.as_deref(),
+                );
                 current.model = current.model.clone().or(bucket.model.clone());
             })
             .or_insert_with(|| bucket.clone());

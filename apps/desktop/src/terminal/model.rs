@@ -67,21 +67,10 @@ impl TerminalModel {
     {
         let stdin_writer: Arc<Mutex<Box<dyn Write + Send>>> =
             Arc::new(Mutex::new(Box::new(stdin_writer)));
-        // The engine answers VT queries (DSR/CPR, DECRQM, DA, ...) itself;
-        // replies are forwarded straight to the PTY from the worker thread.
-        let responder: codux_terminal_core::TerminalPtyResponder = {
-            let writer = stdin_writer.clone();
-            Arc::new(move |bytes: &[u8]| {
-                let mut writer = writer.lock();
-                let _ = writer.write_all(bytes);
-                let _ = writer.flush();
-            })
-        };
-        let screen = Arc::new(Mutex::new(HeadlessTerminalScreen::new_with_responder(
+        let screen = Arc::new(Mutex::new(HeadlessTerminalScreen::new(
             config.cols,
             config.rows,
             config.scrollback,
-            Some(responder),
         )));
         // Transient engine events (OSC 52 stores, BEL) hop from the worker
         // thread to the UI thread, where clipboard and bell live.
@@ -294,7 +283,6 @@ impl TerminalModel {
         let color_scheme_update =
             update_terminal_color_scheme_state(bytes, &mut self.color_scheme_state);
         self.respond_to_color_scheme_queries(color_scheme_update.query_count);
-        self.respond_to_osc_color_queries(&color_scheme_update);
         for notification in scan_terminal_osc_notifications(bytes, &mut self.notify_scan_tail) {
             self.show_osc_notification(notification, cx);
         }
@@ -476,28 +464,6 @@ impl TerminalModel {
     fn respond_to_color_scheme_queries(&self, query_count: usize) {
         for _ in 0..query_count {
             self.write_color_scheme_report();
-        }
-    }
-
-    fn respond_to_osc_color_queries(&self, update: &TerminalColorSchemeUpdate) {
-        // While a remote (always dark) client owns the viewport, report its
-        // colors: the TUI derives panel backgrounds from these replies and
-        // must match the renderer the user is looking at.
-        for _ in 0..update.osc_foreground_queries {
-            let report = if self.remote_viewer {
-                terminal_osc_rgb_report(10, REMOTE_VIEWER_FOREGROUND)
-            } else {
-                terminal_osc_color_report(10, self.colors.foreground())
-            };
-            self.write_bytes(&report);
-        }
-        for _ in 0..update.osc_background_queries {
-            let report = if self.remote_viewer {
-                terminal_osc_rgb_report(11, REMOTE_VIEWER_BACKGROUND)
-            } else {
-                terminal_osc_color_report(11, self.colors.background())
-            };
-            self.write_bytes(&report);
         }
     }
 

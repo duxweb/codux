@@ -48,6 +48,13 @@ pub struct WorktreeSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreatedWorktree {
+    pub worktree: ProjectWorktreeSnapshot,
+    pub snapshot: WorktreeSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectWorktreeSnapshot {
     pub id: String,
     pub project_id: String,

@@ -17,6 +17,7 @@ pub mod snapshot;
 pub mod state;
 pub mod store;
 pub mod supervisor;
+pub(crate) mod terminal_activity;
 pub mod terminal_status;
 pub mod tool_driver;
 pub mod tool_drivers;

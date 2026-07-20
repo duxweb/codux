@@ -21,6 +21,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["kiro-cli"],
     process_names: &["kiro-cli", "kiro-cli-chat"],
     wrapper_bins: &["kiro-cli"],
+    initial_prompt_args: &[],
     liveness_from_process: true,
     screen_starts_idle: true,
     screen_patterns: KIRO_SCREEN_PATTERNS,

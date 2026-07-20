@@ -22,6 +22,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["omp"],
     process_names: &["omp"],
     wrapper_bins: &["omp"],
+    initial_prompt_args: &[],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

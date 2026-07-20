@@ -15,7 +15,10 @@ fn parse_kiro_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
     let model = kiro_model(&value);
     let session_title = kiro_session_title(&value).or_else(|| Some(project.name.clone()));
     let timestamps = kiro_history_timestamps(&value);
-    let last_timestamp = timestamps.last().copied().unwrap_or_else(now_seconds);
+    let last_timestamp = timestamps
+        .last()
+        .copied()
+        .unwrap_or(0.0);
     let mut result = ParsedHistory::default();
     let mut last_kind = None;
     for timestamp in &timestamps {
@@ -100,7 +103,7 @@ fn parse_agy_database_history_file(
                 .last_seen_at
                 .or(conversation.last_model_at)
                 .or(conversation.last_user_at)
-                .unwrap_or_else(now_seconds),
+                .unwrap_or(0.0),
             model: conversation.model,
             input_tokens: conversation.input_tokens,
             output_tokens: conversation.output_tokens,
@@ -129,9 +132,19 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
         let Ok(row) = serde_json::from_str::<Value>(line) else {
             return true;
         };
-        let timestamp = kimi_timestamp(&row).unwrap_or_else(now_seconds);
-        last_timestamp = Some(timestamp);
-        if let Some(kind) = kimi_event_kind(&row) {
+        let source_timestamp = kimi_timestamp(&row);
+        let event_kind = kimi_event_kind(&row);
+        let turn_usage = kimi_turn_usage(&row);
+        let cumulative_usage = turn_usage.is_none().then(|| kimi_usage(&row)).flatten();
+        let semantic_row = event_kind.is_some() || turn_usage.is_some() || cumulative_usage.is_some();
+        let timestamp = source_timestamp
+            .or(last_timestamp)
+            .or_else(|| kimi_timestamp(&state))
+            .unwrap_or(0.0);
+        if semantic_row {
+            last_timestamp = Some(timestamp);
+        }
+        if let Some(kind) = event_kind {
             result.events.push(HistoryEvent {
                 source: "kimi".to_string(),
                 session_id: session_id.clone(),
@@ -145,7 +158,7 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
         if let Some(model) = kimi_model(&row) {
             session_model = Some(model);
         }
-        if let Some(usage) = kimi_turn_usage(&row) {
+        if let Some(usage) = turn_usage {
             has_turn_usage = true;
             result.entries.push(HistoryEntry {
                 source: "kimi".to_string(),
@@ -160,7 +173,7 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
                 reasoning_output_tokens: usage.reasoning_output_tokens,
                 usage_amounts: Vec::new(),
             });
-        } else if let Some(usage) = kimi_usage(&row) {
+        } else if let Some(usage) = cumulative_usage {
             last_usage = Some(usage);
         }
         true
@@ -179,7 +192,7 @@ fn parse_kimi_history_file(project: &AIHistoryProjectRequest, file_path: &Path) 
             session_title: session_title.or_else(|| Some(project.name.clone())),
             timestamp: last_timestamp
                 .or_else(|| kimi_timestamp(&state))
-                .unwrap_or_else(now_seconds),
+                .unwrap_or(0.0),
             model: session_model,
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,

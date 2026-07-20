@@ -123,6 +123,40 @@ impl TerminalLayoutService {
             .flatten()
     }
 
+    pub fn ensure_terminal(
+        &self,
+        project_id: &str,
+        terminal_id: &str,
+        title: &str,
+    ) -> Result<TerminalLayoutSummary, String> {
+        let project_id = project_id.trim();
+        let terminal_id = terminal_id.trim();
+        if project_id.is_empty() {
+            return Err("Project workspace is required.".to_string());
+        }
+        if terminal_id.is_empty() {
+            return Err("Terminal id is required.".to_string());
+        }
+        let mut layout = self.load(Some(project_id));
+        if layout
+            .top_panes
+            .iter()
+            .any(|pane| pane.terminal_id == terminal_id)
+            || layout.tabs.iter().any(|tab| tab.terminal_id == terminal_id)
+        {
+            return Ok(layout);
+        }
+        layout.error = None;
+        layout.top_panes.push(TerminalPaneSummary {
+            title: match title.trim() {
+                "" => "Terminal".to_string(),
+                title => title.to_string(),
+            },
+            terminal_id: terminal_id.to_string(),
+        });
+        self.save_summary(project_id, layout)
+    }
+
     pub fn load_many<'a, I>(
         &self,
         project_ids: I,
@@ -732,6 +766,41 @@ mod tests {
         assert_eq!(layout.top_panes.len(), 1);
         assert_eq!(layout.top_panes[0].terminal_id, "terminal-kept");
 
+        let _ = std::fs::remove_dir_all(support_dir);
+    }
+
+    #[test]
+    fn ensure_terminal_appends_without_replacing_existing_panes() {
+        let support_dir = std::env::temp_dir().join(format!(
+            "codux-terminal-layout-append-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&support_dir).expect("create support dir");
+        let service = TerminalLayoutService::new(support_dir.clone());
+        service
+            .save_from_gpui(
+                "project-1::worktree-1",
+                Vec::new(),
+                vec![TerminalPaneSummary {
+                    title: "Existing".to_string(),
+                    terminal_id: "terminal-existing".to_string(),
+                }],
+                vec![1.0],
+                0.24,
+            )
+            .expect("save initial layout");
+
+        let layout = service
+            .ensure_terminal(
+                "project-1::worktree-1",
+                "terminal-created",
+                "Agent worktree",
+            )
+            .expect("append terminal");
+
+        assert_eq!(layout.top_panes.len(), 2);
+        assert_eq!(layout.top_panes[0].terminal_id, "terminal-existing");
+        assert_eq!(layout.top_panes[1].terminal_id, "terminal-created");
         let _ = std::fs::remove_dir_all(support_dir);
     }
 

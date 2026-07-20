@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use codux_protocol::REMOTE_PROTOCOL_VERSION;
 use codux_runtime_core::runtime_stdio::RUNTIME_STDIO_PROTOCOL_VERSION;
 
+mod agent_worktree;
 mod ai_stats;
 mod cmd_config;
 mod cmd_device;

@@ -85,6 +85,13 @@ impl AIUsageStore {
             .with_context(|| format!("failed to read AI history file {}", file_path.display()))?;
         let normalized_file_path = normalized_path(file_path);
         let (modified_at, file_size) = history_file_version(file_path, &metadata);
+        let fallback_timestamp = self.source_fallback_timestamp(
+            conn,
+            source,
+            &normalized_file_path,
+            &project.path,
+            file_path,
+        )?;
 
         if let Some(summary) = self.stored_external_summary(
             conn,
@@ -96,7 +103,8 @@ impl AIUsageStore {
             return Ok(summary);
         }
 
-        let parsed = parser();
+        let mut parsed = parser();
+        apply_history_timestamp_fallback(&mut parsed, fallback_timestamp);
         let summary = external_file_summary_from_parsed(
             source,
             normalized_file_path,
@@ -137,6 +145,13 @@ impl AIUsageStore {
             .with_context(|| format!("failed to read AI history file {}", file_path.display()))?;
         let normalized_file_path = normalized_path(file_path);
         let (modified_at, file_size) = history_file_version(file_path, &metadata);
+        let fallback_timestamp = self.source_fallback_timestamp(
+            conn,
+            source,
+            &normalized_file_path,
+            &project.path,
+            file_path,
+        )?;
         let stored_summary =
             self.stored_external_summary(conn, source, &normalized_file_path, &project.path, None)?;
         let checkpoint =
@@ -157,7 +172,8 @@ impl AIUsageStore {
                 if let (Some(stored_summary), Some(checkpoint)) =
                     (stored_summary.as_ref(), checkpoint.as_ref())
                 {
-                    let snapshot = append_parser(Some(checkpoint));
+                    let mut snapshot = append_parser(Some(checkpoint));
+                    apply_history_timestamp_fallback(&mut snapshot.result, fallback_timestamp);
                     let delta = external_file_summary_from_parsed(
                         source,
                         normalized_file_path.clone(),
@@ -202,7 +218,8 @@ impl AIUsageStore {
             JSONLIndexMode::Rebuild => {}
         }
 
-        let snapshot = rebuild_parser();
+        let mut snapshot = rebuild_parser();
+        apply_history_timestamp_fallback(&mut snapshot.result, fallback_timestamp);
         let summary = external_file_summary_from_parsed(
             source,
             normalized_file_path,
@@ -223,6 +240,40 @@ impl AIUsageStore {
         };
         self.replace_external_summary(conn, &summary, Some(&checkpoint))?;
         Ok(summary)
+    }
+
+    fn source_fallback_timestamp(
+        &self,
+        conn: &Connection,
+        source: &str,
+        file_path: &str,
+        project_path: &str,
+        source_path: &Path,
+    ) -> Result<f64> {
+        conn.execute(
+            r#"
+            INSERT OR IGNORE INTO ai_history_source_identity (
+                source, file_path, project_path, fallback_timestamp
+            ) VALUES (?1, ?2, ?3, ?4);
+            "#,
+            params![
+                source,
+                file_path,
+                project_path,
+                history_source_timestamp_candidate(source_path)
+            ],
+        )?;
+        conn.query_row(
+            r#"
+            SELECT fallback_timestamp
+            FROM ai_history_source_identity
+            WHERE source = ?1 AND file_path = ?2 AND project_path = ?3
+            LIMIT 1;
+            "#,
+            params![source, file_path, project_path],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
     }
 
     pub fn stored_external_summary(
@@ -340,7 +391,7 @@ impl AIUsageStore {
                 )?;
             }
 
-            for session in build_session_links(&summary.usage_buckets) {
+            for session in build_session_links(&summary.file_path, &summary.usage_buckets) {
                 conn.execute(
                     r#"
                     INSERT INTO ai_history_file_session_link (

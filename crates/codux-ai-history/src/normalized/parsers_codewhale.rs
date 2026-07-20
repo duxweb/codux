@@ -28,7 +28,6 @@ fn parse_codewhale_history_file(
         .or_else(|| metadata.get("updatedAt"))
         .and_then(value_to_string)
         .and_then(|value| parse_iso8601_seconds(&value));
-
     let mut result = ParsedHistory::default();
     let messages = value
         .get("messages")
@@ -49,7 +48,7 @@ fn parse_codewhale_history_file(
                     updated_at.or(created_at)
                 }
             })
-            .unwrap_or_else(now_seconds);
+            .unwrap_or(0.0);
         result.events.push(HistoryEvent {
             source: "codewhale".to_string(),
             session_id: session_id.clone(),
@@ -71,7 +70,7 @@ fn parse_codewhale_history_file(
             session_id: session_id.clone(),
             external_session_id: Some(session_id),
             session_title,
-            timestamp: updated_at.or(created_at).unwrap_or_else(now_seconds),
+            timestamp: updated_at.or(created_at).unwrap_or(0.0),
             model,
             input_tokens: total_tokens,
             output_tokens: 0,

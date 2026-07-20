@@ -47,11 +47,24 @@ impl AIRuntimeTerminalOutputWatcher {
             TerminalEvent::Output {
                 session_id, bytes, ..
             } => (session_id, bytes),
-            TerminalEvent::Exit { session_id, .. } => {
+            TerminalEvent::Exit {
+                session_id,
+                exit_code,
+            } => {
                 if session_id == &self.binding.terminal_id {
+                    self.ai_runtime.submit_terminal_exit(session_id, *exit_code);
                     self.clear_terminal_status(
                         crate::ai_runtime::terminal_status::TERMINAL_LIFECYCLE_SOURCE,
                     );
+                }
+                return;
+            }
+            TerminalEvent::Error {
+                session_id,
+                message,
+            } => {
+                if session_id == &self.binding.terminal_id {
+                    self.ai_runtime.submit_terminal_error(session_id, message);
                 }
                 return;
             }

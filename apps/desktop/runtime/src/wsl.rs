@@ -14,7 +14,10 @@ fn command() -> std::process::Command {
     command
 }
 
-pub use client::WslRuntimeClient;
+pub use client::{
+    WslAgentWorktreeChanged, WslAgentWorktreeCreated, WslRuntimeClient, WslRuntimeEvent,
+    WslRuntimeEventSink,
+};
 pub use discovery::{WslDistribution, WslOnlineDistribution};
 pub use install::{WslInstallOperation, WslInstallProgress};
 pub use manager::{

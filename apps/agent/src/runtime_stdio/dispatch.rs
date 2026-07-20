@@ -1,23 +1,49 @@
-use super::{RuntimeStdioWriter, terminal::RuntimeStdioTerminals};
+use super::{
+    RuntimeStdioWriter, agent_worktree::RuntimeStdioAgentWorktreeHost,
+    terminal::RuntimeStdioTerminals,
+};
 use codux_runtime_core::file::{
     file_copy, file_delete, file_list_payload, file_make_directory, file_move,
     file_read_blob_bytes, file_read_payload, file_rename, file_write, file_write_bytes,
 };
+use codux_runtime_live::agent_worktree::{AgentWorktreeControl, AgentWorktreeHost};
+use codux_runtime_live::ai_runtime::AIRuntimeBridge;
+use codux_terminal_core::TerminalQueryColors;
 use serde_json::{Value, json};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub(super) struct RuntimeStdioService {
     terminals: RuntimeStdioTerminals,
     ai_history: codux_ai_history::indexer::AIHistoryIndexer,
+    _agent_worktree_control: Arc<AgentWorktreeControl>,
+    _agent_worktree_host: Arc<dyn AgentWorktreeHost>,
 }
 
 impl RuntimeStdioService {
-    pub(super) fn new(data_dir: PathBuf, writer: RuntimeStdioWriter) -> Self {
+    pub(super) fn new(
+        data_dir: PathBuf,
+        writer: RuntimeStdioWriter,
+        ai_runtime: Arc<AIRuntimeBridge>,
+    ) -> Result<Self, String> {
         let ai_history = crate::ai_stats::open_indexer_at(&data_dir);
-        Self {
-            terminals: RuntimeStdioTerminals::new(data_dir, writer),
+        let terminals =
+            RuntimeStdioTerminals::new(data_dir.clone(), writer.clone(), Arc::clone(&ai_runtime));
+        let control = AgentWorktreeControl::start(&data_dir, ai_runtime)?;
+        let host: Arc<dyn AgentWorktreeHost> = Arc::new(RuntimeStdioAgentWorktreeHost::new(
+            terminals.clone(),
+            writer,
+        ));
+        control.set_host(Arc::clone(&host));
+        terminals
+            .manager()
+            .bind_agent_worktree_control(Arc::clone(&control));
+        Ok(Self {
+            terminals,
             ai_history,
-        }
+            _agent_worktree_control: control,
+            _agent_worktree_host: host,
+        })
     }
 
     pub(super) fn dispatch(&self, method: &str, params: &Value) -> Result<Value, String> {
@@ -126,6 +152,12 @@ impl RuntimeStdioService {
                 })
             }
             "terminal.list" => self.terminals.list(),
+            "terminal.setQueryColors" => {
+                let colors = serde_json::from_value::<TerminalQueryColors>(params.clone())
+                    .map_err(|error| format!("invalid terminal query colors: {error}"))?;
+                self.terminals.manager().set_query_colors(colors);
+                Ok(Value::Null)
+            }
             "terminal.create" => self.terminals.create(params),
             "terminal.input" => self.terminals.input(params),
             "terminal.resize" => self.terminals.resize(params),

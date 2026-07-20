@@ -87,7 +87,12 @@ fn accumulate_breakdown(
 
 fn sorted_breakdown(mut map: HashMap<String, AIUsageBreakdownItem>) -> Vec<AIUsageBreakdownItem> {
     let mut values = map.drain().map(|(_, value)| value).collect::<Vec<_>>();
-    values.sort_by(|left, right| right.total_tokens.cmp(&left.total_tokens));
+    values.sort_by(|left, right| {
+        right
+            .total_tokens
+            .cmp(&left.total_tokens)
+            .then_with(|| left.key.cmp(&right.key))
+    });
     values
 }
 
@@ -99,6 +104,7 @@ fn merge_usage_amount(amounts: &mut Vec<AIUsageAmount>, next: AIUsageAmount) {
         existing.value += next.value;
     } else {
         amounts.push(next);
+        amounts.sort_by(|left, right| left.unit.cmp(&right.unit));
     }
 }
 
@@ -267,6 +273,48 @@ pub fn deterministic_uuid(value: &str) -> String {
 
 fn min_nonzero(left: f64, right: f64) -> f64 {
     if left <= 0.0 { right } else { left.min(right) }
+}
+
+fn update_session_string(
+    current: &mut Option<String>,
+    current_at: &mut f64,
+    candidate: Option<&str>,
+    candidate_at: f64,
+) {
+    let Some(candidate) = candidate.and_then(normalized_string) else {
+        return;
+    };
+    let replace = current.is_none()
+        || candidate_at > *current_at
+        || (same_history_timestamp(candidate_at, *current_at)
+            && current.as_ref().is_none_or(|value| candidate > *value));
+    if replace {
+        *current = Some(candidate);
+        *current_at = candidate_at;
+    }
+}
+
+fn stable_optional_string(current: &mut Option<String>, candidate: Option<&str>) {
+    let Some(candidate) = candidate.and_then(normalized_string) else {
+        return;
+    };
+    if current.as_ref().is_none_or(|value| candidate < *value) {
+        *current = Some(candidate);
+    }
+}
+
+fn same_history_timestamp(left: f64, right: f64) -> bool {
+    (left - right).abs() < 0.000_001
+}
+
+fn sort_sessions_recent_first(sessions: &mut [AISessionSummary]) {
+    sessions.sort_by(|left, right| {
+        right
+            .last_seen_at
+            .total_cmp(&left.last_seen_at)
+            .then_with(|| left.session_id.cmp(&right.session_id))
+            .then_with(|| left.project_path.cmp(&right.project_path))
+    });
 }
 
 pub fn half_hour_bucket_start(timestamp: f64) -> f64 {

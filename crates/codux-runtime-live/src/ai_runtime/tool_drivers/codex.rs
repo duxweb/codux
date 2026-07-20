@@ -11,6 +11,7 @@ pub const DRIVER: AIRuntimeToolDriver = AIRuntimeToolDriver {
     aliases: &["codex"],
     process_names: &["codex"],
     wrapper_bins: &["codex"],
+    initial_prompt_args: &[],
     liveness_from_process: false,
     screen_starts_idle: false,
     screen_patterns: NO_SCREEN_PATTERNS,

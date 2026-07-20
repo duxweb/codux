@@ -15,19 +15,23 @@ fn build_snapshot_from_rows(
     let mut today_cached_input_tokens = 0;
     let mut project_usage_amounts = Vec::new();
     let mut today_usage_amounts = Vec::new();
-    let link_group_keys = links
-        .iter()
-        .map(|link| {
-            (
-                history_key(&link.source, &link.session_key),
-                history_group_key(
-                    &link.source,
-                    &link.session_key,
-                    link.external_session_id.as_deref(),
-                ),
-            )
-        })
-        .collect::<HashMap<_, _>>();
+    let mut link_group_keys = HashMap::<String, String>::new();
+    for link in &links {
+        let raw_key = history_key(&link.source, &link.session_key);
+        let group_key = history_group_key(
+            &link.source,
+            &link.session_key,
+            link.external_session_id.as_deref(),
+        );
+        link_group_keys
+            .entry(raw_key)
+            .and_modify(|current| {
+                if group_key < *current {
+                    *current = group_key.clone();
+                }
+            })
+            .or_insert(group_key);
+    }
 
     for link in &links {
         let key = history_group_key(
@@ -35,6 +39,7 @@ fn build_snapshot_from_rows(
             &link.session_key,
             link.external_session_id.as_deref(),
         );
+        let source_key = metadata_source_key(link);
         let session = sessions_by_key
             .entry(key)
             .or_insert_with(|| PersistedSessionAccumulator {
@@ -45,17 +50,43 @@ fn build_snapshot_from_rows(
                 first_seen_at: link.first_seen_at,
                 last_seen_at: link.last_seen_at,
                 last_model: link.last_model.clone(),
+                metadata_at: link.last_seen_at,
+                metadata_source_key: source_key.clone(),
+                model_at: link.last_seen_at,
+                model_source_key: source_key.clone(),
+                model_from_link: link.last_model.is_some(),
                 ..Default::default()
             });
-        session.external_session_id = session
-            .external_session_id
-            .clone()
-            .or(link.external_session_id.clone());
-        session.title = preferred_string(session.title.as_deref(), Some(&link.session_title));
+        stable_optional_string(
+            &mut session.external_session_id,
+            link.external_session_id.as_deref(),
+        );
+        if metadata_candidate_is_newer(
+            link.last_seen_at,
+            &source_key,
+            session.metadata_at,
+            &session.metadata_source_key,
+        ) {
+            session.source = link.source.clone();
+            session.session_key = link.session_key.clone();
+            session.title = normalized_optional_string(&link.session_title);
+            session.metadata_at = link.last_seen_at;
+            session.metadata_source_key = source_key.clone();
+        }
         session.first_seen_at = min_nonzero(session.first_seen_at, link.first_seen_at);
         session.last_seen_at = session.last_seen_at.max(link.last_seen_at);
-        if link.last_seen_at >= session.last_seen_at {
-            session.last_model = link.last_model.clone().or(session.last_model.clone());
+        if link.last_model.is_some()
+            && metadata_candidate_is_newer(
+                link.last_seen_at,
+                &source_key,
+                session.model_at,
+                &session.model_source_key,
+            )
+        {
+            session.last_model = link.last_model.clone();
+            session.model_at = link.last_seen_at;
+            session.model_source_key = source_key;
+            session.model_from_link = true;
         }
         session.active_duration_seconds = session
             .active_duration_seconds
@@ -85,7 +116,24 @@ fn build_snapshot_from_rows(
         session.request_count += bucket.request_count;
         session.first_seen_at = min_nonzero(session.first_seen_at, bucket.bucket_start);
         session.last_seen_at = session.last_seen_at.max(bucket.bucket_end);
-        session.last_model = bucket.model.clone().or(session.last_model.clone());
+        let bucket_model_key = format!(
+            "{}\0{}",
+            bucket.session_key,
+            bucket.model.as_deref().unwrap_or("")
+        );
+        if !session.model_from_link
+            && bucket.model.is_some()
+            && metadata_candidate_is_newer(
+                bucket.bucket_start,
+                &bucket_model_key,
+                session.model_at,
+                &session.model_source_key,
+            )
+        {
+            session.last_model = bucket.model.clone();
+            session.model_at = bucket.bucket_start;
+            session.model_source_key = bucket_model_key;
+        }
         if bucket.bucket_start >= today_start {
             session.today_tokens += bucket.total_tokens;
             session.today_cached_input_tokens += bucket.cached_input_tokens;
@@ -188,7 +236,7 @@ fn build_snapshot_from_rows(
             today_usage_amounts: session.today_usage_amounts,
         })
         .collect::<Vec<_>>();
-    sessions.sort_by(|left, right| right.last_seen_at.total_cmp(&left.last_seen_at));
+    sort_sessions_recent_first(&mut sessions);
 
     let latest_session = sessions.first().cloned();
     sessions.truncate(RECENT_HISTORY_SESSION_LIMIT);

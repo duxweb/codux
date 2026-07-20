@@ -98,6 +98,7 @@ pub struct AIExternalFileCheckpoint {
 #[derive(Debug, Clone)]
 struct NormalizedSessionLinkRow {
     source: String,
+    file_path: String,
     session_key: String,
     external_session_id: Option<String>,
     project_id: String,
@@ -134,6 +135,11 @@ struct PersistedSessionAccumulator {
     first_seen_at: f64,
     last_seen_at: f64,
     last_model: Option<String>,
+    metadata_at: f64,
+    metadata_source_key: String,
+    model_at: f64,
+    model_source_key: String,
+    model_from_link: bool,
     input_tokens: i64,
     output_tokens: i64,
     total_tokens: i64,
@@ -151,9 +157,11 @@ struct ParsedSessionAccumulator {
     session_key: String,
     external_session_id: Option<String>,
     title: Option<String>,
+    title_at: f64,
     first_seen_at: f64,
     last_seen_at: f64,
     last_model: Option<String>,
+    model_at: f64,
     active_duration_seconds: i64,
 }
 
