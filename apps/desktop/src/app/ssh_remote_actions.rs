@@ -1394,7 +1394,6 @@ impl CoduxApp {
             ai_history_events: applied_ai_history_events,
             pet_events: applied_pet_events,
             pet_update_events: applied_pet_update_events + usize::from(applied_runtime_pet_update),
-            ai_runtime_events: drained.events.len(),
             ai_activity_changed,
             memory_events: drained.memory.len(),
             dock_badge_count,
@@ -1577,7 +1576,6 @@ impl CoduxApp {
         }
 
         RuntimeActivityTickResult {
-            ai_runtime_events: drained.events.len(),
             ai_activity_changed,
             memory_events,
             changed,

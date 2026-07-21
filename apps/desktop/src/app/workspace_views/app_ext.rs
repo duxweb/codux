@@ -242,7 +242,6 @@ impl CoduxApp {
     }
 
     pub(in crate::app) fn terminal_workspace_snapshot(&self) -> TerminalWorkspaceSnapshot {
-        let ai_titles = terminal_ai_titles_by_terminal_id(&self.state.ai_runtime_state.sessions);
         let main_panes = self
             .main_terminal()
             .map(|tab| {
@@ -251,23 +250,12 @@ impl CoduxApp {
                     .enumerate()
                     .map(|(index, slot)| {
                         let terminal_id = Self::terminal_slot_terminal_id(tab, index, slot);
-                        let osc_title = terminal_id
-                            .as_deref()
-                            .and_then(|id| self.terminal_osc_titles.get(id));
-                        let (title, subtitle) = terminal_pane_display_title(
-                            slot,
-                            &ai_titles,
-                            osc_title.map(String::as_str),
-                            &self.state.settings.language,
-                        );
                         let search_open = terminal_id
                             .as_deref()
                             .is_some_and(|id| self.terminal_search_open.contains(id));
                         TerminalPaneViewSnapshot {
                             terminal_id,
                             view: slot.pane.as_ref().map(|pane| pane.view.clone()),
-                            title,
-                            subtitle,
                             search_open,
                         }
                     })

@@ -503,7 +503,6 @@ pub(in crate::app) struct RuntimeActivityTickResult {
     pub(in crate::app) ai_history_events: usize,
     pub(in crate::app) pet_events: usize,
     pub(in crate::app) pet_update_events: usize,
-    pub(in crate::app) ai_runtime_events: usize,
     pub(in crate::app) ai_activity_changed: bool,
     pub(in crate::app) memory_events: usize,
     pub(in crate::app) dock_badge_count: Option<i64>,

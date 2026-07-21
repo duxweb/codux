@@ -418,7 +418,7 @@ impl CoduxApp {
             None => self.terminal_osc_titles.remove(terminal_id).is_some(),
         };
         if changed {
-            self.invalidate_ui(cx, [UiRegion::TaskColumn, UiRegion::WorkspaceBody]);
+            self.invalidate_task_column(cx);
         }
     }
 

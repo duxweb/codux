@@ -164,7 +164,6 @@ impl CoduxApp {
                         }
                         if result.changed {
                             app.invalidate_for_runtime_activity(&result, cx);
-                            cx.refresh_windows();
                         }
                     })
                     .is_err()
@@ -339,9 +338,6 @@ impl CoduxApp {
             if self.workspace_view == WorkspaceView::Stats {
                 self.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
             }
-        }
-        if result.ai_runtime_events > 0 && self.workspace_view == WorkspaceView::Terminal {
-            self.invalidate_ui_region(cx, UiRegion::WorkspaceBody);
         }
         if result.memory_events > 0 {
             self.invalidate_ui(cx, [UiRegion::WorkspaceAssistant, UiRegion::StatusBar]);

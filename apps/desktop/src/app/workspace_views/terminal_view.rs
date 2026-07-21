@@ -33,18 +33,12 @@ impl TerminalWorkspaceSnapshot {
 pub(super) struct TerminalPaneViewSnapshot {
     pub(super) terminal_id: Option<String>,
     pub(super) view: Option<gpui::Entity<TerminalView>>,
-    pub(super) title: String,
-    pub(super) subtitle: Option<String>,
     pub(super) search_open: bool,
 }
 
 impl PartialEq for TerminalPaneViewSnapshot {
     fn eq(&self, other: &Self) -> bool {
-        if self.terminal_id != other.terminal_id
-            || self.title != other.title
-            || self.subtitle != other.subtitle
-            || self.search_open != other.search_open
-        {
+        if self.terminal_id != other.terminal_id || self.search_open != other.search_open {
             return false;
         }
         match (&self.view, &other.view) {
