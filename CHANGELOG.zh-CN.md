@@ -12,10 +12,18 @@
 
 ### 新增
 
+- 新增 Agent worktree 编排能力，AI 工具可通过 `codux-worktree` 创建隔离子 worktree、接管子终端、评审、合并并移除任务 worktree，形成完整闭环。
+- 新增 Oh My Pi runtime 支持，包括 wrapper、托管配置、runtime 探测、会话恢复，以及 AI 用量/历史解析。
 - 项目创建/编辑窗口新增项目级自定义环境变量，新开的本地、WSL、远程与 AI CLI 终端会继承这些变量。
 
 ### 修复
 
+- 修复 Kimi Code 0.27 的 runtime 探测、wrapper 启动和用量历史解析。
+- 修复外部会话路径、恢复会话、Codex/Claude/Kimi/Oh My Pi 记录、缓存桶和托管 runtime 下的 AI 历史与 Token 统计。
+- 修复未配置可用记忆提取 Provider 时自动提取队列反复失败的问题，并保留待处理任务直到 Provider 可用。
+- 修复 Agent worktree 终端持久化、viewport 接管、子任务权限、语义幂等、合并/移除清理，以及远程/WSL runtime 命令路由。
+- 修复移动端与远程终端在切换项目、worktree 和运行中终端后的同步问题，包括过期 baseline 输出和 viewport owner 恢复。
+- 修复长时间终端活动中重复重绘导致 UI CPU 升高、界面看起来卡死的问题。
 - 修复 Homebrew cask 下载地址和 SHA256 生成逻辑，统一使用稳定的公开 DMG 文件名。
 - 阻止项目环境变量覆盖 `CODUX_*` 和 `DMUX_*` 这些 Codux 运行时协议保留变量。
 

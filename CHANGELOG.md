@@ -12,10 +12,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added agent worktree orchestration with `codux-worktree` so AI tools can create isolated child worktrees, stream the child terminal, review, merge, and remove the task worktree from one workflow.
+- Added Oh My Pi runtime support, including wrappers, managed config, runtime probing, session restore, and AI usage/history parsing.
 - Added project-level custom environment variables in the project create/edit dialog. New local, WSL, remote, and AI CLI terminals inherit these variables when opened.
 
 ### Fixed
 
+- Fixed Kimi Code 0.27 runtime detection, wrapper launch, and usage-history parsing.
+- Fixed AI history and token accounting across external session paths, restored sessions, Codex/Claude/Kimi/Oh My Pi records, cache buckets, and hosted runtimes.
+- Fixed automatic memory extraction churn when no eligible provider is configured, preserving queued work until a provider becomes available.
+- Fixed agent worktree terminal persistence, viewport handoff, child-task permissions, semantic idempotency, merge/remove cleanup, and remote/WSL runtime command routing.
+- Fixed mobile and remote terminal synchronization after switching projects, worktrees, and running terminals, including stale baseline output and viewport ownership recovery.
+- Fixed redundant terminal workspace redraws that could push the UI into high CPU and frozen-looking frames during long-running terminal activity.
 - Fixed Homebrew cask download URLs and SHA256 generation to use the stable public DMG asset names.
 - Prevented project environment variables from overriding Codux runtime protocol variables reserved under `CODUX_*` and `DMUX_*`.
 
