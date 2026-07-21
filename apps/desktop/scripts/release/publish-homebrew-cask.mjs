@@ -56,7 +56,7 @@ function requiredEnv(name) {
 
 function findFormalDmg(dir, arch) {
   const files = walk(dir).filter((file) => file.endsWith(".dmg"));
-  const formal = files.find((file) => path.basename(file) === `codux-${version}-macos-${arch}.dmg`);
+  const formal = files.find((file) => path.basename(file) === `codux-macos-${arch}.dmg`);
   if (formal) return formal;
   throw new Error(`Unable to find formal macOS ${arch} DMG in ${dir}`);
 }

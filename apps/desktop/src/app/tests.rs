@@ -316,6 +316,7 @@ fn terminal_pane_terminal_id_normalizes_existing_runtime_id() {
         memory_prompt_file: None,
         memory_index_file: None,
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
 
     let pane = TerminalPanePlan {
@@ -360,6 +361,7 @@ fn terminal_pane_terminal_id_rejects_foreign_owner_id() {
         memory_prompt_file: None,
         memory_index_file: None,
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
 
     let foreign = TerminalPanePlan {

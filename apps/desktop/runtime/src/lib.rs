@@ -15,6 +15,7 @@ pub use codux_runtime_live::{ai_runtime, ai_runtime_state, runtime_paths, termin
 // host's file.list and the desktop UI breadcrumb agree on path handling.
 // Re-exported as `codux_runtime::path`.
 pub use codux_runtime_core::path;
+pub use codux_runtime_core::project;
 pub mod app_commands;
 pub mod app_icon;
 pub mod app_info;

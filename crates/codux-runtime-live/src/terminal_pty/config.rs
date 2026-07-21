@@ -1,4 +1,5 @@
 use super::*;
+use codux_runtime_core::project::is_reserved_project_environment_key;
 use codux_runtime_core::runtime_target::RuntimeTarget;
 use serde::Serialize;
 
@@ -12,6 +13,8 @@ pub struct TerminalPtyConfig {
     pub rows: Option<u16>,
     pub scrollback_lines: Option<usize>,
     pub env: Option<HashMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_env: Option<HashMap<String, String>>,
     pub root_project_id: Option<String>,
     #[serde(default)]
     pub root_project_path: Option<String>,
@@ -77,10 +80,12 @@ pub struct TerminalLaunchContext {
     pub memory_prompt_file: Option<PathBuf>,
     pub memory_index_file: Option<PathBuf>,
     pub runtime_target: RuntimeTarget,
+    pub environment_variables: HashMap<String, String>,
 }
 
 impl TerminalLaunchContext {
     pub fn to_config(&self) -> TerminalPtyConfig {
+        let project_env = project_environment_variables(&self.environment_variables);
         TerminalPtyConfig {
             cwd: Some(
                 self.session_cwd
@@ -106,10 +111,25 @@ impl TerminalLaunchContext {
             memory_prompt_file: self.memory_prompt_file.clone(),
             memory_index_file: self.memory_index_file.clone(),
             runtime_target: self.runtime_target.clone(),
+            project_env,
             scrollback_lines: None,
             ..Default::default()
         }
     }
+}
+
+fn project_environment_variables(
+    variables: &HashMap<String, String>,
+) -> Option<HashMap<String, String>> {
+    let variables = variables
+        .iter()
+        .filter_map(|(key, value)| {
+            let key = key.trim();
+            (!key.is_empty() && !is_reserved_project_environment_key(key))
+                .then(|| (key.to_string(), value.clone()))
+        })
+        .collect::<HashMap<_, _>>();
+    (!variables.is_empty()).then_some(variables)
 }
 
 pub(super) fn agent_worktree_terminal_scope(
@@ -261,6 +281,7 @@ fn parse_osc_rgb_channel(value: &str) -> Option<u8> {
 #[cfg(test)]
 mod cwd_tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn terminal_cwd_preserves_host_path_text() {
@@ -272,6 +293,51 @@ mod cwd_tests {
             normalize_terminal_cwd(Some(r"\\?\F:\Projects\Codux".to_string())).as_deref(),
             Some(r"F:\Projects\Codux")
         );
+    }
+
+    #[test]
+    fn launch_context_carries_project_environment_variables_into_pty_env() {
+        let context = TerminalLaunchContext {
+            root_project_id: "project-1".to_string(),
+            root_project_path: PathBuf::from("/workspace/codux"),
+            project_id: "project-1".to_string(),
+            project_name: "Codux".to_string(),
+            project_path: PathBuf::from("/workspace/codux"),
+            support_dir: PathBuf::from("/support/Codux"),
+            runtime_root: PathBuf::from("/runtime-root"),
+            terminal_id: None,
+            slot_id: None,
+            session_key: None,
+            session_title: None,
+            session_cwd: None,
+            session_instance_id: None,
+            tool_permissions_file: None,
+            memory_workspace_root: None,
+            memory_prompt_file: None,
+            memory_index_file: None,
+            runtime_target: Default::default(),
+            environment_variables: HashMap::from([
+                ("API_BASE".to_string(), "https://example.test".to_string()),
+                (" CODUX_PROJECT_ID ".to_string(), "reserved".to_string()),
+            ]),
+        };
+
+        let config = context.to_config();
+        assert_eq!(
+            config
+                .project_env
+                .as_ref()
+                .and_then(|env| env.get("API_BASE"))
+                .map(String::as_str),
+            Some("https://example.test")
+        );
+        assert!(
+            config
+                .project_env
+                .as_ref()
+                .is_none_or(|env| !env.contains_key("CODUX_PROJECT_ID"))
+        );
+        assert!(config.env.is_none());
     }
 }
 

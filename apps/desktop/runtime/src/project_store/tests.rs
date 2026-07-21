@@ -145,6 +145,7 @@ fn create_project_persists_runtime_target_without_legacy_field() {
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Remote {
                 device_id: "device-xyz".to_string(),
             },
@@ -158,6 +159,70 @@ fn create_project_persists_runtime_target_without_legacy_field() {
         "device-xyz"
     );
     assert!(state["projects"][0].get("hostDeviceId").is_none());
+
+    fs::remove_dir_all(dir).ok();
+}
+
+#[test]
+fn project_environment_variables_are_persisted_and_summarized() {
+    let dir = temp_dir("project-store-environment");
+    let project_dir = dir.join("project");
+    let support_dir = dir.join("support");
+    fs::create_dir_all(&project_dir).unwrap();
+    fs::create_dir_all(&support_dir).unwrap();
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert(" API_BASE ".to_string(), "https://example.test".to_string());
+    variables.insert("".to_string(), "ignored".to_string());
+    variables.insert("CODUX_PROJECT_ID".to_string(), "reserved".to_string());
+    variables.insert("dmux_session_id".to_string(), "reserved".to_string());
+
+    let error = ProjectStore::new(support_dir.clone())
+        .create_project(ProjectCreateRequest {
+            name: "Project".to_string(),
+            path: project_dir.display().to_string(),
+            badge_text: None,
+            badge_symbol: None,
+            badge_color_hex: None,
+            environment_variables: variables,
+            runtime_target: ProjectRuntimeTarget::Local,
+        })
+        .expect_err("reserved environment key should be rejected");
+    assert!(error.contains("CODUX_PROJECT_ID"));
+
+    let mut variables = std::collections::BTreeMap::new();
+    variables.insert(" API_BASE ".to_string(), "https://example.test".to_string());
+    variables.insert("".to_string(), "ignored".to_string());
+    let snapshot = ProjectStore::new(support_dir.clone())
+        .create_project(ProjectCreateRequest {
+            name: "Project".to_string(),
+            path: project_dir.display().to_string(),
+            badge_text: None,
+            badge_symbol: None,
+            badge_color_hex: None,
+            environment_variables: variables,
+            runtime_target: ProjectRuntimeTarget::Local,
+        })
+        .unwrap();
+
+    let project = snapshot.projects.first().expect("project");
+    assert_eq!(
+        project
+            .environment_variables
+            .get("API_BASE")
+            .map(String::as_str),
+        Some("https://example.test")
+    );
+    assert!(!project.environment_variables.contains_key(""));
+    let state = state_value(&support_dir);
+    assert_eq!(
+        state["projects"][0]["environmentVariables"]["API_BASE"],
+        "https://example.test"
+    );
+    assert!(
+        state["projects"][0]["environmentVariables"]
+            .get("")
+            .is_none()
+    );
 
     fs::remove_dir_all(dir).ok();
 }
@@ -180,6 +245,7 @@ fn create_remote_project_keeps_host_path_without_local_existence_check() {
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Remote {
                 device_id: "device-win".to_string(),
             },
@@ -211,6 +277,7 @@ fn remote_windows_workspace_routes_equivalent_path_forms() {
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Remote {
                 device_id: "device-win".to_string(),
             },
@@ -248,6 +315,7 @@ fn same_wsl_path_in_different_distributions_creates_distinct_projects() {
                 badge_text: None,
                 badge_symbol: None,
                 badge_color_hex: None,
+                environment_variables: Default::default(),
                 runtime_target: ProjectRuntimeTarget::Wsl {
                     distribution: distribution.to_string(),
                 },

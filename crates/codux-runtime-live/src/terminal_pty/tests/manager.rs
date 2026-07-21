@@ -412,6 +412,7 @@ fn terminal_manager_uses_context_session_cwd_for_identity() {
         memory_prompt_file: None,
         memory_index_file: None,
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
     let config = TerminalPtyConfig {
         terminal_id: Some(terminal_id),

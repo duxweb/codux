@@ -1149,6 +1149,11 @@ pub(in crate::app) fn terminal_launch_context(
         memory_prompt_file: Some(launch_artifacts.prompt_file),
         memory_index_file: Some(launch_artifacts.index_file),
         runtime_target: project.runtime_target.clone(),
+        environment_variables: project
+            .environment_variables
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
     })
 }
 

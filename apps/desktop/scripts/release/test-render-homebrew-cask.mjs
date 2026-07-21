@@ -33,10 +33,12 @@ try {
   const cask = fs.readFileSync(caskPath, "utf8");
   assert.match(cask, /on_arm do/);
   assert.match(cask, /sha256 "arm-sha"/);
-  assert.match(cask, /codux-#\{version\}-macos-aarch64\.dmg/);
+  assert.match(cask, /codux-macos-aarch64\.dmg/);
+  assert.doesNotMatch(cask, /codux-#\{version\}-macos-aarch64\.dmg/);
   assert.match(cask, /on_intel do/);
   assert.match(cask, /sha256 "intel-sha"/);
-  assert.match(cask, /codux-#\{version\}-macos-x86_64\.dmg/);
+  assert.match(cask, /codux-macos-x86_64\.dmg/);
+  assert.doesNotMatch(cask, /codux-#\{version\}-macos-x86_64\.dmg/);
   assert.doesNotMatch(cask, /macos-universal-formal/);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });

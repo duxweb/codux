@@ -466,6 +466,8 @@ impl CoduxApp {
             project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
             project_editor_saving: false,
             project_editor_runtime_target: ProjectRuntimeTarget::Local,
+            project_editor_environment_variables: Vec::new(),
+            project_editor_next_environment_variable_id: 1,
             wsl_distribution_catalog: None,
             wsl_distribution_catalog_loading: false,
             wsl_selected_distribution: String::new(),

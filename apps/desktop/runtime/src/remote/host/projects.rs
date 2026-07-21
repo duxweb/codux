@@ -26,6 +26,7 @@ impl RemoteHostRuntime {
             badge_text: None,
             badge_symbol: None,
             badge_color_hex: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Local,
         }) {
             Ok(baseline) => {
@@ -65,6 +66,7 @@ impl RemoteHostRuntime {
                 badge_text: None,
                 badge_symbol: None,
                 badge_color_hex: None,
+                environment_variables: Default::default(),
                 runtime_target: ProjectRuntimeTarget::Local,
             },
         ) {

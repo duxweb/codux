@@ -399,6 +399,7 @@ impl CoduxApp {
                     badge_symbol: None,
                     badge_color_hex: None,
                     git_default_push_remote_name: None,
+                    environment_variables: Default::default(),
                     runtime_target: Default::default(),
                 });
                 theme::apply_component_theme(

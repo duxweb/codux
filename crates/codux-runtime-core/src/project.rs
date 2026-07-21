@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub fn is_reserved_project_environment_key(key: &str) -> bool {
+    let key = key.trim().to_ascii_uppercase();
+    key.starts_with("CODUX_") || key.starts_with("DMUX_")
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectListItem {

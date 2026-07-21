@@ -65,6 +65,7 @@ pub struct ProjectInfo {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     pub git_default_push_remote_name: Option<String>,
+    pub environment_variables: std::collections::BTreeMap<String, String>,
     pub runtime_target: ProjectRuntimeTarget,
 }
 
@@ -177,6 +178,8 @@ struct ProjectRecord {
     badge_color_hex: Option<String>,
     #[serde(default)]
     git_default_push_remote_name: Option<String>,
+    #[serde(default)]
+    environment_variables: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     runtime_target: Option<ProjectRuntimeTarget>,
     #[serde(default)]

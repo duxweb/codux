@@ -1,4 +1,5 @@
 use super::*;
+use codux_runtime::project::is_reserved_project_environment_key;
 
 pub(in crate::app) struct FilePickerOpenRequest {
     pub(in crate::app) mode: FilePickerMode,
@@ -770,6 +771,30 @@ impl CoduxApp {
         let badge_symbol = self.project_editor_badge_symbol.clone();
         let badge_color_hex = self.project_editor_badge_color_hex.clone();
         let runtime_target = self.project_editor_runtime_target.clone();
+        let mut environment_variables = BTreeMap::new();
+        for variable in &self.project_editor_environment_variables {
+            let key = variable.key.trim();
+            if key.is_empty() {
+                if !variable.value.trim().is_empty() {
+                    self.status_message = self.text(
+                        "project.editor.environment.key_required",
+                        "Environment variable name is required.",
+                    );
+                    self.invalidate_project_management(cx);
+                    return;
+                }
+                continue;
+            }
+            if is_reserved_project_environment_key(key) {
+                self.status_message = self.text(
+                    "project.editor.environment.reserved_key",
+                    "Environment variables starting with CODUX_ or DMUX_ are reserved.",
+                );
+                self.invalidate_project_management(cx);
+                return;
+            }
+            environment_variables.insert(key.to_string(), variable.value.clone());
+        }
         let runtime_service = self.runtime_service.clone();
         let parent_main_window = self.parent_main_window.clone();
         let parent_window_handle = self.parent_main_window_handle;
@@ -792,6 +817,7 @@ impl CoduxApp {
                         badge_text: project_badge_text_from_name(&name),
                         badge_symbol,
                         badge_color_hex: Some(badge_color_hex),
+                        environment_variables,
                         runtime_target,
                     })
                 } else {
@@ -801,6 +827,7 @@ impl CoduxApp {
                         badge_text: project_badge_text_from_name(&name),
                         badge_symbol,
                         badge_color_hex: Some(badge_color_hex),
+                        environment_variables,
                         runtime_target,
                     })
                 };

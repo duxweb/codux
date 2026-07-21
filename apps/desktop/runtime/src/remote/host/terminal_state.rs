@@ -63,6 +63,7 @@ impl RemoteHostRuntime {
             .get("rows")
             .and_then(Value::as_u64)
             .map(|value| value as u16);
+        let project_env = project_env_from_payload(envelope.payload.get("projectEnv"));
         let mut config = remote_terminal_pty_config(
             &scope,
             TerminalPtyConfig {
@@ -72,6 +73,7 @@ impl RemoteHostRuntime {
                 cwd,
                 cols,
                 rows,
+                project_env,
                 ..Default::default()
             },
             self.support_dir.clone(),
@@ -915,6 +917,21 @@ impl RemoteHostRuntime {
             }
         }
     }
+}
+
+fn project_env_from_payload(value: Option<&Value>) -> Option<HashMap<String, String>> {
+    let object = value?.as_object()?;
+    let env = object
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .as_str()
+                .map(|value| (key.trim(), value))
+                .filter(|(key, _)| !key.is_empty())
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+        })
+        .collect::<HashMap<_, _>>();
+    (!env.is_empty()).then_some(env)
 }
 
 /// Adapts the desktop host to the shared remote-terminal router

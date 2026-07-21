@@ -53,7 +53,14 @@
       "file.picker.rename.placeholder": "Neuer Name",
       "file.picker.rename.invalid": "Geben Sie einen gültigen Namen ohne Pfadtrennzeichen ein.",
       "file.picker.delete.confirm_format": "„%@“ löschen?",
-      "file.picker.delete.confirm.message": "Gelöschte Elemente werden nach Möglichkeit in den Papierkorb verschoben."
+      "file.picker.delete.confirm.message": "Gelöschte Elemente werden nach Möglichkeit in den Papierkorb verschoben.",
+      "project.editor.environment": "Umgebungsvariablen",
+      "project.editor.environment.add": "Variable hinzufügen",
+      "project.editor.environment.key": "Name",
+      "project.editor.environment.value": "Wert",
+      "project.editor.environment.remove": "Entfernen",
+      "project.editor.environment.key_required": "Name der Umgebungsvariable ist erforderlich.",
+      "project.editor.environment.reserved_key": "Umgebungsvariablen mit CODUX_ oder DMUX_ sind für Codux reserviert."
     },
     "en": {
       "project.activity.generic_input_request_format": "%@ is waiting for your input in %@",
@@ -120,7 +127,14 @@
       "file.picker.rename.placeholder": "New name",
       "file.picker.rename.invalid": "Enter a valid name without path separators.",
       "file.picker.delete.confirm_format": "Delete \"%@\"?",
-      "file.picker.delete.confirm.message": "Deleted items will be moved to Trash when possible."
+      "file.picker.delete.confirm.message": "Deleted items will be moved to Trash when possible.",
+      "project.editor.environment": "Environment Variables",
+      "project.editor.environment.add": "Add Variable",
+      "project.editor.environment.key": "Name",
+      "project.editor.environment.value": "Value",
+      "project.editor.environment.remove": "Remove",
+      "project.editor.environment.key_required": "Environment variable name is required.",
+      "project.editor.environment.reserved_key": "Environment variables starting with CODUX_ or DMUX_ are reserved."
     },
     "es": {
       "project.activity.generic_input_request_format": "%@ espera tu respuesta en %@",
@@ -187,7 +201,14 @@
       "file.picker.rename.placeholder": "Nuevo nombre",
       "file.picker.rename.invalid": "Introduce un nombre válido sin separadores de ruta.",
       "file.picker.delete.confirm_format": "¿Eliminar \"%@\"?",
-      "file.picker.delete.confirm.message": "Los elementos eliminados se moverán a la papelera cuando sea posible."
+      "file.picker.delete.confirm.message": "Los elementos eliminados se moverán a la papelera cuando sea posible.",
+      "project.editor.environment": "Variables de entorno",
+      "project.editor.environment.add": "Añadir variable",
+      "project.editor.environment.key": "Nombre",
+      "project.editor.environment.value": "Valor",
+      "project.editor.environment.remove": "Eliminar",
+      "project.editor.environment.key_required": "El nombre de la variable de entorno es obligatorio.",
+      "project.editor.environment.reserved_key": "Las variables de entorno que empiezan por CODUX_ o DMUX_ están reservadas para Codux."
     },
     "fr": {
       "project.activity.generic_input_request_format": "%@ attend votre saisie dans %@",
@@ -242,7 +263,14 @@
       "file.picker.rename.placeholder": "Nouveau nom",
       "file.picker.rename.invalid": "Saisissez un nom valide sans séparateur de chemin.",
       "file.picker.delete.confirm_format": "Supprimer « %@ » ?",
-      "file.picker.delete.confirm.message": "Les éléments supprimés seront placés dans la corbeille si possible."
+      "file.picker.delete.confirm.message": "Les éléments supprimés seront placés dans la corbeille si possible.",
+      "project.editor.environment": "Variables d’environnement",
+      "project.editor.environment.add": "Ajouter une variable",
+      "project.editor.environment.key": "Nom",
+      "project.editor.environment.value": "Valeur",
+      "project.editor.environment.remove": "Supprimer",
+      "project.editor.environment.key_required": "Le nom de la variable d’environnement est requis.",
+      "project.editor.environment.reserved_key": "Les variables d’environnement commençant par CODUX_ ou DMUX_ sont réservées à Codux."
     },
     "ja": {
       "project.activity.generic_input_request_format": "%@ は %@ で入力待ちです",
@@ -297,7 +325,14 @@
       "file.picker.rename.placeholder": "新しい名前",
       "file.picker.rename.invalid": "パス区切り文字を含まない有効な名前を入力してください。",
       "file.picker.delete.confirm_format": "「%@」を削除しますか？",
-      "file.picker.delete.confirm.message": "削除した項目は可能な場合はゴミ箱に移動されます。"
+      "file.picker.delete.confirm.message": "削除した項目は可能な場合はゴミ箱に移動されます。",
+      "project.editor.environment": "環境変数",
+      "project.editor.environment.add": "変数を追加",
+      "project.editor.environment.key": "名前",
+      "project.editor.environment.value": "値",
+      "project.editor.environment.remove": "削除",
+      "project.editor.environment.key_required": "環境変数名は必須です。",
+      "project.editor.environment.reserved_key": "CODUX_ または DMUX_ で始まる環境変数は Codux 用に予約されています。"
     },
     "ko": {
       "project.activity.generic_input_request_format": "%@이 %@에서 입력을 기다립니다",
@@ -352,7 +387,14 @@
       "file.picker.rename.placeholder": "새 이름",
       "file.picker.rename.invalid": "경로 구분자가 없는 올바른 이름을 입력하세요.",
       "file.picker.delete.confirm_format": "“%@”을(를) 삭제할까요?",
-      "file.picker.delete.confirm.message": "삭제된 항목은 가능한 경우 휴지통으로 이동됩니다."
+      "file.picker.delete.confirm.message": "삭제된 항목은 가능한 경우 휴지통으로 이동됩니다.",
+      "project.editor.environment": "환경 변수",
+      "project.editor.environment.add": "변수 추가",
+      "project.editor.environment.key": "이름",
+      "project.editor.environment.value": "값",
+      "project.editor.environment.remove": "삭제",
+      "project.editor.environment.key_required": "환경 변수 이름이 필요합니다.",
+      "project.editor.environment.reserved_key": "CODUX_ 또는 DMUX_로 시작하는 환경 변수는 Codux용으로 예약되어 있습니다."
     },
     "pt-BR": {
       "project.activity.generic_input_request_format": "%@ aguarda sua entrada em %@",
@@ -407,7 +449,14 @@
       "file.picker.rename.placeholder": "Novo nome",
       "file.picker.rename.invalid": "Insira um nome válido sem separadores de caminho.",
       "file.picker.delete.confirm_format": "Excluir “%@”?",
-      "file.picker.delete.confirm.message": "Os itens excluídos serão movidos para a Lixeira quando possível."
+      "file.picker.delete.confirm.message": "Os itens excluídos serão movidos para a Lixeira quando possível.",
+      "project.editor.environment": "Variáveis de ambiente",
+      "project.editor.environment.add": "Adicionar variável",
+      "project.editor.environment.key": "Nome",
+      "project.editor.environment.value": "Valor",
+      "project.editor.environment.remove": "Remover",
+      "project.editor.environment.key_required": "O nome da variável de ambiente é obrigatório.",
+      "project.editor.environment.reserved_key": "Variáveis de ambiente iniciadas por CODUX_ ou DMUX_ são reservadas ao Codux."
     },
     "ru": {
       "project.activity.generic_input_request_format": "%@ ждет вашего ввода в %@",
@@ -462,7 +511,14 @@
       "file.picker.rename.placeholder": "Новое имя",
       "file.picker.rename.invalid": "Введите допустимое имя без разделителей пути.",
       "file.picker.delete.confirm_format": "Удалить «%@»?",
-      "file.picker.delete.confirm.message": "Удаленные элементы будут перемещены в корзину, если это возможно."
+      "file.picker.delete.confirm.message": "Удаленные элементы будут перемещены в корзину, если это возможно.",
+      "project.editor.environment": "Переменные окружения",
+      "project.editor.environment.add": "Добавить переменную",
+      "project.editor.environment.key": "Имя",
+      "project.editor.environment.value": "Значение",
+      "project.editor.environment.remove": "Удалить",
+      "project.editor.environment.key_required": "Укажите имя переменной окружения.",
+      "project.editor.environment.reserved_key": "Переменные окружения, начинающиеся с CODUX_ или DMUX_, зарезервированы для Codux."
     },
     "zh-Hans": {
       "project.activity.generic_input_request_format": "%@ 正在等待你输入（项目：%@）",
@@ -529,7 +585,14 @@
       "file.picker.rename.placeholder": "新名称",
       "file.picker.rename.invalid": "请输入不包含路径分隔符的有效名称。",
       "file.picker.delete.confirm_format": "删除“%@”？",
-      "file.picker.delete.confirm.message": "删除的项目会尽可能移到废纸篓。"
+      "file.picker.delete.confirm.message": "删除的项目会尽可能移到废纸篓。",
+      "project.editor.environment": "环境变量",
+      "project.editor.environment.add": "添加变量",
+      "project.editor.environment.key": "名称",
+      "project.editor.environment.value": "值",
+      "project.editor.environment.remove": "删除",
+      "project.editor.environment.key_required": "请填写环境变量名称。",
+      "project.editor.environment.reserved_key": "以 CODUX_ 或 DMUX_ 开头的环境变量由 Codux 保留。"
     },
     "zh-Hant": {
       "project.activity.generic_input_request_format": "%@ 正在等待你輸入（專案：%@）",
@@ -596,7 +659,14 @@
       "file.picker.rename.placeholder": "新名稱",
       "file.picker.rename.invalid": "請輸入不包含路徑分隔符的有效名稱。",
       "file.picker.delete.confirm_format": "刪除「%@」？",
-      "file.picker.delete.confirm.message": "刪除的項目會盡可能移到垃圾桶。"
+      "file.picker.delete.confirm.message": "刪除的項目會盡可能移到垃圾桶。",
+      "project.editor.environment": "環境變數",
+      "project.editor.environment.add": "新增變數",
+      "project.editor.environment.key": "名稱",
+      "project.editor.environment.value": "值",
+      "project.editor.environment.remove": "刪除",
+      "project.editor.environment.key_required": "請填寫環境變數名稱。",
+      "project.editor.environment.reserved_key": "以 CODUX_ 或 DMUX_ 開頭的環境變數由 Codux 保留。"
     }
   }
 }

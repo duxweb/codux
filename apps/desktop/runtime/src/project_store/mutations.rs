@@ -12,9 +12,10 @@ use crate::project_store::raw_state::{
     ensure_array, project_index, project_record, prune_project_state, select_project_after_removal,
     update_default_worktree_record,
 };
+use codux_runtime_core::project::is_reserved_project_environment_key;
 use codux_runtime_core::worktree::selected_runtime_worktree_id;
 use serde_json::{Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 impl ProjectStore {
     pub fn replace_project_worktree_state(
@@ -158,6 +159,10 @@ impl ProjectStore {
                 "runtimeTarget".to_string(),
                 runtime_target_value(&runtime_target)?,
             );
+            project.insert(
+                "environmentVariables".to_string(),
+                environment_variables_value(request.environment_variables)?,
+            );
             project.remove("hostDeviceId");
             self.save_raw_snapshot(&raw)?;
         }
@@ -197,6 +202,10 @@ impl ProjectStore {
             project.insert(
                 "runtimeTarget".to_string(),
                 runtime_target_value(&runtime_target)?,
+            );
+            project.insert(
+                "environmentVariables".to_string(),
+                environment_variables_value(request.environment_variables)?,
             );
             project.remove("hostDeviceId");
         }
@@ -503,4 +512,22 @@ fn normalized_runtime_target(
 fn runtime_target_value(runtime_target: &ProjectRuntimeTarget) -> Result<Value, String> {
     serde_json::to_value(runtime_target)
         .map_err(|error| format!("Failed to serialize project runtime target: {error}"))
+}
+
+fn environment_variables_value(variables: BTreeMap<String, String>) -> Result<Value, String> {
+    let mut normalized = BTreeMap::new();
+    for (key, value) in variables {
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if is_reserved_project_environment_key(key) {
+            return Err(format!(
+                "Environment variable {key} is reserved for Codux runtime."
+            ));
+        }
+        normalized.insert(key.to_string(), value);
+    }
+    serde_json::to_value(normalized)
+        .map_err(|error| format!("Failed to serialize project environment variables: {error}"))
 }

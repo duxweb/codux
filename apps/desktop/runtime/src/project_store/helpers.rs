@@ -19,6 +19,7 @@ pub(super) fn project_summary(project: &ProjectRecord) -> ProjectSummary {
         badge_symbol: project.badge_symbol.clone(),
         badge_color_hex: project.badge_color_hex.clone(),
         git_default_push_remote_name: project.git_default_push_remote_name.clone(),
+        environment_variables: project.environment_variables.clone(),
         runtime_target: project.runtime_target.clone(),
     }
 }
@@ -38,6 +39,7 @@ pub(super) fn worktree_summary(
         badge_symbol: None,
         badge_color_hex: None,
         git_default_push_remote_name: None,
+        environment_variables: Default::default(),
         runtime_target: runtime_target.clone(),
     }
 }

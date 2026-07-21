@@ -1031,6 +1031,7 @@ impl RemoteController {
             "terminalId": config.terminal_id,
             "oscFg": osc_fg,
             "oscBg": osc_bg,
+            "projectEnv": config.project_env,
         }))
     }
 
@@ -2046,6 +2047,10 @@ mod tests {
                 worktree_id: Some("worktree-1".to_string()),
                 title: Some("Shell".to_string()),
                 terminal_id: Some("terminal-1".to_string()),
+                project_env: Some(HashMap::from([(
+                    "API_BASE".to_string(),
+                    "https://example.test".to_string(),
+                )])),
                 ..Default::default()
             })
             .expect("terminal created");
@@ -2064,6 +2069,13 @@ mod tests {
         assert_eq!(
             payload.get("worktreeId").and_then(Value::as_str),
             Some("worktree-1")
+        );
+        assert_eq!(
+            payload
+                .get("projectEnv")
+                .and_then(|env| env.get("API_BASE"))
+                .and_then(Value::as_str),
+            Some("https://example.test")
         );
     }
 

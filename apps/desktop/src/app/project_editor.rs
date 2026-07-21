@@ -92,6 +92,16 @@ impl CoduxApp {
                         tr("project.editor.color", "Project Color"),
                         &self.project_editor_badge_color_hex,
                         cx,
+                    ))
+                    .child(project_editor_environment_field(
+                        tr("project.editor.environment", "Environment Variables"),
+                        tr("project.editor.environment.add", "Add Variable"),
+                        tr("project.editor.environment.key", "Name"),
+                        tr("project.editor.environment.value", "Value"),
+                        tr("project.editor.environment.remove", "Remove"),
+                        &self.project_editor_environment_variables,
+                        window,
+                        cx,
                     )),
             )
             .child(dialog_footer_bar(
@@ -1218,6 +1228,99 @@ fn project_editor_color_field(
         .into_any_element()
 }
 
+fn project_editor_environment_field(
+    label: String,
+    add_label: String,
+    key_placeholder: String,
+    value_placeholder: String,
+    remove_label: String,
+    variables: &[ProjectEnvironmentVariableDraft],
+    window: &mut Window,
+    cx: &mut Context<CoduxApp>,
+) -> AnyElement {
+    let mut rows = div().flex().flex_col().gap(px(8.0));
+    for variable in variables {
+        let id = variable.id;
+        let key_input_id = SharedString::from(format!("project-editor-env-key-{id}"));
+        let value_input_id = SharedString::from(format!("project-editor-env-value-{id}"));
+        rows = rows.child(
+            div()
+                .grid()
+                .grid_cols(12)
+                .gap(px(8.0))
+                .items_center()
+                .child(div().col_span(5).child(project_editor_input(
+                    key_input_id,
+                    &variable.key,
+                    key_placeholder.clone(),
+                    window,
+                    cx,
+                    move |app, value, window, cx| {
+                        app.set_project_editor_environment_variable_key(id, value, window, cx)
+                    },
+                )))
+                .child(div().col_span(6).child(project_editor_input(
+                    value_input_id,
+                    &variable.value,
+                    value_placeholder.clone(),
+                    window,
+                    cx,
+                    move |app, value, window, cx| {
+                        app.set_project_editor_environment_variable_value(id, value, window, cx)
+                    },
+                )))
+                .child(
+                    div().col_span(1).flex().justify_end().child(
+                        Button::new(SharedString::from(format!(
+                            "project-editor-env-remove-{id}"
+                        )))
+                        .secondary()
+                        .compact()
+                        .icon(Icon::new(HeroIconName::Trash).size_3p5())
+                        .tooltip(remove_label.clone())
+                        .on_click(cx.listener(
+                            move |app, _event, _window, cx| {
+                                app.remove_project_editor_environment_variable(id, cx);
+                            },
+                        )),
+                    ),
+                ),
+        );
+    }
+
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .mt(px(24.0))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.0))
+                .child(
+                    div()
+                        .text_size(rems(0.875))
+                        .line_height(rems(1.125))
+                        .text_color(color(theme::TEXT))
+                        .child(label),
+                )
+                .child(
+                    Button::new("project-editor-env-add")
+                        .secondary()
+                        .compact()
+                        .icon(Icon::new(HeroIconName::Plus).size_3p5())
+                        .child(dialog_button_label(add_label))
+                        .on_click(cx.listener(|app, _event, _window, cx| {
+                            app.add_project_editor_environment_variable(cx);
+                        })),
+                ),
+        )
+        .child(rows)
+        .into_any_element()
+}
+
 fn hex_color(value: &str) -> Option<u32> {
     let value = value.trim().trim_start_matches('#');
     if value.len() == 6 {
@@ -1228,16 +1331,17 @@ fn hex_color(value: &str) -> Option<u32> {
 }
 
 fn project_editor_input(
-    id: &'static str,
+    id: impl Into<SharedString>,
     value: &str,
     placeholder: impl Into<String>,
     window: &mut Window,
     cx: &mut Context<CoduxApp>,
     action: impl Fn(&mut CoduxApp, String, &mut Window, &mut Context<CoduxApp>) + 'static,
 ) -> AnyElement {
+    let id = id.into();
     let value = value.to_string();
     let placeholder = placeholder.into();
-    let input_state = window.use_keyed_state(SharedString::from(id), cx, |window, cx| {
+    let input_state = window.use_keyed_state(id, cx, |window, cx| {
         InputState::new(window, cx)
             .default_value(value.clone())
             .placeholder(placeholder.clone())

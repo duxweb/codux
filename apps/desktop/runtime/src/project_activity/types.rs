@@ -156,6 +156,7 @@ impl From<TrackedProject> for ProjectSummary {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
+            environment_variables: Default::default(),
             runtime_target: project.runtime_target,
         }
     }

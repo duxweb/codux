@@ -48,6 +48,34 @@ fn terminal_environment_preserves_real_term_program() {
 }
 
 #[test]
+fn terminal_environment_applies_project_env_before_runtime_env() {
+    let config = TerminalPtyConfig {
+        project_env: Some(HashMap::from([
+            ("API_BASE".to_string(), "https://example.test".to_string()),
+            ("CODUX_PROJECT_ID".to_string(), "bad-project".to_string()),
+        ])),
+        ..Default::default()
+    };
+
+    let env = terminal_environment(
+        "/bin/zsh",
+        Some("/workspace/codux"),
+        "term-1",
+        &config,
+        None,
+    );
+
+    assert_eq!(
+        env.get("API_BASE").map(String::as_str),
+        Some("https://example.test")
+    );
+    assert_ne!(
+        env.get("CODUX_PROJECT_ID").map(String::as_str),
+        Some("bad-project")
+    );
+}
+
+#[test]
 fn terminal_environment_injects_codux_runtime_context() {
     let temp = std::env::temp_dir().join(format!("codux-terminal-runtime-root-{}", Uuid::new_v4()));
     let runtime_root = temp.join("runtime-root");
@@ -95,6 +123,7 @@ fn terminal_environment_injects_codux_runtime_context() {
             "/tmp/codux/memory-workspaces/project-1/MEMORY.md",
         )),
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
     let env = terminal_environment(
         "/bin/zsh",
@@ -220,6 +249,7 @@ fn terminal_environment_treats_named_zsh_wrapper_as_zsh() {
         memory_prompt_file: None,
         memory_index_file: None,
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
 
     let env = terminal_environment(
@@ -295,6 +325,7 @@ fn terminal_environment_does_not_override_zdotdir_when_runtime_zsh_hook_is_incom
         memory_prompt_file: None,
         memory_index_file: None,
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
 
     let env = terminal_environment(
@@ -343,6 +374,7 @@ fn terminal_environment_keeps_runtime_context_compact() {
             "/tmp/codux/memory-workspaces/project-1/MEMORY.md",
         )),
         runtime_target: Default::default(),
+        environment_variables: Default::default(),
     };
 
     let env = terminal_environment(

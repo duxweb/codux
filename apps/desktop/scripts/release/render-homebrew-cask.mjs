@@ -19,12 +19,12 @@ fs.writeFileSync(
 
   on_arm do
     sha256 "${armSha256}"
-    url "https://github.com/duxweb/codux/releases/download/v#{version}/codux-#{version}-macos-aarch64.dmg"
+    url "https://github.com/duxweb/codux/releases/download/v#{version}/codux-macos-aarch64.dmg"
   end
 
   on_intel do
     sha256 "${intelSha256}"
-    url "https://github.com/duxweb/codux/releases/download/v#{version}/codux-#{version}-macos-x86_64.dmg"
+    url "https://github.com/duxweb/codux/releases/download/v#{version}/codux-macos-x86_64.dmg"
   end
 
   name "Codux"

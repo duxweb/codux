@@ -329,6 +329,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Local,
         };
         let worktrees = crate::worktree::WorktreeSummary {
@@ -353,6 +354,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Local,
         };
         let worktrees = crate::worktree::WorktreeSummary::default();
@@ -374,6 +376,7 @@ mod tests {
             badge_symbol: None,
             badge_color_hex: None,
             git_default_push_remote_name: None,
+            environment_variables: Default::default(),
             runtime_target: ProjectRuntimeTarget::Local,
         };
         let worktrees = crate::worktree::WorktreeSummary {

@@ -89,6 +89,11 @@ pub fn terminal_environment(
     for (key, value) in configured_codex_env(&home_text) {
         values.entry(key).or_insert(value);
     }
+    if let Some(project_env) = &config.project_env {
+        for (key, value) in project_env {
+            values.insert(key.clone(), value.clone());
+        }
+    }
 
     let shell_path = values.get("PATH").cloned();
     let process_path = std::env::var("PATH").ok();

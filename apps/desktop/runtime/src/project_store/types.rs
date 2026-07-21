@@ -1,6 +1,6 @@
 pub use codux_runtime_core::runtime_target::RuntimeTarget as ProjectRuntimeTarget;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +32,8 @@ pub struct ProjectRecord {
     pub badge_color_hex: Option<String>,
     #[serde(default)]
     pub git_default_push_remote_name: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub environment_variables: BTreeMap<String, String>,
     pub runtime_target: ProjectRuntimeTarget,
 }
 
@@ -51,6 +53,8 @@ struct ProjectRecordWire {
     badge_color_hex: Option<String>,
     #[serde(default)]
     git_default_push_remote_name: Option<String>,
+    #[serde(default)]
+    environment_variables: BTreeMap<String, String>,
     #[serde(default)]
     runtime_target: Option<ProjectRuntimeTarget>,
     #[serde(default)]
@@ -76,6 +80,7 @@ impl<'de> Deserialize<'de> for ProjectRecord {
             badge_symbol: wire.badge_symbol,
             badge_color_hex: wire.badge_color_hex,
             git_default_push_remote_name: wire.git_default_push_remote_name,
+            environment_variables: wire.environment_variables,
             runtime_target,
         })
     }
@@ -136,6 +141,8 @@ pub struct ProjectCreateRequest {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     #[serde(default)]
+    pub environment_variables: BTreeMap<String, String>,
+    #[serde(default)]
     pub runtime_target: ProjectRuntimeTarget,
 }
 
@@ -148,6 +155,8 @@ pub struct ProjectUpdateRequest {
     pub badge_text: Option<String>,
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
+    #[serde(default)]
+    pub environment_variables: BTreeMap<String, String>,
     #[serde(default)]
     pub runtime_target: ProjectRuntimeTarget,
 }
@@ -190,6 +199,8 @@ pub struct ProjectSummary {
     pub badge_symbol: Option<String>,
     pub badge_color_hex: Option<String>,
     pub git_default_push_remote_name: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub environment_variables: BTreeMap<String, String>,
     #[serde(default)]
     pub runtime_target: ProjectRuntimeTarget,
 }

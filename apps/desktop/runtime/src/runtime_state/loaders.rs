@@ -26,6 +26,7 @@ fn load_projects(support_dir: &Path) -> (Vec<ProjectInfo>, Option<ProjectInfo>) 
             name: project.name,
             path: project.path,
             git_default_push_remote_name: project.git_default_push_remote_name,
+            environment_variables: project.environment_variables,
             runtime_target,
         }
         })

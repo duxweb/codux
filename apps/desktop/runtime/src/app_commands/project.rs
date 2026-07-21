@@ -146,6 +146,7 @@ mod tests {
                 badge_text: None,
                 badge_symbol: Some("folder".to_string()),
                 badge_color_hex: Some("#2F80ED".to_string()),
+                environment_variables: Default::default(),
                 runtime_target: ProjectRuntimeTarget::Local,
             },
         )
@@ -161,6 +162,7 @@ mod tests {
                 badge_text: None,
                 badge_symbol: None,
                 badge_color_hex: None,
+                environment_variables: Default::default(),
                 runtime_target: ProjectRuntimeTarget::Local,
             },
         )
@@ -180,6 +182,7 @@ mod tests {
                 badge_text: None,
                 badge_symbol: Some("book".to_string()),
                 badge_color_hex: Some("#78D891".to_string()),
+                environment_variables: Default::default(),
                 runtime_target: ProjectRuntimeTarget::Local,
             },
         )

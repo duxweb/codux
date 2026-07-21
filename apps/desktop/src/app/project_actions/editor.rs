@@ -205,6 +205,67 @@ impl CoduxApp {
         self.invalidate_project_management(cx);
     }
 
+    pub(in crate::app) fn add_project_editor_environment_variable(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) {
+        let id = self.project_editor_next_environment_variable_id;
+        self.project_editor_next_environment_variable_id = self
+            .project_editor_next_environment_variable_id
+            .saturating_add(1);
+        self.project_editor_environment_variables
+            .push(ProjectEnvironmentVariableDraft {
+                id,
+                key: String::new(),
+                value: String::new(),
+            });
+        self.invalidate_project_management(cx);
+    }
+
+    pub(in crate::app) fn remove_project_editor_environment_variable(
+        &mut self,
+        id: u64,
+        cx: &mut Context<Self>,
+    ) {
+        self.project_editor_environment_variables
+            .retain(|draft| draft.id != id);
+        self.invalidate_project_management(cx);
+    }
+
+    pub(in crate::app) fn set_project_editor_environment_variable_key(
+        &mut self,
+        id: u64,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(draft) = self
+            .project_editor_environment_variables
+            .iter_mut()
+            .find(|draft| draft.id == id)
+        {
+            draft.key = value;
+        }
+        self.invalidate_project_management(cx);
+    }
+
+    pub(in crate::app) fn set_project_editor_environment_variable_value(
+        &mut self,
+        id: u64,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(draft) = self
+            .project_editor_environment_variables
+            .iter_mut()
+            .find(|draft| draft.id == id)
+        {
+            draft.value = value;
+        }
+        self.invalidate_project_management(cx);
+    }
+
     pub(in crate::app) fn choose_project_editor_directory(
         &mut self,
         window: &mut Window,

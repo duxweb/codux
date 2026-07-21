@@ -26,6 +26,27 @@ pub(in crate::app) struct FilePickerRenameDraft {
     pub(in crate::app) name: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::app) struct ProjectEnvironmentVariableDraft {
+    pub(in crate::app) id: u64,
+    pub(in crate::app) key: String,
+    pub(in crate::app) value: String,
+}
+
+pub(in crate::app) fn project_environment_variable_drafts(
+    variables: BTreeMap<String, String>,
+) -> Vec<ProjectEnvironmentVariableDraft> {
+    variables
+        .into_iter()
+        .enumerate()
+        .map(|(index, (key, value))| ProjectEnvironmentVariableDraft {
+            id: index as u64 + 1,
+            key,
+            value,
+        })
+        .collect()
+}
+
 static ACTIVE_SETTINGS_SNAPSHOT: OnceLock<std::sync::Mutex<SettingsSummary>> = OnceLock::new();
 
 pub(crate) fn set_active_settings_snapshot(settings: SettingsSummary) {
@@ -403,6 +424,8 @@ pub struct CoduxApp {
     pub(in crate::app) project_editor_badge_color_hex: String,
     pub(in crate::app) project_editor_saving: bool,
     pub(in crate::app) project_editor_runtime_target: ProjectRuntimeTarget,
+    pub(in crate::app) project_editor_environment_variables: Vec<ProjectEnvironmentVariableDraft>,
+    pub(in crate::app) project_editor_next_environment_variable_id: u64,
     pub(in crate::app) wsl_distribution_catalog: Option<codux_runtime::wsl::WslDistributionCatalog>,
     pub(in crate::app) wsl_distribution_catalog_loading: bool,
     pub(in crate::app) wsl_selected_distribution: String,

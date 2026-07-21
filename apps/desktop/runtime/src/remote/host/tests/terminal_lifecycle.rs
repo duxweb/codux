@@ -312,6 +312,51 @@ fn remote_terminal_layout_is_persisted_to_project_worktree_scope() {
 }
 
 #[test]
+fn remote_terminal_create_plan_carries_project_env() {
+    let support_dir = temp_support_dir("codux-remote-project-env");
+    write_two_project_state(&support_dir);
+    let runtime = RemoteHostRuntime::new(support_dir.clone());
+    runtime.set_remote_project_scope(Some("device-1"), "project-b");
+
+    let plan = runtime
+        .remote_terminal_plan_from_envelope(
+            &RemoteEnvelope {
+                kind: "terminal.create".to_string(),
+                device_id: Some("device-1".to_string()),
+                session_id: None,
+                request_id: None,
+                seq: None,
+                payload: json!({
+                    "projectEnv": {
+                        "API_BASE": "https://example.test",
+                        "EMPTY": 42
+                    }
+                }),
+            },
+            None,
+            false,
+        )
+        .expect("terminal plan");
+
+    assert_eq!(
+        plan.config
+            .project_env
+            .as_ref()
+            .and_then(|env| env.get("API_BASE"))
+            .map(String::as_str),
+        Some("https://example.test")
+    );
+    assert!(
+        plan.config
+            .project_env
+            .as_ref()
+            .is_none_or(|env| !env.contains_key("EMPTY"))
+    );
+
+    fs::remove_dir_all(support_dir).ok();
+}
+
+#[test]
 fn remote_terminal_create_emits_layout_changed_event() {
     let support_dir = temp_support_dir("codux-remote-create-layout-event");
     write_two_project_state(&support_dir);

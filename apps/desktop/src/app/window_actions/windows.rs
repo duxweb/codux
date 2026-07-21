@@ -387,6 +387,8 @@ impl CoduxApp {
             project_editor_badge_color_hex: PROJECT_BADGE_COLORS[0].to_string(),
             project_editor_saving: false,
             project_editor_runtime_target: ProjectRuntimeTarget::Local,
+            project_editor_environment_variables: Vec::new(),
+            project_editor_next_environment_variable_id: 1,
             wsl_distribution_catalog: None,
             wsl_distribution_catalog_loading: false,
             wsl_selected_distribution: String::new(),
@@ -544,6 +546,15 @@ impl CoduxApp {
             .badge_color_hex
             .unwrap_or_else(|| PROJECT_BADGE_COLORS[0].to_string());
         app.project_editor_runtime_target = runtime_target;
+        app.project_editor_environment_variables =
+            project_environment_variable_drafts(project.environment_variables);
+        app.project_editor_next_environment_variable_id = app
+            .project_editor_environment_variables
+            .iter()
+            .map(|draft| draft.id)
+            .max()
+            .unwrap_or_default()
+            + 1;
         app
     }
 
@@ -560,6 +571,8 @@ impl CoduxApp {
         app.project_editor_path = String::new();
         app.project_editor_badge_symbol = None;
         app.project_editor_badge_color_hex = PROJECT_BADGE_COLORS[0].to_string();
+        app.project_editor_environment_variables = Vec::new();
+        app.project_editor_next_environment_variable_id = 1;
         app
     }
 

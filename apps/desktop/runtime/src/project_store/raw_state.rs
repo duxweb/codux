@@ -143,6 +143,10 @@ pub(super) fn project_record(id: &str, name: &str, path: &str) -> Map<String, Va
     record.insert("badgeColorHex".to_string(), Value::Null);
     record.insert("gitDefaultPushRemoteName".to_string(), Value::Null);
     record.insert(
+        "environmentVariables".to_string(),
+        Value::Object(Default::default()),
+    );
+    record.insert(
         "runtimeTarget".to_string(),
         serde_json::json!({ "kind": "local" }),
     );
