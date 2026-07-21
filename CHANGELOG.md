@@ -8,6 +8,17 @@ All notable changes to this project will be documented in this file.
 
 - Paused automatic memory queue processing when no eligible extraction provider is configured, preventing repeated failures and UI refresh churn while preserving queued work until a provider becomes available.
 
+## [2.0.3] - 2026-07-21
+
+### Added
+
+- Added project-level custom environment variables in the project create/edit dialog. New local, WSL, remote, and AI CLI terminals inherit these variables when opened.
+
+### Fixed
+
+- Fixed Homebrew cask download URLs and SHA256 generation to use the stable public DMG asset names.
+- Prevented project environment variables from overriding Codux runtime protocol variables reserved under `CODUX_*` and `DMUX_*`.
+
 ## [2.0.2] - 2026-07-16
 
 ### Changed
