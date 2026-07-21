@@ -9,11 +9,14 @@ Important changes to this project are documented here.
 ### Changed
 
 - Aligned mobile terminal restoration with the shared atomic baseline and output-watermark protocol used by desktop and headless Agent hosts.
+- Reused cached terminal sessions during project, worktree, and terminal switches instead of replaying a full baseline every time.
 
 ### Fixed
 
 - Fixed duplicated terminal history, stale fragments, blank regions, and inconsistent screen restores after scrolling, resizing, folding or unfolding a device, and rapidly switching projects, worktrees, or running terminals.
 - Fixed cached terminal switching so existing sessions are reused without unconditionally replaying their full baseline; uncached or sequence-gapped sessions still request an authoritative baseline.
+- Fixed viewport owner recovery after reconnecting to a desktop or Agent host and switching back into an already-running terminal.
+- Fixed mobile compatibility with the desktop 2.0.3 terminal synchronization and hosted worktree routing changes.
 
 ## [2.0.0] - 2026-07-13
 

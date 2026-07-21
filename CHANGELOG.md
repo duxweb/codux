@@ -12,20 +12,32 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Added agent worktree orchestration with `codux-worktree` so AI tools can create isolated child worktrees, stream the child terminal, review, merge, and remove the task worktree from one workflow.
-- Added Oh My Pi runtime support, including wrappers, managed config, runtime probing, session restore, and AI usage/history parsing.
-- Added project-level custom environment variables in the project create/edit dialog. New local, WSL, remote, and AI CLI terminals inherit these variables when opened.
+- Added agent worktree orchestration with `codux-worktree`, allowing AI tools to create isolated child worktrees, run the child terminal, review changes, merge results, and remove the task worktree in one workflow.
+- Added worktree task persistence and hosted-runtime routing for desktop, WSL, remote hosts, and headless Agents so child-task terminals remain inspectable while the parent task waits.
+- Added Oh My Pi runtime support, including shell wrappers, managed config, runtime probing, session restore, and AI usage/history parsing.
+- Added Kimi Code 0.27 compatibility for runtime detection, wrapper launch, session paths, and token usage parsing.
+- Added project-level custom environment variables in the project create/edit dialog. New local, WSL, remote, and AI CLI terminals inherit these variables.
+- Added protection for Codux runtime protocol variables so project environment variables cannot override reserved `CODUX_*` and `DMUX_*` values.
+
+### Changed
+
+- Reworked the AI history and token accounting pipeline to use normalized session sources, external session paths, cache buckets, hosted runtime metadata, and restored sessions consistently.
+- Aligned mobile terminal restoration with the shared desktop/headless Agent baseline and output-watermark protocol.
+- Updated Homebrew cask publishing to use stable public DMG asset names for download URLs and SHA256 generation.
+- Prepared the mobile 2.0.3 release notes for the terminal restoration fixes included with this desktop release.
 
 ### Fixed
 
-- Fixed Kimi Code 0.27 runtime detection, wrapper launch, and usage-history parsing.
-- Fixed AI history and token accounting across external session paths, restored sessions, Codex/Claude/Kimi/Oh My Pi records, cache buckets, and hosted runtimes.
+- Fixed duplicated or stale mobile terminal output after switching projects, worktrees, and running terminals, including blank regions, stale fragments, and sequence-gapped output.
+- Fixed cached terminal switching so existing mobile sessions do not replay their full baseline unless an authoritative baseline is required.
+- Fixed remote and mobile viewport ownership recovery after project/worktree changes, host reconnects, and running-terminal switches.
+- Fixed agent worktree child-task permissions so nested AI tasks can run with the expected launch mode without repeated manual approval.
+- Fixed agent worktree semantic idempotency so retrying the same branch/task reuses the existing operation instead of creating duplicate worktrees or unusable operation IDs.
+- Fixed agent worktree merge/remove cleanup, terminal persistence, and command routing for local, remote, WSL, and headless Agent targets.
+- Fixed AI usage totals across Codex, Claude Code, Kimi, Oh My Pi, cached input buckets, hosted runtimes, and restored external sessions.
 - Fixed automatic memory extraction churn when no eligible provider is configured, preserving queued work until a provider becomes available.
-- Fixed agent worktree terminal persistence, viewport handoff, child-task permissions, semantic idempotency, merge/remove cleanup, and remote/WSL runtime command routing.
-- Fixed mobile and remote terminal synchronization after switching projects, worktrees, and running terminals, including stale baseline output and viewport ownership recovery.
-- Fixed redundant terminal workspace redraws that could push the UI into high CPU and frozen-looking frames during long-running terminal activity.
-- Fixed Homebrew cask download URLs and SHA256 generation to use the stable public DMG asset names.
-- Prevented project environment variables from overriding Codux runtime protocol variables reserved under `CODUX_*` and `DMUX_*`.
+- Fixed terminal workspace redundant redraws that could push CPU high and make the GUI appear frozen during long-running terminal activity.
+- Fixed Homebrew release metadata generated from versioned/debug assets instead of the stable public DMG files.
 
 ## [2.0.2] - 2026-07-16
 

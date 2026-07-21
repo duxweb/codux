@@ -12,20 +12,32 @@
 
 ### 新增
 
-- 新增 Agent worktree 编排能力，AI 工具可通过 `codux-worktree` 创建隔离子 worktree、接管子终端、评审、合并并移除任务 worktree，形成完整闭环。
-- 新增 Oh My Pi runtime 支持，包括 wrapper、托管配置、runtime 探测、会话恢复，以及 AI 用量/历史解析。
+- 新增 Agent worktree 编排能力，AI 工具可通过 `codux-worktree` 创建隔离子 worktree、运行子终端、评审变更、合并结果并移除任务 worktree，形成完整闭环。
+- 新增 worktree 任务持久化与 hosted runtime 路由，桌面端、WSL、远程主机和 headless Agent 的子任务终端都可以在父任务等待时继续查看。
+- 新增 Oh My Pi runtime 支持，包括 shell wrapper、托管配置、runtime 探测、会话恢复，以及 AI 用量/历史解析。
+- 新增 Kimi Code 0.27 兼容，包括 runtime 探测、wrapper 启动、会话路径和 Token 用量解析。
 - 项目创建/编辑窗口新增项目级自定义环境变量，新开的本地、WSL、远程与 AI CLI 终端会继承这些变量。
+- 新增 Codux runtime 协议变量保护，项目环境变量不能覆盖 `CODUX_*` 和 `DMUX_*` 保留值。
+
+### 调整
+
+- 重构 AI 历史与 Token 统计链路，统一处理标准化会话来源、外部会话路径、缓存桶、hosted runtime 元数据和恢复会话。
+- 移动端终端恢复对齐桌面端与 headless Agent 使用的共享 baseline 和输出水位协议。
+- Homebrew cask 发布改为使用稳定公开的 DMG 文件名生成下载地址和 SHA256。
+- 补充移动端 2.0.3 更新说明，对齐本次桌面端发布中的终端恢复修复。
 
 ### 修复
 
-- 修复 Kimi Code 0.27 的 runtime 探测、wrapper 启动和用量历史解析。
-- 修复外部会话路径、恢复会话、Codex/Claude/Kimi/Oh My Pi 记录、缓存桶和托管 runtime 下的 AI 历史与 Token 统计。
+- 修复移动端切换项目、worktree 和运行中终端后出现历史重复、旧内容残留、空白区域和输出序列缺口的问题。
+- 修复移动端缓存终端切换时重复回放完整 baseline 的问题，只有无缓存或序列缺口时才请求权威 baseline。
+- 修复远程与移动端在项目/worktree 变化、主机重连、切换运行中终端后的 viewport ownership 恢复。
+- 修复 Agent worktree 子任务权限继承问题，嵌套 AI 任务可按预期启动，不再反复要求手动审批。
+- 修复 Agent worktree 语义幂等问题，同一分支/同一任务重试会复用已有 operation，不再创建重复 worktree 或返回不可交付的 operationId。
+- 修复 Agent worktree 合并/移除清理、终端持久化，以及本地、远程、WSL、headless Agent 目标下的命令路由。
+- 修复 Codex、Claude Code、Kimi、Oh My Pi、缓存输入桶、hosted runtime 和恢复的外部会话下的 AI 用量汇总。
 - 修复未配置可用记忆提取 Provider 时自动提取队列反复失败的问题，并保留待处理任务直到 Provider 可用。
-- 修复 Agent worktree 终端持久化、viewport 接管、子任务权限、语义幂等、合并/移除清理，以及远程/WSL runtime 命令路由。
-- 修复移动端与远程终端在切换项目、worktree 和运行中终端后的同步问题，包括过期 baseline 输出和 viewport owner 恢复。
-- 修复长时间终端活动中重复重绘导致 UI CPU 升高、界面看起来卡死的问题。
-- 修复 Homebrew cask 下载地址和 SHA256 生成逻辑，统一使用稳定的公开 DMG 文件名。
-- 阻止项目环境变量覆盖 `CODUX_*` 和 `DMUX_*` 这些 Codux 运行时协议保留变量。
+- 修复终端 workspace 重复重绘导致 CPU 升高、长任务运行时 GUI 看起来卡死的问题。
+- 修复 Homebrew 发布元数据误从带版本号或 debug 产物生成，而不是使用稳定公开 DMG 文件的问题。
 
 ## [2.0.2] - 2026-07-16
 
