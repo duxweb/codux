@@ -50,7 +50,7 @@ case "$PLATFORM_NAME" in
   iphoneos)
     TARGET="aarch64-apple-ios"
     OUT_DIR="$PLUGIN_DIR/ios/Frameworks"
-    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
     ;;
   iphonesimulator)
     if [[ "$APPLE_ARCH" == "x86_64" ]]; then
@@ -59,7 +59,7 @@ case "$PLATFORM_NAME" in
       TARGET="aarch64-apple-ios-sim"
     fi
     OUT_DIR="$PLUGIN_DIR/ios/Frameworks"
-    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}"
+    export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-16.0}"
     ;;
   macosx)
     if [[ "$APPLE_ARCH" == "x86_64" ]]; then
@@ -77,8 +77,13 @@ case "$PLATFORM_NAME" in
 esac
 
 cd "$REPO_ROOT"
-rustup target add "$TARGET" >/dev/null
-cargo build -p codux-protocol-ffi --target "$TARGET" $PROFILE_FLAG
-mkdir -p "$OUT_DIR"
-cp "$REPO_ROOT/target/$TARGET/$TARGET_DIR/libcodux_protocol_ffi.a" \
-  "$OUT_DIR/libcodux_protocol_ffi.a"
+rustup target add "$TARGET" >/dev/null 2>&1 || true
+if command -v cargo >/dev/null 2>&1; then
+  cargo build -p codux-protocol-ffi --target "$TARGET" $PROFILE_FLAG
+  mkdir -p "$OUT_DIR"
+  cp "$REPO_ROOT/target/$TARGET/$TARGET_DIR/libcodux_protocol_ffi.a" \
+    "$OUT_DIR/libcodux_protocol_ffi.a"
+else
+  echo "cargo not found in PATH; assuming precompiled lib at $OUT_DIR/libcodux_protocol_ffi.a (already built)"
+  ls -lh "$OUT_DIR/libcodux_protocol_ffi.a"
+fi

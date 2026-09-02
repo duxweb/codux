@@ -31,7 +31,9 @@ Codux remote protocol FFI bridge backed by the shared Rust protocol crate.
     'LIBRARY_SEARCH_PATHS' => '$(inherited) "${PODS_TARGET_SRCROOT}/Frameworks"'
   }
   s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => '$(inherited) -force_load "${PODS_ROOT}/../.symlinks/plugins/codux_protocol_ffi/ios/Frameworks/libcodux_protocol_ffi.a"'
+    # Weak-link Network.framework so the iOS 26-only nw_path_is_ultra_constrained
+    # resolves to NULL on iOS 16 (guarded in netdev) instead of a launch failure.
+    'OTHER_LDFLAGS' => '$(inherited) -weak_framework Network -force_load "${PODS_ROOT}/../.symlinks/plugins/codux_protocol_ffi/ios/Frameworks/libcodux_protocol_ffi.a"'
   }
   s.swift_version = '5.0'
 end
