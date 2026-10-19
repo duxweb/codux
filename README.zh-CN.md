@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux 已进入存档期。** 后续开发转到 **[Sailry](https://github.com/sailry/sailry-harness)**，同一团队打造的 GPUI 原生 Agent Harness。本仓库保留供参考，不再更新。
+
 <p align="center">
   <b>为 AI 编程而生的高性能终端 —— 桌面、手机、服务器,一套工作区</b><br/>
   用 <b>Rust + GPUI</b> 原生打造，统一 Codex、Claude Code 等 9+ AI 编程 CLI，整合实时状态、Token 统计、本地记忆与凭证隔离的 SSH / 数据库访问，并用加密链路连通桌面、手机和主机端，让你随时随地接管长时间运行的 agent 任务。

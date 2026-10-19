@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux is archived.** Development continues in **[Sailry](https://github.com/sailry/sailry-harness)**, a GPUI-native agent harness from the same team. This repository stays available for reference but no longer receives updates.
+
 <p align="center">
   <b>The high-performance AI coding terminal — desktop, phone, and server, one workspace</b><br/>
   Built with <b>Rust + GPUI</b>, Codux unifies Codex, Claude Code, and 9+ AI coding CLIs with live agent status, token analytics, local memory, credential-isolated SSH &amp; database access, and encrypted device links for taking over long-running agent work from anywhere.

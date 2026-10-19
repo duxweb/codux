@@ -4,6 +4,9 @@
 
 <h1 align="center">Codux</h1>
 
+> [!IMPORTANT]
+> **Codux はアーカイブされました。** 開発は同じチームによる GPUI ネイティブの Agent Harness **[Sailry](https://github.com/sailry/sailry-harness)** に引き継がれています。このリポジトリは参照用に残しますが、今後は更新されません。
+
 <p align="center">
   <b>AI コーディングのための高性能ターミナル：デスクトップ、スマホ、サーバーをひとつのワークスペースへ</b><br/>
   <b>Rust + GPUI</b> で作られた Codux は、Codex、Claude Code、9 種類以上の AI コーディング CLI を統合し、ライブ状態、トークン分析、ローカルメモリ、認証情報を隔離した SSH / データベースアクセス、長時間実行中の agent 作業をどこからでも引き継げる暗号化デバイスリンクを提供します。
